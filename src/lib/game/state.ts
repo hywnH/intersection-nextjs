@@ -1,0 +1,137 @@
+import type {
+  GameAction,
+  GameState,
+  Mode,
+  PlayerSnapshot,
+} from "@/types/game";
+
+const createBaseState = (): Omit<GameState, "mode"> => ({
+  socketId: null,
+  gameSize: { width: 5000, height: 5000 },
+  players: {},
+  playerOrder: [],
+  selfId: null,
+  camera: {
+    position: { x: 0, y: 0 },
+    zoom: 1,
+  },
+  ui: {
+    displayName: "",
+    statusMessage: null,
+    connected: false,
+    reconnecting: false,
+    population: 0,
+  },
+  input: {
+    pointer: { x: 0, y: 0 },
+    pointerActive: false,
+    lastHeartbeat: 0,
+  },
+  collisionMarks: [],
+  cellTrails: {},
+  globalOverlay: {
+    focusPlayerId: null,
+    lastKnownPositions: {},
+  },
+  target: { x: 0, y: 0 },
+  playing: false,
+});
+
+export const createInitialState = (mode: Mode = "personal"): GameState => ({
+  mode,
+  ...createBaseState(),
+});
+
+const clampZoom = (zoom: number) => Math.min(4, Math.max(0.2, zoom));
+
+const upsertPlayer = (
+  players: Record<string, PlayerSnapshot>,
+  player: PlayerSnapshot
+) => {
+  return {
+    ...players,
+    [player.id]: player,
+  };
+};
+
+export const gameReducer = (
+  state: GameState,
+  action: GameAction
+): GameState => {
+  switch (action.type) {
+    case "SET_MODE":
+      return createInitialState(action.mode);
+    case "RESET":
+      return createInitialState(state.mode);
+    case "SET_SOCKET_ID":
+      return { ...state, socketId: action.socketId };
+    case "SET_SELF":
+      return { ...state, selfId: action.selfId };
+    case "SET_UI":
+      return { ...state, ui: { ...state.ui, ...action.ui } };
+    case "SET_GAME_SIZE":
+      return { ...state, gameSize: action.gameSize };
+    case "SET_CAMERA":
+      return {
+        ...state,
+        camera: {
+          ...state.camera,
+          ...action.camera,
+          zoom:
+            action.camera?.zoom !== undefined
+              ? clampZoom(action.camera.zoom)
+              : state.camera.zoom,
+        },
+      };
+    case "SET_INPUT":
+      return { ...state, input: { ...state.input, ...action.input } };
+    case "SET_TARGET":
+      return { ...state, target: action.target };
+    case "SET_PLAYERS":
+      return {
+        ...state,
+        players: action.players,
+        playerOrder: action.order,
+        ui: { ...state.ui, population: action.order.length },
+      };
+    case "UPDATE_PLAYER": {
+      const players = upsertPlayer(state.players, action.player);
+      const order = state.playerOrder.includes(action.player.id)
+        ? state.playerOrder
+        : [...state.playerOrder, action.player.id];
+      return {
+        ...state,
+        players,
+        playerOrder: order,
+        ui: { ...state.ui, population: Object.keys(players).length },
+      };
+    }
+    case "REMOVE_PLAYER": {
+      const nextPlayers = { ...state.players };
+      delete nextPlayers[action.playerId];
+      return {
+        ...state,
+        players: nextPlayers,
+        playerOrder: state.playerOrder.filter((id) => id !== action.playerId),
+        ui: { ...state.ui, population: Object.keys(nextPlayers).length },
+      };
+    }
+    case "PUSH_COLLISION_MARK":
+      return {
+        ...state,
+        collisionMarks: [...state.collisionMarks, action.mark].slice(-100),
+      };
+    case "SET_GLOBAL_OVERLAY":
+      return {
+        ...state,
+        globalOverlay: { ...state.globalOverlay, ...action.overlay },
+      };
+    case "SET_PLAYING":
+      return {
+        ...state,
+        playing: action.playing,
+      };
+    default:
+      return state;
+  }
+};

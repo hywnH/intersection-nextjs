@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE/editor
+.idea/
+.vscode/
+
+# Realtime server build artifacts
+/realtime/node_modules/
+/realtime/dist/
+
+# Optional: ignore npm lockfile if using yarn
+package-lock.json
