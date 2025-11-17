@@ -20,6 +20,7 @@ export interface PlayerSnapshot {
   target?: Vec2;
   lastUpdate: number;
   isSelf?: boolean;
+  depth?: number; // z축(뷰 전환용)
 }
 
 export interface CollisionMark {
@@ -27,6 +28,13 @@ export interface CollisionMark {
   position: Vec2;
   radius: number;
   timestamp: number;
+  players?: [string, string];
+}
+
+export interface CollisionLine {
+  id: string;
+  players: [string, string];
+  startedAt: number;
 }
 
 export interface CameraState {
@@ -46,6 +54,7 @@ export interface InputState {
   pointer: Vec2;
   pointerActive: boolean;
   lastHeartbeat: number;
+  controlVelocity?: Vec2; // 모바일 컨트롤러가 보내는 원하는 속도
 }
 
 export interface TrailPoint {
@@ -78,11 +87,18 @@ export interface GameState {
   globalOverlay: GlobalOverlay;
   target: Vec2;
   playing: boolean;
+  collisionLines: CollisionLine[];
+  selfHighlightUntil: number;
 }
 
 export type GameAction =
   | { type: "SET_MODE"; mode: Mode }
-  | { type: "SET_PLAYERS"; players: Record<string, PlayerSnapshot>; order: string[] }
+  | {
+      type: "SET_PLAYERS";
+      players: Record<string, PlayerSnapshot>;
+      order: string[];
+      selfId?: string | null;
+    }
   | { type: "UPDATE_PLAYER"; player: PlayerSnapshot }
   | { type: "REMOVE_PLAYER"; playerId: string }
   | { type: "SET_SELF"; selfId: string | null }
@@ -94,5 +110,8 @@ export type GameAction =
   | { type: "SET_GAME_SIZE"; gameSize: { width: number; height: number } }
   | { type: "SET_PLAYING"; playing: boolean }
   | { type: "PUSH_COLLISION_MARK"; mark: CollisionMark }
+  | { type: "PUSH_COLLISION_EVENTS"; marks: CollisionMark[]; highlight?: boolean }
+  | { type: "SET_COLLISION_LINES"; lines: CollisionLine[] }
+  | { type: "SET_SELF_HIGHLIGHT"; until: number }
   | { type: "SET_GLOBAL_OVERLAY"; overlay: Partial<GlobalOverlay> }
   | { type: "RESET" };

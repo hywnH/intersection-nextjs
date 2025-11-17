@@ -1,15 +1,25 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGameClient } from "@/lib/game/hooks";
 import { renderScene } from "@/lib/game/renderer";
 import CanvasSurface from "@/components/shared/CanvasSurface";
 
+type ProjectionMode = "plane" | "lines";
+
+const TRANSITION_DURATION = 600;
+
 const GlobalView = () => {
-  const { state, players } = useGameClient("global");
+  const { state, players, dispatch } = useGameClient("global");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
   const latestState = useRef(state);
+  const [projection, setProjection] = useState<ProjectionMode>("plane");
+  const transitionRef = useRef<{
+    from: ProjectionMode;
+    to: ProjectionMode;
+    start: number;
+  } | null>(null);
 
   useEffect(() => {
     latestState.current = state;
@@ -24,16 +34,47 @@ const GlobalView = () => {
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      const overlayWidth = 256;
+      const zoom = Math.min(
+        (canvas.width - overlayWidth) / state.gameSize.width,
+        canvas.height / state.gameSize.height
+      );
+      dispatch({
+        type: "SET_CAMERA",
+        camera: {
+          position: {
+            x: state.gameSize.width / 2,
+            y: state.gameSize.height / 2,
+          },
+          zoom,
+        },
+      });
     };
     resize();
     window.addEventListener("resize", resize);
 
     const loop = () => {
+      let transition: { from: ProjectionMode; to: ProjectionMode; progress: number } | null =
+        null;
+      const t = transitionRef.current;
+      if (t) {
+        const progress = Math.min(
+          1,
+          (performance.now() - t.start) / TRANSITION_DURATION
+        );
+        transition = { ...t, progress };
+        if (progress >= 1) {
+          transitionRef.current = null;
+        }
+      }
+
       renderScene({
         ctx,
         state: latestState.current,
         width: canvas.width,
         height: canvas.height,
+        projection,
+        transition,
       });
       animationRef.current = requestAnimationFrame(loop);
     };
@@ -45,11 +86,45 @@ const GlobalView = () => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, []);
+  }, [dispatch, state.gameSize.height, state.gameSize.width, projection]);
+
+  const handleProjectionChange = (mode: ProjectionMode) => {
+    if (mode === projection) return;
+    transitionRef.current = {
+      from: projection,
+      to: mode,
+      start: performance.now(),
+    };
+    setProjection(mode);
+  };
 
   return (
     <div className="relative min-h-screen w-full bg-slate-950">
       <CanvasSurface ref={canvasRef} className="bg-black" />
+      <div className="pointer-events-auto absolute right-6 top-6 flex gap-2">
+        <button
+          type="button"
+          onClick={() => handleProjectionChange("plane")}
+          className={`rounded-full px-4 py-2 text-sm ${
+            projection === "plane"
+              ? "bg-white text-black"
+              : "bg-white/10 text-white/70"
+          }`}
+        >
+          Plane
+        </button>
+        <button
+          type="button"
+          onClick={() => handleProjectionChange("lines")}
+          className={`rounded-full px-4 py-2 text-sm ${
+            projection === "lines"
+              ? "bg-white text-black"
+              : "bg-white/10 text-white/70"
+          }`}
+        >
+          Lines
+        </button>
+      </div>
       <div className="pointer-events-none absolute left-0 top-0 flex h-full w-64 flex-col gap-4 bg-black/60 p-6 text-white">
         <p className="text-xs uppercase tracking-[0.4em] text-blue-300">
           Spectator

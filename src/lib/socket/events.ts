@@ -2,7 +2,11 @@
 
 import type { Socket } from "socket.io-client";
 import type { GameAction, GameState, Mode } from "@/types/game";
-import type { ServerPlayer } from "@/types/server";
+import type {
+  ServerPlayer,
+  ServerCollisionEvent,
+  ServerCollisionLine,
+} from "@/types/server";
 import { mapServerPayloadToSnapshots } from "@/lib/game/mappers";
 
 const generateDisplayName = (mode: Mode, preferred?: string) => {
@@ -98,7 +102,11 @@ export const registerSocketEvents = ({
 
   const onPlayerMove = (
     playerData: ServerPlayer = {},
-    userData: ServerPlayer[] = []
+    userData: ServerPlayer[] = [],
+    meta?: {
+      collisions?: ServerCollisionLine[];
+      collisionEvents?: ServerCollisionEvent[];
+    }
   ) => {
     const effectivePlayerData = mode === "personal" ? playerData : undefined;
     const currentSelfId =
@@ -110,7 +118,7 @@ export const registerSocketEvents = ({
       selfId: currentSelfId,
       displayName,
     });
-    dispatch({ type: "SET_PLAYERS", players, order });
+    dispatch({ type: "SET_PLAYERS", players, order, selfId: currentSelfId });
 
     if (mode === "personal") {
       const focus =
@@ -125,12 +133,37 @@ export const registerSocketEvents = ({
       }
     } else {
       const focus = {
-        x: playerData?.x ?? getState().gameSize.width / 2,
-        y: playerData?.y ?? getState().gameSize.height / 2,
+        x: getState().gameSize.width / 2,
+        y: getState().gameSize.height / 2,
       };
       dispatch({
         type: "SET_CAMERA",
         camera: { position: focus },
+      });
+    }
+
+    if (meta?.collisions) {
+      dispatch({ type: "SET_COLLISION_LINES", lines: meta.collisions });
+    }
+
+    if (meta?.collisionEvents?.length) {
+      const marks = meta.collisionEvents.map((event) => ({
+        id: event.id,
+        position: event.position,
+        radius: event.radius ?? 80,
+        timestamp: event.timestamp,
+        players: event.players,
+      }));
+      const selfId = getState().selfId;
+      const highlight =
+        Boolean(selfId) &&
+        meta.collisionEvents.some((event) =>
+          event.players.includes(selfId as string)
+        );
+      dispatch({
+        type: "PUSH_COLLISION_EVENTS",
+        marks,
+        highlight,
       });
     }
   };

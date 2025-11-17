@@ -25,6 +25,7 @@ export const useGameClient = (modeOverride?: Mode): GameClient => {
   const stateRef = useRef(state);
   const eventCleanupRef = useRef<(() => void) | null>(null);
   const targetRef = useRef(state.target);
+  const controlVelRef = useRef(state.input.controlVelocity ?? { x: 0, y: 0 });
 
   useEffect(() => {
     stateRef.current = state;
@@ -33,6 +34,10 @@ export const useGameClient = (modeOverride?: Mode): GameClient => {
   useEffect(() => {
     targetRef.current = state.target;
   }, [state.target]);
+
+  useEffect(() => {
+    controlVelRef.current = state.input.controlVelocity ?? { x: 0, y: 0 };
+  }, [state.input.controlVelocity]);
 
   useEffect(() => {
     dispatch({ type: "SET_MODE", mode });
@@ -86,9 +91,11 @@ export const useGameClient = (modeOverride?: Mode): GameClient => {
   useEffect(() => {
     if (!socket || mode !== "personal") return;
     if (typeof window === "undefined") return;
+    // 모바일 컨트롤러: 원하는 속도를 더 자주 전송 (30Hz)
     const interval = window.setInterval(() => {
-      socket.emit("0", targetRef.current);
-    }, 500);
+      const v = controlVelRef.current || { x: 0, y: 0 };
+      socket.emit("0", { vx: v.x, vy: v.y });
+    }, 33);
     return () => window.clearInterval(interval);
   }, [socket, mode]);
 

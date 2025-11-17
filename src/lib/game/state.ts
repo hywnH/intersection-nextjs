@@ -1,4 +1,5 @@
 import type {
+  CellTrail,
   GameAction,
   GameState,
   Mode,
@@ -26,6 +27,7 @@ const createBaseState = (): Omit<GameState, "mode"> => ({
     pointer: { x: 0, y: 0 },
     pointerActive: false,
     lastHeartbeat: 0,
+    controlVelocity: { x: 0, y: 0 },
   },
   collisionMarks: [],
   cellTrails: {},
@@ -35,6 +37,8 @@ const createBaseState = (): Omit<GameState, "mode"> => ({
   },
   target: { x: 0, y: 0 },
   playing: false,
+  collisionLines: [],
+  selfHighlightUntil: 0,
 });
 
 export const createInitialState = (mode: Mode = "personal"): GameState => ({
@@ -52,6 +56,31 @@ const upsertPlayer = (
     ...players,
     [player.id]: player,
   };
+};
+
+const updateTrails = (
+  state: GameState,
+  action: Extract<GameAction, { type: "SET_PLAYERS" }>
+) => {
+  const nextTrails: Record<string, CellTrail> = { ...state.cellTrails };
+  const selfId = action.selfId ?? state.selfId;
+  if (selfId) {
+    const player = action.players[selfId];
+    if (player) {
+      const prev = nextTrails[selfId]?.points ?? [];
+      const now = Date.now();
+      let points = [
+        ...prev,
+        { x: player.cell.position.x, y: player.cell.position.y, t: now },
+      ].filter((p) => now - p.t < 5000);
+      const MAX_POINTS = 120;
+      if (points.length > MAX_POINTS) {
+        points = points.slice(points.length - MAX_POINTS);
+      }
+      nextTrails[selfId] = { points };
+    }
+  }
+  return nextTrails;
 };
 
 export const gameReducer = (
@@ -93,6 +122,7 @@ export const gameReducer = (
         players: action.players,
         playerOrder: action.order,
         ui: { ...state.ui, population: action.order.length },
+        cellTrails: updateTrails(state, action),
       };
     case "UPDATE_PLAYER": {
       const players = upsertPlayer(state.players, action.player);
@@ -121,6 +151,24 @@ export const gameReducer = (
         ...state,
         collisionMarks: [...state.collisionMarks, action.mark].slice(-100),
       };
+    case "PUSH_COLLISION_EVENTS": {
+      const now = Date.now();
+      const merged = [...state.collisionMarks, ...action.marks].filter(
+        (mark) => now - mark.timestamp < 8000
+      );
+      const highlight = action.highlight
+        ? Math.max(state.selfHighlightUntil, now + 1200)
+        : state.selfHighlightUntil;
+      return {
+        ...state,
+        collisionMarks: merged.slice(-200),
+        selfHighlightUntil: highlight,
+      };
+    }
+    case "SET_COLLISION_LINES":
+      return { ...state, collisionLines: action.lines };
+    case "SET_SELF_HIGHLIGHT":
+      return { ...state, selfHighlightUntil: action.until };
     case "SET_GLOBAL_OVERLAY":
       return {
         ...state,

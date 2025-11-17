@@ -67,13 +67,18 @@ const MobileView = () => {
         x: x - rect.left - canvas.width / 2,
         y: y - rect.top - canvas.height / 2,
       };
-      dispatch({ type: "SET_TARGET", target: pointer });
+      // 컨트롤러: 포인터를 화면 중심 기준으로 정규화 → 원하는 속도 계산
+      const nx = Math.max(-1, Math.min(1, pointer.x / (canvas.width * 0.25)));
+      const ny = Math.max(-1, Math.min(1, pointer.y / (canvas.height * 0.25)));
+      const CLIENT_MAX_SPEED = 320; // 서버 MAX_SPEED와 동일하게 유지
+      const controlVelocity = { x: nx * CLIENT_MAX_SPEED, y: ny * CLIENT_MAX_SPEED };
       dispatch({
         type: "SET_INPUT",
         input: {
           pointer,
           pointerActive: true,
           lastHeartbeat: Date.now(),
+          controlVelocity,
         },
       });
     };
@@ -90,7 +95,7 @@ const MobileView = () => {
     const handlePointerUp = () => {
       dispatch({
         type: "SET_INPUT",
-        input: { pointerActive: false },
+        input: { pointerActive: false, controlVelocity: { x: 0, y: 0 } },
       });
     };
 

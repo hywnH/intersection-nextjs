@@ -16,6 +16,8 @@ const pickCell = (player: ServerPlayer): {
   radius: number;
   mass: number;
   color: string;
+  velocity: Vec2;
+  depth?: number;
 } => {
   const cells = Array.isArray(player.cells) ? player.cells : [];
   let chosen: ServerCell | null = null;
@@ -40,12 +42,16 @@ const pickCell = (player: ServerPlayer): {
 
   const radius = chosen?.radius ?? fallbackRadius;
   const mass = chosen?.mass ?? player.massTotal ?? radius * radius;
+  const velocity = { x: chosen?.vx ?? 0, y: chosen?.vy ?? 0 };
+  const depth = chosen?.z ?? player.z;
 
   return {
     position,
     radius,
     mass,
     color: resolveColor(player),
+    velocity,
+    depth,
   };
 };
 
@@ -63,7 +69,7 @@ export const toPlayerSnapshot = (
     name,
     cell: {
       position: cell.position,
-      velocity: { x: 0, y: 0 },
+      velocity: cell.velocity,
       radius: cell.radius,
       mass: cell.mass,
       color: cell.color,
@@ -71,6 +77,7 @@ export const toPlayerSnapshot = (
     target: player.target,
     lastUpdate: Date.now(),
     isSelf: options.isSelf,
+    depth: cell.depth,
   };
 };
 

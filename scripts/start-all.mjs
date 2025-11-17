@@ -29,7 +29,9 @@ procs.push(run('node', ['/app/web/server.js'], { cwd: '/app/web', env: webEnv })
 function shutdown(signal) {
   console.log(`\nReceived ${signal}. Shutting down...`);
   for (const p of procs) {
-    try { p.kill(signal); } catch (_) {}
+    try { p.kill(signal); } catch {
+      // ignore
+    }
   }
 }
 
@@ -46,4 +48,3 @@ procs.forEach((p) => {
     }
   });
 });
-
