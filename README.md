@@ -1,61 +1,75 @@
 ## 개요
 
-`intersection-nextjs`는 Next.js(App Router) 기반의 프런트엔드이며, 실시간 서버는 레포 내 `realtime/`(Socket.IO)로 분리했습니다. 개발 시 도커 컴포즈로 두 서비스를 동시에 띄웁니다.
+`intersection-nextjs`는 Next.js(App Router) 기반 프런트엔드와 Socket.IO 기반 실시간 서버(`realtime/`)를 함께 담고 있습니다. 개발 환경은 Docker Compose, 프로덕션은 단일 컨테이너 이미지로 배포할 수 있습니다.
 
-## 개발 서버 실행
+## 프로젝트 구조
+
+- `src/app/*`: Next.js App Router 페이지 및 컴포넌트
+- `src/lib/*`: 게임 상태/소켓/렌더링 유틸리티
+- `realtime/`: Socket.IO 실시간 서버(플레이어 1셀 전제, intersection 프로토콜 호환)
+- `Dockerfile.all-in-one`: 프로덕션 단일 컨테이너 빌드용
+- `docker-compose.yml`: 개발용(웹+실시간 동시 기동)
+
+## 개발 실행(Compose)
 
 ```bash
-# Next.js(포트 3000) + Realtime 서버(포트 3001)를 동시에 기동
 docker compose up
 ```
 
-- `web` 서비스: 현재 레포를 마운트하여 Next.js dev 서버를 실행합니다.
-- `game` 서비스: `./realtime` 소스를 마운트해 개발용 Socket.IO 서버를 실행합니다. 브라우저는 `http://localhost:3001`로 접속합니다.
+- 웹: http://localhost:3000
+- WebSocket: http://localhost:3001
 
-## 프로덕션 빌드
+Compose는 다음을 포함합니다.
+- `web`: Next.js dev 서버 (hot reload)
+- `game`: `realtime/` 서버 (`tsx watch`로 핫리로드)
 
-프런트엔드 이미지는 기존 `Dockerfile`로 빌드합니다. 실시간 서버는 `realtime/`에서 별도 Dockerfile을 추가하거나 Compose를 사용하세요.
+브라우저는 반드시 `http://localhost:3001`로 접속합니다. 내부 통신이 필요하면 `REALTIME_INTERNAL_URL=http://game:3001`을 사용하세요.
+
+## 프로덕션 배포(단일 컨테이너)
+
+Next.js를 `standalone`으로 빌드하고, `realtime`도 함께 포함하는 단일 이미지로 배포합니다.
+
+```bash
+cd intersection-nextjs
+docker build -f Dockerfile.all-in-one -t intersection:all .
+docker run --name intersection -p 3000:3000 -p 3001:3001 intersection:all
+```
+
+- 웹: http://localhost:3000
+- WebSocket: http://localhost:3001
+
+환경 변수(선택)
+
+- `WEB_PORT`(기본 3000), `WEB_HOST`(기본 0.0.0.0)
+- `REALTIME_PORT`(기본 3001), `REALTIME_HOST`(기본 0.0.0.0)
+- `NEXT_PUBLIC_WS_URL`(기본 http://localhost:3001)
+
+참고: Nginx/Traefik 등 리버스 프록시를 쓸 경우 `/socket.io/` 경로에 대한 WebSocket 업그레이드를 허용해야 합니다.
+
+## 프로덕션(웹만 별도 배포)
+
+웹만 필요하면 기존 `Dockerfile`로 빌드해 배포할 수 있습니다(실시간 서버는 별도 운영).
 
 ```bash
 docker build -t intersection:web .
 docker run -p 3000:3000 intersection:web
 ```
 
-사용 방법
+## 환경 변수(요약)
 
-이미지 빌드
+- `NEXT_PUBLIC_WS_URL`: 브라우저가 접속하는 공개 WS 주소(기본 http://localhost:3001)
+- `REALTIME_INTERNAL_URL`: SSR/서버-서버 통신용 내부 주소(예: http://game:3001)
+- `PORT`, `HOST`: `realtime`에서 사용(Compose/All-in-one에서 각각 주입)
 
-```bash
-cd intersection-nextjs
-docker build -f Dockerfile.all-in-one -t intersection:all .
-```
+## 프로토콜 호환(핵심 이벤트)
 
-실행
+- 클라이언트 → 서버: `respawn`, `gotit`, `0`(하트비트+타겟), `windowResized`
+- 서버 → 클라이언트: `welcome`, `serverTellPlayerMove`, `leaderboard`
 
-```bash
-docker run -p 3000:3000 -p 3001:3001 --name intersection intersection:all
-```
+플레이어는 1개의 셀만 가지며, 서버 payload는 `cells: [{ x, y, radius }]` 형태로 제공됩니다.
 
-프론트엔드: http://localhost:3000
-WebSocket: http://localhost:3001 (클라이언트 기본값도 이 주소를 사용)
+## 문제 해결 가이드
 
-ENV 기본값
-```bash
-WEB_PORT=3000, REALTIME_PORT=3001
-NEXT_PUBLIC_WS_URL=http://localhost (line 3001)
-```
-
-
-게임 서버를 동일 레포로 완전히 통합하기 전까지는 `../intersection` 컨테이너를 따로 띄워 두어야 합니다.
-
-## 환경 변수
-
-- `NEXT_PUBLIC_WS_URL`: 프런트엔드가 연결할 Socket.IO 서버 주소. 기본값 `http://localhost:3001`.
-- `REALTIME_INTERNAL_URL`: SSR 등 서버 내부에서 사용할 내부 주소(예: `http://game:3001`).
-- `PORT`, `HOST`: `realtime` 서버에서 사용.
-
-## TODO (서버 통합 로드맵)
-
-1. 기존 게임 로직(맵/물리)을 점진적으로 `realtime/`로 이관.
-2. 필요 시 Next Route Handler로 흡수하거나 별도 스케일링 가능한 독립 서비스로 유지.
-3. 프로덕션 프록시(Nginx/Traefik)에서 `/socket.io/` WebSocket 업그레이드 설정.
+- 브라우저가 `game` 호스트로 접속이 안 된다면: 공개 URL을 `http://localhost:3001`로 설정하세요.
+- 소켓 연결 실패: 프록시/방화벽에서 `/socket.io/` WebSocket 업그레이드를 허용했는지 확인.
+- 포트 충돌: `WEB_PORT`/`REALTIME_PORT` 수정 후 컨테이너 포워딩을 변경하세요.
