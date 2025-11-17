@@ -101,6 +101,19 @@ const GlobalView = () => {
   return (
     <div className="relative min-h-screen w-full bg-slate-950">
       <CanvasSurface ref={canvasRef} className="bg-black" />
+      {/* NoiseCraft Embedded (Socket.IO 제어) */}
+      <div className="pointer-events-auto absolute bottom-4 right-4 rounded-xl bg-black/60 p-2 text-xs text-white">
+        <div className="mb-2 text-white/70">NoiseCraft</div>
+        <iframe
+          src="http://localhost:7773/public/embedded.html?io=http://localhost:3001"
+          width="420"
+          height="120"
+          style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
+          allow="autoplay"
+          title="NoiseCraft Embedded"
+        ></iframe>
+        <div className="mt-2 text-white/50">iframe 안에서 Start Audio 클릭</div>
+      </div>
       <div className="pointer-events-auto absolute right-6 top-6 flex gap-2">
         <button
           type="button"

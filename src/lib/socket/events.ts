@@ -1,6 +1,5 @@
 "use client";
 
-import type { Socket } from "socket.io-client";
 import type { GameAction, GameState, Mode } from "@/types/game";
 import type {
   ServerPlayer,
@@ -8,6 +7,13 @@ import type {
   ServerCollisionLine,
 } from "@/types/server";
 import { mapServerPayloadToSnapshots } from "@/lib/game/mappers";
+
+type MinimalSocket = {
+  id?: string | null;
+  on: (event: string, handler: (...args: unknown[]) => void) => unknown;
+  off: (event: string, handler?: (...args: unknown[]) => void) => unknown;
+  emit: (event: string, ...args: unknown[]) => unknown;
+};
 
 const generateDisplayName = (mode: Mode, preferred?: string) => {
   if (preferred && preferred.trim().length > 0) {
@@ -20,7 +26,7 @@ const generateDisplayName = (mode: Mode, preferred?: string) => {
 };
 
 interface RegisterSocketOptions {
-  socket: Socket;
+  socket: MinimalSocket;
   mode: Mode;
   dispatch: React.Dispatch<GameAction>;
   displayName: string;
@@ -215,13 +221,33 @@ export const registerSocketEvents = ({
     });
   };
 
-  handlers.push(["connect", onConnect]);
-  handlers.push(["welcome", onWelcome]);
-  handlers.push(["serverTellPlayerMove", onPlayerMove]);
-  handlers.push(["leaderboard", onLeaderboard]);
-  handlers.push(["kick", onKick]);
-  handlers.push(["disconnect", onDisconnect]);
-  handlers.push(["connect_error", onConnectError]);
+  const handleConnect = () => onConnect();
+  const handleWelcome = (
+    ...args: unknown[]
+  ) => onWelcome(args[0] as ServerPlayer | undefined, args[1] as { width?: number; height?: number } | undefined);
+  const handlePlayerMove = (
+    ...args: unknown[]
+  ) =>
+    onPlayerMove(
+      args[0] as ServerPlayer | undefined,
+      (args[1] as ServerPlayer[]) ?? [],
+      args[2] as {
+        collisions?: ServerCollisionLine[];
+        collisionEvents?: ServerCollisionEvent[];
+      }
+    );
+  const handleLeaderboard = (...args: unknown[]) => onLeaderboard((args[0] as { players?: number }) ?? {});
+  const handleKick = (...args: unknown[]) => onKick((args[0] as string) ?? "");
+  const handleDisconnect = () => onDisconnect();
+  const handleConnectError = (...args: unknown[]) => onConnectError((args[0] as Error) ?? new Error("connect_error"));
+
+  handlers.push(["connect", handleConnect]);
+  handlers.push(["welcome", handleWelcome]);
+  handlers.push(["serverTellPlayerMove", handlePlayerMove]);
+  handlers.push(["leaderboard", handleLeaderboard]);
+  handlers.push(["kick", handleKick]);
+  handlers.push(["disconnect", handleDisconnect]);
+  handlers.push(["connect_error", handleConnectError]);
 
   handlers.forEach(([event, handler]) => {
     socket.on(event, handler);

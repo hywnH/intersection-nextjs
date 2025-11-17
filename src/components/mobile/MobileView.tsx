@@ -148,6 +148,43 @@ const MobileView = () => {
     };
   }, [socket]);
 
+  // NoiseCraft 파라미터 브리지: 실제 플레이어 속도 → 주파수 매핑
+  useEffect(() => {
+    if (!socket) return;
+
+    const MIN = 100; // Hz
+    const MAX = 2000; // Hz
+    const MAX_SPEED = 320; // 서버 최고 속도와 일치
+    let raf: number | null = null;
+    let lastSent = 0;
+
+    const tick = () => {
+      const now = performance.now();
+      if (now - lastSent >= 33) {
+        const s = latestState.current;
+        const selfId = s.selfId;
+        const self = selfId ? s.players[selfId] : undefined;
+        const vx = self?.cell.velocity.x ?? 0;
+        const vy = self?.cell.velocity.y ?? 0;
+        const mag = Math.min(1, Math.hypot(vx, vy) / MAX_SPEED);
+        const value = MIN + (MAX - MIN) * mag;
+        socket.emit("param", {
+          type: "setParam",
+          nodeId: "0",
+          paramName: "value",
+          value,
+        });
+        lastSent = now;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [socket]);
+
   return (
     <div className="relative min-h-screen w-full bg-black">
       <CanvasSurface ref={canvasRef} />

@@ -161,7 +161,12 @@ const io = new Server(httpServer, {
   transports: ["websocket"],
   allowEIO3: false,
   cors: {
-    origin: ["http://localhost:3000"],
+    origin: [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://localhost:7773",
+      "http://127.0.0.1:7773",
+    ],
     credentials: false,
   },
   pingInterval: 10000,
@@ -244,6 +249,14 @@ io.on("connection", (socket) => {
     spectators.delete(socket.id);
     players.delete(socket.id);
     removePlayerCollisions(socket.id);
+  });
+
+  // 외부 파라미터 브리지: 클라이언트가 보낸 파라미터 변경을 모두에게 브로드캐스트
+  // payload 예: { type: 'setParam', nodeId: '0', paramName: 'value', value: 880 }
+  socket.on("param", (payload: unknown) => {
+    try {
+      io.emit("param", payload);
+    } catch {}
   });
 });
 

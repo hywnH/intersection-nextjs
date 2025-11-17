@@ -4,13 +4,13 @@ FROM node:24-alpine AS deps-web
 WORKDIR /app
 COPY package.json yarn.lock ./
 RUN corepack enable && corepack prepare yarn@1.22.22 --activate \
-  && yarn install --frozen-lockfile
+    && yarn install --frozen-lockfile
 
 FROM node:24-alpine AS deps-rt
 WORKDIR /app/realtime
 COPY realtime/package.json ./
-RUN corepack enable && corepack prepare yarn@1.22.22 --activate \
-  && yarn install
+# Use npm for realtime to avoid Corepack prepare issues in some environments
+RUN npm install --no-audit --no-fund
 
 FROM node:24-alpine AS build
 WORKDIR /app
@@ -19,8 +19,8 @@ COPY --from=deps-rt /app/realtime/node_modules ./realtime/node_modules
 COPY . .
 # Build Next (standalone) and realtime TypeScript
 RUN corepack enable && corepack prepare yarn@1.22.22 --activate \
-  && yarn build \
-  && yarn --cwd realtime build
+    && yarn build \
+    && npm --prefix realtime run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app
