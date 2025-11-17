@@ -12,7 +12,7 @@ const TRANSITION_DURATION = 600;
 const GlobalView = () => {
   const { state, players, dispatch } = useGameClient("global");
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | null>(null);
   const latestState = useRef(state);
   const [projection, setProjection] = useState<ProjectionMode>("plane");
   const transitionRef = useRef<{

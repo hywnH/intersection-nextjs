@@ -16,7 +16,7 @@ import Controls from "./Controls";
 const MobileView = () => {
   const { state, dispatch, socket } = useGameClient("personal");
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | null>(null);
   const latestState = useRef(state);
 
   useEffect(() => {
