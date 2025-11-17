@@ -16,10 +16,12 @@ services:
       - NODE_ENV=development
       # 브라우저가 접근하는 공개 WS 주소
       - NEXT_PUBLIC_WS_URL=http://localhost:3001
+      - NEXT_PUBLIC_NOISECRAFT_WS_URL=http://localhost:4000
       # (옵션) 서버 내부 통신용 내부 주소
       - REALTIME_INTERNAL_URL=http://game:3001
     depends_on:
       - game
+      - noisecraft
 
   game:
     image: node:24-alpine
@@ -40,6 +42,23 @@ services:
       - HOST=0.0.0.0
     restart: unless-stopped
 
+  noisecraft:
+    image: node:24-alpine
+    working_dir: /srv
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./noisecraft:/srv
+      - noisecraft_node_modules:/srv/node_modules
+    command: >
+      sh -c "npm install --no-audit --no-fund && \
+             npm run watch"
+    environment:
+      - NODE_ENV=development
+      - HTTP_PORT_NO=4000
+    restart: unless-stopped
+
 volumes:
   node_modules:
   game_node_modules:
+  noisecraft_node_modules:

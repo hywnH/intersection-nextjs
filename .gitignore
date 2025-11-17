@@ -48,5 +48,9 @@ next-env.d.ts
 /realtime/node_modules/
 /realtime/dist/
 
+# Noisecraft server artifacts
+/noisecraft/node_modules/
+/noisecraft/dist/
+
 # Optional: ignore npm lockfile if using yarn
 package-lock.json

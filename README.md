@@ -7,6 +7,7 @@
 - `src/app/*`: Next.js App Router 페이지 및 컴포넌트
 - `src/lib/*`: 게임 상태/소켓/렌더링 유틸리티
 - `realtime/`: Socket.IO 실시간 서버(플레이어 1셀 전제, intersection 프로토콜 호환)
+- `noisecraft/`: 사운드/오디오 서버(경로 `/noisecraft` 아래 노출)
 - `Dockerfile.all-in-one`: 프로덕션 단일 컨테이너 빌드용
 - `docker-compose.yml`: 개발용(웹+실시간 동시 기동)
 
@@ -22,8 +23,11 @@ docker compose up
 Compose는 다음을 포함합니다.
 - `web`: Next.js dev 서버 (hot reload)
 - `game`: `realtime/` 서버 (`tsx watch`로 핫리로드)
+- `noisecraft`: 노이즈크래프트 개발 서버 (`npm run watch`)
 
 브라우저는 반드시 `http://localhost:3001`로 접속합니다. 내부 통신이 필요하면 `REALTIME_INTERNAL_URL=http://game:3001`을 사용하세요.
+
+Noisecraft 개발 서버 주소는 기본 `http://localhost:4000`이며, 프런트에서는 `NEXT_PUBLIC_NOISECRAFT_WS_URL`로 접근합니다.
 
 ### 모바일 컨트롤 방식(권장)
 
@@ -55,6 +59,44 @@ docker run --name intersection -p 3000:3000 -p 3001:3001 intersection:all
 참고: Nginx/Traefik 등 리버스 프록시를 쓸 경우 `/socket.io/` 경로에 대한 WebSocket 업그레이드를 허용해야 합니다.
 
 ## 프로덕션(웹만 별도 배포)
+
+## 단일 도메인 경로 분리 배포(/socket.io, /noisecraft)
+
+Nginx 리버스 프록시로 단일 도메인 아래 경로를 분리해 배포합니다.
+
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+- `/` → Next.js (intersection 서비스 3000)
+- `/socket.io/` → Realtime(Socket.IO, intersection 서비스 3001)
+- `/noisecraft/` → Noisecraft(Socket.IO/HTTP, noisecraft 서비스 4000)
+
+환경 변수(프론트)
+
+- `NEXT_PUBLIC_WS_URL=/socket.io`
+- `NEXT_PUBLIC_NOISECRAFT_WS_URL=/noisecraft`
+
+관련 파일
+
+- `docker-compose.prod.yml`: proxy + intersection + noisecraft
+- `ops/nginx/nginx.conf`: 경로 기반 라우팅(+WebSocket 업그레이드)
+- `Dockerfile`: 올인원(Next + Realtime)
+- `Dockerfile.noisecraft`: Noisecraft 빌드/런
+
+## 모노레포(Workspaces)
+
+루트 패키지에서 Yarn workspaces로 `realtime`, `noisecraft`를 함께 관리합니다.
+
+```bash
+# 워크스페이스 전체 빌드(선택)
+yarn ws:build
+
+# 단일 워크스페이스 개발 실행(예: noisecraft)
+yarn workspace noisecraft dev
+```
+
+Next 빌드 타입체크는 `src/**`만 대상으로 하며 `realtime/**`, `noisecraft/**`는 제외됩니다(tsconfig.json 설정).
 
 웹만 필요하면 기존 `Dockerfile`로 빌드해 배포할 수 있습니다(실시간 서버는 별도 운영).
 
