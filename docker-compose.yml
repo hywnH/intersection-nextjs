@@ -2,6 +2,7 @@ services:
   web:
     image: node:24-alpine
     working_dir: /app
+    # 외부 직접 접근 포트
     ports:
       - "3000:3000"
     volumes:
@@ -14,10 +15,12 @@ services:
              yarn dev -p 3000 -H 0.0.0.0"
     environment:
       - NODE_ENV=development
-      # 브라우저가 접근하는 공개 WS 주소
-      - NEXT_PUBLIC_WS_URL=http://localhost:3001
+      # 프록시 없이 직접 포트 접근
+      - NEXT_PUBLIC_WS_URL=http://localhost:3001/socket
       - NEXT_PUBLIC_NOISECRAFT_WS_URL=http://localhost:4000
-      # (옵션) 서버 내부 통신용 내부 주소
+      # 호스트 URL
+      - NEXT_PUBLIC_HOST_URL=http://localhost:3000
+      # 내부 통신용 주소 (컨테이너 간)
       - REALTIME_INTERNAL_URL=http://game:3001
     depends_on:
       - game
@@ -40,6 +43,7 @@ services:
       - NODE_ENV=development
       - PORT=3001
       - HOST=0.0.0.0
+      - SOCKET_PATH=/socket
     restart: unless-stopped
 
   noisecraft:
@@ -62,3 +66,7 @@ volumes:
   node_modules:
   game_node_modules:
   noisecraft_node_modules:
+
+networks:
+  default:
+    name: intersection-dev

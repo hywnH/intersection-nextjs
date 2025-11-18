@@ -90,11 +90,16 @@ const GlobalView = () => {
   }, [dispatch, state.gameSize.height, state.gameSize.width, projection]);
 
   useEffect(() => {
-    const nc = process.env.NEXT_PUBLIC_NOISECRAFT_WS_URL || "http://localhost:4000";
-    const rt = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:3001";
+    const isDev = process.env.NODE_ENV === "development";
+    const ncEnv =
+      process.env.NEXT_PUBLIC_NOISECRAFT_WS_URL ||
+      (isDev ? "http://localhost:4000" : "/audiocraft");
+    const rtEnv =
+      process.env.NEXT_PUBLIC_WS_URL ||
+      (isDev ? "http://localhost:3001/socket" : "/socket");
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const ncBase = nc.startsWith("/") ? origin + nc : nc;
-    const rtUrl = rt.startsWith("/") ? origin + rt : rt;
+    const ncBase = ncEnv.startsWith("/") ? origin + ncEnv : ncEnv;
+    const rtUrl = rtEnv.startsWith("/") ? origin + rtEnv : rtEnv;
     const src = `${ncBase.replace(/\/$/, "")}/public/embedded.html?io=${encodeURIComponent(rtUrl)}`;
     if (iframeRef.current) {
       iframeRef.current.src = src;

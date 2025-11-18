@@ -17,9 +17,9 @@ services:
     container_name: intersection
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_WS_URL=/socket.io
+      - NEXT_PUBLIC_WS_URL=/socket
       - REALTIME_INTERNAL_URL=http://intersection:3001
-      - NEXT_PUBLIC_NOISECRAFT_WS_URL=/noisecraft
+      - NEXT_PUBLIC_NOISECRAFT_WS_URL=/audiocraft
     expose:
       - "3000"
       - "3001"

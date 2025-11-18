@@ -1,0 +1,31 @@
+FROM node:24-alpine AS deps
+WORKDIR /app
+
+# Install root dependencies (Next.js app only)
+COPY package.json yarn.lock ./
+RUN corepack enable \
+  && corepack prepare yarn@1.22.22 --activate \
+  && yarn install --frozen-lockfile
+
+# Build Next.js (standalone)
+COPY . .
+RUN corepack enable \
+  && corepack prepare yarn@1.22.22 --activate \
+  && yarn build
+
+FROM node:24-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy Next.js standalone output
+COPY --from=deps /app/.next/standalone ./ 
+COPY --from=deps /app/.next/static ./.next/static
+COPY --from=deps /app/public ./public
+
+# Render/일반 PaaS에서 PORT 환경변수 사용
+ENV PORT=3000
+EXPOSE 3000
+
+CMD ["node", "server.js"]
+
+
