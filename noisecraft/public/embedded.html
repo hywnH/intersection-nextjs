@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -6,61 +6,106 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/public/style.css" />
     <style>
-      body { background:#111; color:#eee; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      .wrap { display:flex; gap:8px; align-items:center; padding:16px; }
-      .status { opacity:0.8; font-size:13px; }
-      button { background:#333; color:#fff; border:1px solid #444; border-radius:6px; padding:8px 12px; cursor:pointer; }
-      button:hover { background:#3a3a3a; }
+      body {
+        background: #111;
+        color: #eee;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      .wrap {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 16px;
+      }
+      .status {
+        opacity: 0.8;
+        font-size: 13px;
+      }
+      button {
+        background: #333;
+        color: #fff;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #3a3a3a;
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
       <button id="btn_start">Start Audio</button>
-      <button id="btn_stop" style="display:none">Stop</button>
+      <button id="btn_stop" style="display: none">Stop</button>
       <div class="status" id="status">Idle</div>
     </div>
 
     <script type="module">
-      import { Model, SetParam, Play, Stop } from '/public/model.js';
-      import { AudioView } from '/public/audioview.js';
+      import { Model, SetParam, Play, Stop } from "/public/model.js";
+      import { AudioView } from "/public/audioview.js";
 
       // 1) 프로젝트(JSON) 준비
       // - 아래 기본 패치는 Knob -> Sine(freq) -> AudioOut 스테레오 라우팅입니다.
       // - 본인이 가진 JSON(프로젝트 스냅샷)을 붙여넣거나, URL 파라미터 src로 가져올 수 있습니다.
       //   예) /public/embedded.html?src=/public/examples/saw_synth_stereo_delay.ncft
       const defaultProject = {
-        title: 'Embedded Patch',
+        title: "Embedded Patch",
         nodes: {
-          "0": {
-            type: 'Knob', name: 'Freq', x: 40, y: 60,
-            ins: [], inNames: [], outNames: [''],
-            params: { minVal: 100, maxVal: 2000, value: 440, deviceId: null, controlId: null }
+          0: {
+            type: "Knob",
+            name: "Freq",
+            x: 40,
+            y: 60,
+            ins: [],
+            inNames: [],
+            outNames: [""],
+            params: {
+              minVal: 100,
+              maxVal: 2000,
+              value: 440,
+              deviceId: null,
+              controlId: null,
+            },
           },
-          "1": {
-            type: 'Sine', name: 'Sine', x: 190, y: 50,
-            ins: [["0", 0], null], inNames: ['freq','sync'], outNames: ['out'],
-            params: { minVal: -1, maxVal: 1 }
+          1: {
+            type: "Sine",
+            name: "Sine",
+            x: 190,
+            y: 50,
+            ins: [["0", 0], null],
+            inNames: ["freq", "sync"],
+            outNames: ["out"],
+            params: { minVal: -1, maxVal: 1 },
           },
-          "2": {
-            type: 'AudioOut', name: 'Out', x: 350, y: 40,
-            ins: [["1", 0], ["1", 0]], inNames: ['left','right'], outNames: [],
-            params: {}
-          }
-        }
+          2: {
+            type: "AudioOut",
+            name: "Out",
+            x: 350,
+            y: 40,
+            ins: [
+              ["1", 0],
+              ["1", 0],
+            ],
+            inNames: ["left", "right"],
+            outNames: [],
+            params: {},
+          },
+        },
       };
 
       async function loadInitialProject() {
         const url = new URL(window.location.href);
-        const src = url.searchParams.get('src');
+        const src = url.searchParams.get("src");
         if (!src) return defaultProject;
 
         try {
-          const resp = await fetch(src, { cache: 'no-store' });
+          const resp = await fetch(src, { cache: "no-store" });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const txt = await resp.text();
           return JSON.parse(txt);
         } catch (e) {
-          console.warn('Failed to load src project, using default:', e);
+          console.warn("Failed to load src project, using default:", e);
           return defaultProject;
         }
       }
@@ -73,87 +118,103 @@
       const app = {
         getState: () => model.state,
         setState: (state) => model.load(state),
-        updateParam: (nodeId, paramName, value) => model.update(new SetParam(String(nodeId), paramName, value)),
+        updateParam: (nodeId, paramName, value) =>
+          model.update(new SetParam(String(nodeId), paramName, value)),
         play: () => model.update(new Play()),
         stop: () => model.update(new Stop()),
         model,
-        audioView
+        audioView,
       };
       window.noiseCraftApp = app;
 
       // 3) 초기 프로젝트 로드
-      const statusEl = document.getElementById('status');
-      const btnStart = document.getElementById('btn_start');
-      const btnStop = document.getElementById('btn_stop');
+      const statusEl = document.getElementById("status");
+      const btnStart = document.getElementById("btn_start");
+      const btnStop = document.getElementById("btn_stop");
 
       const initialState = await loadInitialProject();
       app.setState(initialState);
-      statusEl.textContent = 'Project loaded. Click Start to begin audio.';
+      statusEl.textContent = "Project loaded. Click Start to begin audio.";
 
       // 4) 오디오 시작/정지 (브라우저 자동재생 정책 대응)
       btnStart.onclick = () => {
         app.play();
-        btnStart.style.display = 'none';
-        btnStop.style.display = 'inline-block';
-        statusEl.textContent = 'Playing';
+        btnStart.style.display = "none";
+        btnStop.style.display = "inline-block";
+        statusEl.textContent = "Playing";
       };
       btnStop.onclick = () => {
         app.stop();
-        btnStop.style.display = 'none';
-        btnStart.style.display = 'inline-block';
-        statusEl.textContent = 'Stopped';
+        btnStop.style.display = "none";
+        btnStart.style.display = "inline-block";
+        statusEl.textContent = "Stopped";
       };
 
       // 5) 실시간 연동: WebSocket 또는 Socket.IO 중 하나를 사용
       const urlParams = new URL(window.location.href).searchParams;
-      const wsURL = urlParams.get('ws') || '';
-      const ioURL = urlParams.get('io') || '';
+      const wsURL = urlParams.get("ws") || "";
+      const ioURL = urlParams.get("io") || "";
 
       // 표준 WebSocket 연동
       if (wsURL) {
         try {
           const socket = new WebSocket(wsURL);
-          socket.addEventListener('open', () => statusEl.textContent = 'Playing (WS connected)');
-          socket.addEventListener('close', () => statusEl.textContent = 'Playing (WS closed)');
-          socket.addEventListener('error', () => statusEl.textContent = 'Playing (WS error)');
-          socket.addEventListener('message', (event) => {
+          socket.addEventListener(
+            "open",
+            () => (statusEl.textContent = "Playing (WS connected)")
+          );
+          socket.addEventListener(
+            "close",
+            () => (statusEl.textContent = "Playing (WS closed)")
+          );
+          socket.addEventListener(
+            "error",
+            () => (statusEl.textContent = "Playing (WS error)")
+          );
+          socket.addEventListener("message", (event) => {
             try {
               const msg = JSON.parse(event.data);
-              if (msg.type === 'setParam') {
+              if (msg.type === "setParam") {
                 app.updateParam(msg.nodeId, msg.paramName, msg.value);
               }
             } catch (e) {
-              console.warn('WS message parse error', e);
+              console.warn("WS message parse error", e);
             }
           });
         } catch (e) {
-          console.warn('Failed to open WebSocket:', e);
+          console.warn("Failed to open WebSocket:", e);
         }
       }
 
       // Socket.IO 연동 (쿼리스트링 io= 으로 서버 URL 지정)
       if (!wsURL && ioURL) {
         // 동적으로 Socket.IO 클라이언트 로드
-        const script = document.createElement('script');
-        script.src = 'https://cdn.socket.io/4.7.4/socket.io.min.js';
+        const script = document.createElement("script");
+        script.src = "https://cdn.socket.io/4.7.4/socket.io.min.js";
         script.onload = () => {
           try {
             // @ts-ignore
-            const sock = window.io(ioURL, { transports: ['websocket'], query: { type: 'spectator' } });
-            const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
-            sock.on('connect', () => setStatus('Playing (IO connected)'));
-            sock.on('disconnect', () => setStatus('Playing (IO disconnected)'));
-            sock.on('param', (msg) => {
+            const sock = window.io(ioURL, {
+              transports: ["websocket"],
+              path: "/socket",
+              query: { type: "spectator" },
+            });
+            const setStatus = (t) => {
+              if (statusEl) statusEl.textContent = t;
+            };
+            sock.on("connect", () => setStatus("Playing (IO connected)"));
+            sock.on("disconnect", () => setStatus("Playing (IO disconnected)"));
+            sock.on("param", (msg) => {
               try {
-                if (msg && msg.type === 'setParam') {
+                if (msg && msg.type === "setParam") {
                   app.updateParam(msg.nodeId, msg.paramName, msg.value);
                 }
               } catch (e) {
-                console.warn('IO param handler error', e);
+                console.warn("IO param handler error", e);
               }
             });
           } catch (e) {
-            console.warn('Failed to open Socket.IO:', e);
+            console.warn("Failed to open Socket.IO:", e);
           }
         };
         document.head.appendChild(script);
