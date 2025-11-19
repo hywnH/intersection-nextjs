@@ -7,6 +7,10 @@ RUN corepack enable \
   && corepack prepare yarn@1.22.22 --activate \
   && yarn install --frozen-lockfile
 
+ENV NODE_ENV=production
+ENV NEXT_PUBLIC_WS_URL=https://intersection-game.onrender.com/socket
+ENV NEXT_PUBLIC_NOISECRAFT_WS_URL=https://intersection-audio.onrender.com
+
 # Build Next.js (standalone)
 COPY . .
 RUN corepack enable \
@@ -15,9 +19,6 @@ RUN corepack enable \
 
 FROM node:24-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production
-ENV NEXT_PUBLIC_WS_URL=https://intersection-game.onrender.com/socket
-ENV NEXT_PUBLIC_NOISECRAFT_WS_URL=https://intersection-audio.onrender.com
 
 # Copy Next.js standalone output
 COPY --from=deps /app/.next/standalone ./ 
