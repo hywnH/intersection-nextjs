@@ -22,8 +22,6 @@ COPY --from=deps /app/.next/standalone ./
 COPY --from=deps /app/.next/static ./.next/static
 COPY --from=deps /app/public ./public
 
-# Render/일반 PaaS에서 PORT 환경변수 사용
-ENV PORT=3000
 EXPOSE 3000
 
 CMD ["node", "server.js"]
