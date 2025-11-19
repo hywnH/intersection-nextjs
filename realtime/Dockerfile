@@ -18,6 +18,7 @@ COPY --from=deps /app/node_modules ./node_modules
 ENV PORT=3001
 ENV HOST=0.0.0.0
 ENV SOCKET_PATH=/socket
+ENV CORS_ORIGINS=https://intersection-web.onrender.com,https://intersection-audio.onrender.com
 
 EXPOSE 3001
 

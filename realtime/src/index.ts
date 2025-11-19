@@ -158,6 +158,25 @@ function removePlayerCollisions(id: string) {
   }
 }
 
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:7773",
+  "http://127.0.0.1:7773",
+  "https://intersection-web.onrender.com",
+  "https://intersection-audio.onrender.com",
+];
+
+const parseOrigins = (raw?: string) =>
+  (raw || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+const allowedOrigins = Array.from(
+  new Set([...DEFAULT_ALLOWED_ORIGINS, ...parseOrigins(process.env.CORS_ORIGINS)])
+);
+
 const httpServer = http.createServer((_, res) => {
   res.statusCode = 200;
   res.end("ok");
@@ -168,13 +187,8 @@ const io = new Server(httpServer, {
   transports: ["websocket"],
   allowEIO3: false,
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:7773",
-      "http://127.0.0.1:7773",
-    ],
-    credentials: false,
+    origin: allowedOrigins,
+    credentials: true,
   },
   pingInterval: 10000,
   pingTimeout: 20000,
