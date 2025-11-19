@@ -22,7 +22,7 @@ COPY --from=deps /app/.next/standalone ./
 COPY --from=deps /app/.next/static ./.next/static
 COPY --from=deps /app/public ./public
 
-EXPOSE 3000
+EXPOSE 10000
 
 CMD ["node", "server.js"]
 
