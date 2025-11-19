@@ -193,10 +193,16 @@
         script.src = "https://cdn.socket.io/4.7.4/socket.io.min.js";
         script.onload = () => {
           try {
+            const parsed = new URL(ioURL, window.location.origin);
+            const socketOrigin = `${parsed.protocol}//${parsed.host}`;
+            const socketPath =
+              parsed.pathname && parsed.pathname !== "/"
+                ? parsed.pathname
+                : "/socket";
             // @ts-ignore
-            const sock = window.io(ioURL, {
+            const sock = window.io(socketOrigin, {
               transports: ["websocket"],
-              path: "/socket",
+              path: socketPath,
               query: { type: "spectator" },
             });
             const setStatus = (t) => {
