@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Mode } from "@/types/game";
 
 interface GameContextValue {
@@ -12,7 +12,13 @@ interface GameContextValue {
   setServerUrl: (url: string) => void;
 }
 
-const fallbackUrl = process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:3001";
+// 서버 환경(SSR)용 기본 WS URL
+const envWsUrl = process.env.NEXT_PUBLIC_WS_URL;
+const fallbackUrl =
+  envWsUrl ??
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:3001/socket"
+    : "/socket");
 
 const defaultValue: GameContextValue = {
   mode: "personal",
@@ -29,6 +35,18 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   const [mode, setMode] = useState<Mode>("personal");
   const [displayName, setDisplayName] = useState("");
   const [serverUrl, setServerUrl] = useState(fallbackUrl);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!envWsUrl) return;
+
+    try {
+      const absoluteUrl = new URL(envWsUrl, window.location.origin);
+      setServerUrl(absoluteUrl.toString());
+    } catch {
+      setServerUrl(envWsUrl);
+    }
+  }, []);
 
   const value = useMemo(
     () => ({

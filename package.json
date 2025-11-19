@@ -2,11 +2,17 @@
   "name": "intersection-nextjs",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "realtime",
+    "noisecraft"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ws:build": "yarn workspaces foreach -p -A run build || true",
+    "ws:dev": "echo 'Use docker compose for dev (web+realtime). Noisecraft dev: yarn workspace noisecraft dev'"
   },
   "dependencies": {
     "next": "16.0.3",

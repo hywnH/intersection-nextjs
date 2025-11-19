@@ -15,6 +15,7 @@ const GlobalView = () => {
   const animationRef = useRef<number | null>(null);
   const latestState = useRef(state);
   const [projection, setProjection] = useState<ProjectionMode>("plane");
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const transitionRef = useRef<{
     from: ProjectionMode;
     to: ProjectionMode;
@@ -88,6 +89,23 @@ const GlobalView = () => {
     };
   }, [dispatch, state.gameSize.height, state.gameSize.width, projection]);
 
+  useEffect(() => {
+    const isDev = process.env.NODE_ENV === "development";
+    const ncEnv =
+      process.env.NEXT_PUBLIC_NOISECRAFT_WS_URL ||
+      (isDev ? "http://localhost:4000" : "/audiocraft");
+    const rtEnv =
+      process.env.NEXT_PUBLIC_WS_URL ||
+      (isDev ? "http://localhost:3001/socket" : "/socket");
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const ncBase = ncEnv.startsWith("/") ? origin + ncEnv : ncEnv;
+    const rtUrl = rtEnv.startsWith("/") ? origin + rtEnv : rtEnv;
+    const src = `${ncBase.replace(/\/$/, "")}/public/embedded.html?io=${encodeURIComponent(rtUrl)}`;
+    if (iframeRef.current) {
+      iframeRef.current.src = src;
+    }
+  }, []);
+
   const handleProjectionChange = (mode: ProjectionMode) => {
     if (mode === projection) return;
     transitionRef.current = {
@@ -105,7 +123,8 @@ const GlobalView = () => {
       <div className="pointer-events-auto absolute bottom-4 right-4 rounded-xl bg-black/60 p-2 text-xs text-white">
         <div className="mb-2 text-white/70">NoiseCraft</div>
         <iframe
-          src="http://localhost:7773/public/embedded.html?io=http://localhost:3001"
+          ref={iframeRef}
+          src={"about:blank"}
           width="420"
           height="120"
           style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}

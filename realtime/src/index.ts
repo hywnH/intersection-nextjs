@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || "0.0.0.0";
+const SOCKET_PATH = process.env.SOCKET_PATH || "/socket";
 
 // 게임 설정 (intersection 서버와 호환되는 기본값)
 const GAME_WIDTH = 5000;
@@ -35,7 +36,12 @@ const players = new Map<string, Player>();
 const spectators = new Set<string>();
 const collisionLines = new Map<
   string,
-  { id: string; players: [string, string]; startedAt: number; lastEvent: number }
+  {
+    id: string;
+    players: [string, string];
+    startedAt: number;
+    lastEvent: number;
+  }
 >();
 const collisionEvents: Array<{
   id: string;
@@ -59,7 +65,7 @@ function spawnPoint(): Vec2 {
 function moveTowards(p: Player, dt: number) {
   // 가속/감속 기반 부드러운 움직임: 클라이언트가 보낸 원하는 속도에 수렴
   const MAX_SPEED = 320; // px/s
-  const SMOOTH = 0.25;   // 응답성(0~1)
+  const SMOOTH = 0.25; // 응답성(0~1)
   const desiredVx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVx));
   const desiredVy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVy));
   p.vx += (desiredVx - p.vx) * SMOOTH;
@@ -152,22 +158,37 @@ function removePlayerCollisions(id: string) {
   }
 }
 
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:7773",
+  "http://127.0.0.1:7773",
+  "https://intersection-web.onrender.com",
+  "https://intersection-audio.onrender.com",
+];
+
+const parseOrigins = (raw?: string) =>
+  (raw || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+const allowedOrigins = Array.from(
+  new Set([...DEFAULT_ALLOWED_ORIGINS, ...parseOrigins(process.env.CORS_ORIGINS)])
+);
+
 const httpServer = http.createServer((_, res) => {
   res.statusCode = 200;
   res.end("ok");
 });
 
 const io = new Server(httpServer, {
+  path: SOCKET_PATH,
   transports: ["websocket"],
   allowEIO3: false,
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:7773",
-      "http://127.0.0.1:7773",
-    ],
-    credentials: false,
+    origin: allowedOrigins,
+    credentials: true,
   },
   pingInterval: 10000,
   pingTimeout: 20000,
@@ -229,12 +250,15 @@ io.on("connection", (socket) => {
       }
     );
 
-    socket.on("windowResized", (data: { screenWidth?: number; screenHeight?: number }) => {
-      const p = players.get(socket.id);
-      if (!p) return;
-      p.screenWidth = Number(data.screenWidth || 0);
-      p.screenHeight = Number(data.screenHeight || 0);
-    });
+    socket.on(
+      "windowResized",
+      (data: { screenWidth?: number; screenHeight?: number }) => {
+        const p = players.get(socket.id);
+        if (!p) return;
+        p.screenWidth = Number(data.screenWidth || 0);
+        p.screenHeight = Number(data.screenHeight || 0);
+      }
+    );
 
     socket.on("0", (payload: { vx?: number; vy?: number }) => {
       const p = players.get(socket.id);

@@ -22,6 +22,29 @@ const createStubSocket = (): GameSocket => {
   return stub;
 };
 
+const DEFAULT_SOCKET_PATH = "/socket";
+const getDefaultServerUrl = () =>
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:3001/socket"
+    : DEFAULT_SOCKET_PATH;
+
+const resolveSocketEndpoint = (rawUrl: string, origin: string) => {
+  try {
+    const url = new URL(rawUrl, origin);
+    const normalizedPath = url.pathname.replace(/\/+$/, "") || "/";
+    const path = normalizedPath === "/" ? DEFAULT_SOCKET_PATH : normalizedPath;
+    return {
+      origin: `${url.protocol}//${url.host}`,
+      path,
+    };
+  } catch {
+    return {
+      origin,
+      path: DEFAULT_SOCKET_PATH,
+    };
+  }
+};
+
 export const createSocketClient = async ({
   serverUrl,
   mode,
@@ -33,7 +56,13 @@ export const createSocketClient = async ({
     return createStubSocket();
   }
 
-  return io(serverUrl, {
+  const resolved = resolveSocketEndpoint(
+    serverUrl || getDefaultServerUrl(),
+    window.location.origin
+  );
+
+  return io(resolved.origin, {
+    path: resolved.path,
     query: {
       type: mode === "personal" ? "player" : "spectator",
     },

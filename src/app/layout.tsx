@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://intersection.local"),
+  metadataBase: new URL("https://intersection.local/visual"),
   title: {
     default: "Intersection",
     template: "%s · Intersection",
