@@ -394,6 +394,14 @@ app.get('/', function(req, res)
     res.send(html);
 });
 
+// Visualization (read-only) page
+app.get('/visualization', function(req, res)
+{
+    recordHit(req);
+    res.setHeader('content-type', 'text/html');
+    res.sendFile(path.resolve('public/visualization.html'));
+});
+
 // Serve projects with numerical ids
 app.get('/:projectId([0-9]+)', async function(req, res)
 {
