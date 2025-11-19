@@ -36,27 +36,16 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   const [displayName, setDisplayName] = useState("");
   const [serverUrl, setServerUrl] = useState(fallbackUrl);
 
-  // 클라이언트 환경에서는 현재 접속한 호스트 기준으로 WS 주소를 재계산
-  // 예: 페이지가 192.168.0.152:3000 이면 WS는 192.168.0.152:3001/socket
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!envWsUrl) return;
 
-    const hostname = window.location.hostname || "localhost";
-    const protocol = window.location.protocol === "https:" ? "https" : "http";
-
-    // envWsUrl이 절대/상대 URL이든 상관 없이 path 부분만 추출
-    let path = "/socket";
-    if (envWsUrl) {
-      try {
-        const url = new URL(envWsUrl, `${protocol}://${hostname}`);
-        path = url.pathname || "/socket";
-      } catch {
-        // 실패하면 기본값 유지
-      }
+    try {
+      const absoluteUrl = new URL(envWsUrl, window.location.origin);
+      setServerUrl(absoluteUrl.toString());
+    } catch {
+      setServerUrl(envWsUrl);
     }
-
-    const wsUrl = `${protocol}://${hostname}:3001${path}`;
-    setServerUrl(wsUrl);
   }, []);
 
   const value = useMemo(
