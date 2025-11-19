@@ -15,7 +15,7 @@ for the foreseeable future.
 </p>
 
 You can try NoiseCraft at [noisecraft.app](https://noisecraft.app), and browse projects shared by other
-users at [noisecraft.app/browse](https://noisecraft.app/browse). Currently, this works in Chrome, Firefox and Edge but 
+users at [noisecraft.app/browse](https://noisecraft.app/browse). Currently, this works in Chrome, Firefox and Edge but
 not reliably in Safari due to issues with their web audio implementation.
 Please note that NoiseCraft is a passion project and a work in progress.
 You may run into bugs, and support for mobile devices is currently lacking.
@@ -23,6 +23,7 @@ You may run into bugs, and support for mobile devices is currently lacking.
 ## Design
 
 Design principles:
+
 - NoiseCraft follows a minimalistic philosophy:
   - No web frameworks, just plain JS/HTML/CSS
   - Intentionally keep dependencies to a minimum
@@ -78,7 +79,7 @@ us track and eliminate bugs is a very useful contribution.
 ## Development Setup Instructions
 
 We recommend developing using the Chrome web browser because it has the most mature
-web audio implementation and has been the most extensively tested. 
+web audio implementation and has been the most extensively tested.
 We are waiting for a [Firefox bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1572644) to be fixed,
 and we've run into issues with the Safari web audio and pointer capture implementation.
 
@@ -110,9 +111,19 @@ To run tests locally:
 node tests.js
 ```
 
+## Visualization Route
+
+- `/visualization`: read-only view that mirrors incoming Socket.IO `param` events.
+- Accepts query params:
+  - `io=https://intersection-game.onrender.com/socket` (default) to set the realtime endpoint.
+  - `src=/public/examples/saw_synth_stereo_delay.ncft` to preload a project snapshot.
+- Includes an `Upload .ncft/.json` button so you can load local snapshots on-demand.
+- Start/Stop audio buttons gate playback; node knobs/controls reflect updates but are not interactive.
+
 ## Running using Docker
 
 To run the NoiseCraft server using Docker please follow these steps:
+
 ```
 # Build docker NoiseCraft image
 docker build . -t noisecraft
@@ -128,6 +139,6 @@ NoiseCraft is then accessible at `http://localhost:7773/`
 The server can be configured using the following environment variables:
 
 | Config Variable | Default Value | Description             |
-|-----------------|---------------|-------------------------|
+| --------------- | ------------- | ----------------------- |
 | DB_FILE_PATH    | ./database.db | SQLite file path        |
 | HTTP_PORT_NO    | 7773          | HTTP server port number |
