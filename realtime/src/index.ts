@@ -66,10 +66,84 @@ function moveTowards(p: Player, dt: number) {
   // 가속/감속 기반 부드러운 움직임: 클라이언트가 보낸 원하는 속도에 수렴
   const MAX_SPEED = 320; // px/s
   const SMOOTH = 0.25; // 응답성(0~1)
+  
+  // 유저 입력 처리
   const desiredVx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVx));
   const desiredVy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVy));
-  p.vx += (desiredVx - p.vx) * SMOOTH;
-  p.vy += (desiredVy - p.vy) * SMOOTH;
+  
+  // 유저가 정지 상태인지 확인 (원하는 속도가 거의 0이면 정지)
+  const USER_MOVEMENT_THRESHOLD = 3; // px/s
+  const isUserIdle = Math.abs(desiredVx) < USER_MOVEMENT_THRESHOLD && Math.abs(desiredVy) < USER_MOVEMENT_THRESHOLD;
+  
+  if (isUserIdle) {
+    // 유저가 정지 상태일 때: 중력 적용
+    // 가장 가까운 플레이어 찾기
+    let closest: Player | null = null;
+    let minDist = Infinity;
+    
+    for (const other of players.values()) {
+      if (other.id === p.id) continue;
+      const dx = other.x - p.x;
+      const dy = other.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = other;
+      }
+    }
+    
+    if (closest) {
+      // 중력 설정
+      const GRAVITY_STRENGTH = 50; // px/s² (중력 가속도)
+      const GRAVITY_MAX_DISTANCE = 3000; // 최대 중력 작용 거리
+      const GRAVITY_MAX_SPEED = 100; // 중력으로 인한 최대 속도 (px/s)
+      
+      const dx = closest.x - p.x;
+      const dy = closest.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      
+      if (dist > 0 && dist < GRAVITY_MAX_DISTANCE) {
+        // 거리에 반비례하는 중력 (가까울수록 강함)
+        const gravityFactor = 1 - (dist / GRAVITY_MAX_DISTANCE);
+        const gravityAccel = GRAVITY_STRENGTH * gravityFactor;
+        
+        // 방향 벡터 정규화
+        const dirX = dx / dist;
+        const dirY = dy / dist;
+        
+        // 중력 가속도를 속도에 적용
+        const gravityVx = dirX * gravityAccel * dt;
+        const gravityVy = dirY * gravityAccel * dt;
+        
+        p.vx += gravityVx;
+        p.vy += gravityVy;
+        
+        // 중력 최대 속도 제한
+        const currentSpeed = Math.hypot(p.vx, p.vy);
+        if (currentSpeed > GRAVITY_MAX_SPEED) {
+          const scale = GRAVITY_MAX_SPEED / currentSpeed;
+          p.vx *= scale;
+          p.vy *= scale;
+        }
+      } else {
+        // 거리가 너무 멀면 속도 감소 (마찰)
+        const FRICTION = 0.98;
+        p.vx *= FRICTION;
+        p.vy *= FRICTION;
+      }
+    } else {
+      // 다른 플레이어가 없으면 속도 감소
+      const FRICTION = 0.98;
+      p.vx *= FRICTION;
+      p.vy *= FRICTION;
+    }
+  } else {
+    // 유저가 이동 중일 때: 유저 입력 우선 (중력 무시)
+    p.vx += (desiredVx - p.vx) * SMOOTH;
+    p.vy += (desiredVy - p.vy) * SMOOTH;
+  }
+  
+  // 위치 업데이트
   p.x = Math.max(0, Math.min(GAME_WIDTH, p.x + p.vx * dt));
   p.y = Math.max(0, Math.min(GAME_HEIGHT, p.y + p.vy * dt));
 }
