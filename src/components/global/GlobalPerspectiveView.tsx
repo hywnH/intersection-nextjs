@@ -22,20 +22,10 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { useGameClient } from "@/lib/game/hooks";
 import type { PlayerSnapshot } from "@/types/game";
 
-import { MeshLineGeometry, MeshLineMaterial } from "meshline";
-
 const PLANE_SCALE = 0.03;
 const DEPTH_SCALE = 0.002;
 const CAMERA_HEIGHT_FACTOR = 0.25;
 const CAMERA_DISTANCE_FACTOR = 0.5;
-const SPARK_COLORS = [
-  "#A2CCB6",
-  "#FCEEB5",
-  "#EE786E",
-  "#e0feff",
-  "#fda4af",
-  "#93c5fd",
-];
 
 type MouseRef = React.MutableRefObject<[number, number]>;
 
@@ -88,12 +78,27 @@ const PlayerPlane = ({
         <sphereGeometry args={[radius, 32, 32]} />
         <meshPhysicalMaterial
           color={player.cell.color || "#38bdf8"}
-          emissive={player.isSelf ? player.cell.color || "#38bdf8" : "#000000"}
-          emissiveIntensity={player.isSelf ? 0.6 : 0.1}
-          metalness={0.45}
-          roughness={0.25}
-          clearcoat={0.6}
-          clearcoatRoughness={0.15}
+          emissive={player.cell.color || "#38bdf8"}
+          emissiveIntensity={player.isSelf ? 2 : 1.2}
+          metalness={0.6}
+          roughness={0.18}
+          clearcoat={0.75}
+          clearcoatRoughness={0.08}
+        />
+      </mesh>
+      <mesh
+        position={[worldX, worldY, 0]}
+        scale={[1.6, 1.6, 1.6]}
+        renderOrder={-10}
+      >
+        <sphereGeometry args={[radius * 1.15, 32, 32]} />
+        <meshBasicMaterial
+          color={player.cell.color || "#93c5fd"}
+          side={THREE.BackSide}
+          transparent
+          opacity={player.isSelf ? 0.55 : 0.4}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
         />
       </mesh>
       {player.isSelf && (
@@ -205,119 +210,6 @@ const BackgroundParticles = ({
         args={[geometry, material, count]}
         frustumCulled={false}
       />
-    </group>
-  );
-};
-
-interface FatLineProps {
-  curve: THREE.Vector3[];
-  width: number;
-  color: string;
-  speed: number;
-}
-
-const FatLine = ({ curve, width, color, speed }: FatLineProps) => {
-  const { size } = useThree();
-  const geometry = useMemo(() => new MeshLineGeometry(), []);
-  const material = useMemo(() => {
-    const mat = new MeshLineMaterial({
-      lineWidth: width,
-      color,
-      dashArray: 0.2,
-      dashRatio: 0.9,
-      resolution: new THREE.Vector2(size.width, size.height),
-    });
-    mat.transparent = true;
-    mat.depthTest = false;
-    mat.opacity = 0.85;
-    return mat;
-  }, [color, size.height, size.width, width]);
-
-  useEffect(() => {
-    geometry.setPoints(curve);
-    return () => {
-      geometry.dispose();
-      material.dispose();
-    };
-  }, [curve, geometry, material]);
-
-  useFrame(() => {
-    if (material.uniforms?.dashOffset) {
-      material.uniforms.dashOffset.value -= speed;
-    }
-  });
-
-  return <mesh geometry={geometry} material={material} />;
-};
-
-const SparkLines = ({
-  mouse,
-  count,
-  colors,
-  radius = 12,
-}: {
-  mouse: MouseRef;
-  count: number;
-  colors: string[];
-  radius?: number;
-}) => {
-  const groupRef = useRef<THREE.Group | null>(null);
-  const lines = useMemo(() => {
-    return new Array(count).fill(null).map((_, index) => {
-      const start = new THREE.Vector3(
-        Math.sin(0) * radius * Math.random(),
-        Math.cos(0) * radius * Math.random(),
-        0
-      );
-      const points = new Array(30).fill(null).map((__, i) => {
-        const angle = (i / 20) * Math.PI * 2;
-        return start
-          .clone()
-          .add(
-            new THREE.Vector3(
-              Math.sin(angle) * radius * Math.max(0.3, Math.random()),
-              Math.cos(angle) * radius * Math.max(0.3, Math.random()),
-              (Math.sin(angle * 2) * radius) / 4
-            )
-          );
-      });
-      const curve = new THREE.CatmullRomCurve3(points).getPoints(400);
-      return {
-        curve,
-        color: colors[Math.floor(Math.random() * colors.length)] ?? "#ffffff",
-        width: Math.max(0.06, (0.35 * index) / 10),
-        speed: Math.max(0.001, 0.003 * Math.random()),
-      };
-    });
-  }, [colors, count, radius]);
-
-  const { size, viewport } = useThree();
-  const aspect = size.width / viewport.width;
-
-  useFrame(() => {
-    if (!groupRef.current) return;
-    groupRef.current.rotation.x = THREE.MathUtils.lerp(
-      groupRef.current.rotation.x,
-      (mouse.current[1] / aspect) * 0.1,
-      0.05
-    );
-    groupRef.current.rotation.y = THREE.MathUtils.lerp(
-      groupRef.current.rotation.y,
-      (mouse.current[0] / aspect) * 0.05,
-      0.05
-    );
-  });
-
-  return (
-    <group ref={groupRef} renderOrder={-25}>
-      <group
-        position={[-radius * 0.6, -radius * 0.4, -12]}
-        scale={[1.2, 1.35, 1]}
-      >
-        {lines.map((props, index) => (
-          <FatLine key={`line-${index}`} {...props} />
-        ))}
-      </group>
     </group>
   );
 };
@@ -449,12 +341,6 @@ const GlobalPerspectiveView = () => {
               <BackgroundParticles
                 count={players.length > 0 ? 600 : 320}
                 mouse={pointerRef}
-              />
-              <SparkLines
-                count={24}
-                mouse={pointerRef}
-                colors={SPARK_COLORS}
-                radius={Math.max(12, planeWidth * 0.35)}
               />
               <ambientLight intensity={0.35} color="#94a3b8" />
               <pointLight

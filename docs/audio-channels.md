@@ -44,6 +44,15 @@ audio: {
 - `noisecraft/public/embedded.html` now loads a tiny patch (self sine + three chord sines mixed into audio out) and listens for:
   - `noiseCraft:setParams` → updates `SetParam` on the requested nodes.
   - `noiseCraft:play` / `noiseCraft:stop` → optional remote transport.
+- The embed accepts `?src=<absolute-url>` as well as `?project=<NoiseCraft project id>`. On the frontend you can set
+  `NEXT_PUBLIC_NOISECRAFT_PATCH_SRC` (static `.ncft` snapshot) or `NEXT_PUBLIC_NOISECRAFT_PATCH_PROJECT_ID` (uploaded project)
+  so every iframe instance bootstraps with the uploaded patch. When neither is provided we default to `/audiocraft/current-project`.
+  The NoiseCraft UI (`http://localhost:4000/`) POSTs every opened project to that endpoint so the spectator embeds immediately
+  pick up whatever you are auditioning locally, without having to share/upload.
+- A lightweight “Noise Slot” bridge (4 channels) lives on the realtime Socket.IO server (`/socket`). The Noisecraft editor can map
+  arbitrary nodes to Slot 0~3, and the Next.js client will drive those nodes with the existing streams: Self Frequency, Self Gain,
+  Cluster Chord (up to 3 nodes), and Cluster Gain. Leaving a slot empty falls back to the default embedded patch nodes
+  (`0/1/4/6/8/12`), preserving backwards compatibility.
 
 ## Next Steps
 - Replace the placeholder triad/gain logic with production-ready audio design.

@@ -62,6 +62,12 @@ export interface AudioState {
   global: AudioClusterState | null;
 }
 
+export interface NoiseSlot {
+  slot: number;
+  nodeIds: string[];
+  label?: string;
+}
+
 export interface CollisionMark {
   id: string;
   position: Vec2;
@@ -130,6 +136,7 @@ export interface GameState {
   selfHighlightUntil: number;
   snapshotBuffer: SnapshotFrame[];
   audio: AudioState;
+  noiseSlots: NoiseSlot[];
 }
 
 export type GameAction =
@@ -156,5 +163,6 @@ export type GameAction =
   | { type: "SET_SELF_HIGHLIGHT"; until: number }
   | { type: "SET_GLOBAL_OVERLAY"; overlay: Partial<GlobalOverlay> }
   | { type: "SET_AUDIO"; audio: Partial<AudioState> }
+  | { type: "SET_NOISE_SLOTS"; slots: NoiseSlot[] }
   | { type: "PUSH_SNAPSHOT_FRAME"; frame: SnapshotFrame }
   | { type: "RESET" };

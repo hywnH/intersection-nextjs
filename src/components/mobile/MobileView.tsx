@@ -132,7 +132,7 @@ const MobileView = () => {
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
-    const params = buildNoiseCraftParams(state.audio, "personal");
+    const params = buildNoiseCraftParams(state.audio, state.noiseSlots, "personal");
     postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
   }, [state.audio, noiseCraftOrigin]);
 

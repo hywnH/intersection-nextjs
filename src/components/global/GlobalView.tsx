@@ -108,7 +108,7 @@ const GlobalView = () => {
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
-    const params = buildNoiseCraftParams(state.audio, "global");
+    const params = buildNoiseCraftParams(state.audio, state.noiseSlots, "global");
     postNoiseCraftParams(iframeRef.current, noiseCraftOrigin, params);
   }, [state.audio, noiseCraftOrigin]);
 
