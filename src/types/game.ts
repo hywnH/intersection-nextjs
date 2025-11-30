@@ -21,6 +21,17 @@ export interface PlayerSnapshot {
   lastUpdate: number;
   isSelf?: boolean;
   depth?: number; // z축(뷰 전환용)
+  isPredicted?: boolean;
+  lastServerPosition?: Vec2;
+  lastServerVelocity?: Vec2;
+  predictionOffset?: Vec2;
+}
+
+export interface SnapshotFrame {
+  timestamp: number;
+  players: Record<string, PlayerSnapshot>;
+  order: string[];
+  fast?: boolean;
 }
 
 export interface CollisionMark {
@@ -89,6 +100,7 @@ export interface GameState {
   playing: boolean;
   collisionLines: CollisionLine[];
   selfHighlightUntil: number;
+  snapshotBuffer: SnapshotFrame[];
 }
 
 export type GameAction =
@@ -114,4 +126,5 @@ export type GameAction =
   | { type: "SET_COLLISION_LINES"; lines: CollisionLine[] }
   | { type: "SET_SELF_HIGHLIGHT"; until: number }
   | { type: "SET_GLOBAL_OVERLAY"; overlay: Partial<GlobalOverlay> }
+  | { type: "PUSH_SNAPSHOT_FRAME"; frame: SnapshotFrame }
   | { type: "RESET" };

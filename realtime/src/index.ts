@@ -10,7 +10,8 @@ const GAME_WIDTH = 5000;
 const GAME_HEIGHT = 5000;
 const MAX_HEARTBEAT_MS = 5000;
 const TICK_HZ = 120; // 이동 계산 더 촘촘히
-const UPDATE_HZ = 60; // 클라이언트 전송 빈도 상향
+const UPDATE_HZ = 60; // 기본 브로드캐스트 빈도
+const SELF_UPDATE_HZ = 120; // 자기 플레이어 전용 고주파수
 
 type Vec2 = { x: number; y: number };
 
@@ -65,7 +66,7 @@ function spawnPoint(): Vec2 {
 function moveTowards(p: Player, dt: number) {
   // 가속/감속 기반 부드러운 움직임: 클라이언트가 보낸 원하는 속도에 수렴
   const MAX_SPEED = 320; // px/s
-  const SMOOTH = 0.25; // 응답성(0~1)
+  const SMOOTH = 0.1; // 응답성(0~1)
   const desiredVx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVx));
   const desiredVy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVy));
   p.vx += (desiredVx - p.vx) * SMOOTH;
@@ -174,7 +175,10 @@ const parseOrigins = (raw?: string) =>
     .filter(Boolean);
 
 const allowedOrigins = Array.from(
-  new Set([...DEFAULT_ALLOWED_ORIGINS, ...parseOrigins(process.env.CORS_ORIGINS)])
+  new Set([
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...parseOrigins(process.env.CORS_ORIGINS),
+  ])
 );
 
 const httpServer = http.createServer((_, res) => {
@@ -336,6 +340,21 @@ setInterval(() => {
     s.emit("leaderboard", { players: players.size });
   }
 }, 1000 / UPDATE_HZ);
+
+// 자기 플레이어 전용 고주파수 업데이트
+setInterval(() => {
+  const collisionSnapshot = Array.from(collisionLines.values());
+  const eventsSnapshot = collisionEvents.slice();
+  for (const p of players.values()) {
+    const s = io.sockets.sockets.get(p.id);
+    if (!s) continue;
+    s.emit("serverTellPlayerMove", toServerPlayer(p), visiblePlayers(p.id), {
+      collisions: collisionSnapshot,
+      collisionEvents: eventsSnapshot,
+      fast: true,
+    });
+  }
+}, 1000 / SELF_UPDATE_HZ);
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Realtime on http://${HOST}:${PORT}`);

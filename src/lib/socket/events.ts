@@ -8,6 +8,8 @@ import type {
 } from "@/types/server";
 import { mapServerPayloadToSnapshots } from "@/lib/game/mappers";
 
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
 type MinimalSocket = {
   id?: string | null;
   on: (event: string, handler: (...args: unknown[]) => void) => unknown;
@@ -112,6 +114,7 @@ export const registerSocketEvents = ({
     meta?: {
       collisions?: ServerCollisionLine[];
       collisionEvents?: ServerCollisionEvent[];
+      fast?: boolean;
     }
   ) => {
     const effectivePlayerData = mode === "personal" ? playerData : undefined;
@@ -124,9 +127,37 @@ export const registerSocketEvents = ({
       selfId: currentSelfId,
       displayName,
     });
-    dispatch({ type: "SET_PLAYERS", players, order, selfId: currentSelfId });
+
+    if (mode === "personal" && currentSelfId) {
+      const serverSelf = players[currentSelfId];
+      if (serverSelf) {
+        players[currentSelfId] = {
+          ...serverSelf,
+          isPredicted: false,
+          predictionOffset: { x: 0, y: 0 },
+          lastServerPosition: { ...serverSelf.cell.position },
+          lastServerVelocity: { ...serverSelf.cell.velocity },
+        };
+      }
+    }
 
     if (mode === "personal") {
+      dispatch({
+        type: "PUSH_SNAPSHOT_FRAME",
+        frame: {
+          timestamp: Date.now(),
+          players,
+          order,
+          fast: Boolean(meta?.fast),
+        },
+      });
+    }
+
+    if (!meta?.fast) {
+      dispatch({ type: "SET_PLAYERS", players, order, selfId: currentSelfId });
+    }
+
+    if (mode === "personal" && !meta?.fast) {
       const focus =
         (currentSelfId && players[currentSelfId]?.cell.position) ??
         playerData?.target ??
