@@ -393,7 +393,7 @@
           Array.isArray(data.params)
         ) {
           try {
-            // console.log("[Embedded] received params", data.params);
+            console.log("[Embedded] received params", data.params);
           } catch (e) {}
           data.params.forEach((param) => {
             if (!param || param.value === undefined) return;

@@ -80,6 +80,7 @@ export interface CollisionLine {
   id: string;
   players: [string, string];
   startedAt: number;
+  lastEvent?: number;
 }
 
 export interface CameraState {

@@ -20,7 +20,7 @@ import { analyzeClusters, type AnnotatedCluster } from "@/lib/game/clusters";
 
 const PLANE_SCALE = 0.03;
 const FRONT_DEPTH_SCALE = 0.03;
-const ORBIT_DEPTH_SCALE = 0.1;
+const ORBIT_DEPTH_SCALE = 0.03;
 const CAMERA_HEIGHT_FACTOR = 0.25;
 const CAMERA_DISTANCE_FACTOR = 1.4;
 const FRONT_PULLBACK = 5.6;
@@ -29,6 +29,15 @@ const WEAK_FOV = 26;
 const FRONT_ZOOM = 6;
 const ORBIT_ZOOM = 3;
 const CAMERA_TRANSITION_MS = 1100;
+const SPRING_SEGMENTS = 26;
+const SPRING_WAVES = 4;
+const SPRING_DAMPING = 0.8;
+const SPRING_PHASE_SPEED = 0.012;
+const SPRING_IDLE_BASE = 0.5;
+const SPRING_DECAY_MS = 1600;
+const SPRING_MAX_PX = 8;
+const SPRING_GLOW_RADIUS = 0.08;
+const SPRING_LINE_OPACITY = 0.1;
 
 type ViewMode = "front" | "perspective";
 type PlayerEntry = GameState["players"][string];
@@ -339,6 +348,16 @@ const GlobalSpace = ({
       };
     });
   }, [players, state.gameSize.height, state.gameSize.width, activeDepthScale]);
+  const playerWorldLookup = useMemo(() => {
+    const map = new Map<
+      string,
+      { worldX: number; worldY: number; depth: number }
+    >();
+    planeData.forEach(({ player, depth, worldX, worldY }) => {
+      map.set(player.id, { worldX, worldY, depth });
+    });
+    return map;
+  }, [planeData]);
 
   return (
     <div className="absolute inset-0">
@@ -443,6 +462,7 @@ const GlobalSpace = ({
               fadeDistance={80}
               fadeStrength={1.2}
             />
+            <CollisionSprings3D state={state} lookup={playerWorldLookup} />
             <PostProcessing />
             {planeData.map(({ player, depth, worldX, worldY }) => (
               <PlayerPlane
@@ -460,6 +480,150 @@ const GlobalSpace = ({
         </Suspense>
       )}
     </div>
+  );
+};
+
+const computeSpringAmplitudePx = (
+  now: number,
+  startedAt: number,
+  lastEvent?: number
+) => {
+  const lastImpulse = lastEvent ?? startedAt ?? now;
+  const since = Math.max(0, now - lastImpulse);
+  const decay = Math.exp(-since / SPRING_DECAY_MS);
+  const idlePulse = SPRING_IDLE_BASE + 2 * Math.sin(now / 1000);
+  return idlePulse + SPRING_MAX_PX * decay;
+};
+
+interface SpringSegment {
+  id: string;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  startedAt: number;
+  lastEvent?: number;
+}
+
+const CollisionSprings3D = ({
+  state,
+  lookup,
+}: {
+  state: GameState;
+  lookup: Map<string, { worldX: number; worldY: number; depth: number }>;
+}) => {
+  const springs = useMemo(() => {
+    return state.collisionLines
+      .map<SpringSegment | null>((line) => {
+        const a = lookup.get(line.players[0]);
+        const b = lookup.get(line.players[1]);
+        if (!a || !b) return null;
+        return {
+          id: line.id,
+          startedAt: line.startedAt,
+          lastEvent: line.lastEvent,
+          from: new THREE.Vector3(a.worldX, a.worldY, a.depth + 0.05),
+          to: new THREE.Vector3(b.worldX, b.worldY, b.depth + 0.05),
+        };
+      })
+      .filter((segment): segment is SpringSegment => Boolean(segment));
+  }, [lookup, state.collisionLines]);
+
+  if (!springs.length) return null;
+
+  return (
+    <>
+      {springs.map((spring) => (
+        <CollisionSpring3D key={spring.id} {...spring} />
+      ))}
+    </>
+  );
+};
+
+const CollisionSpring3D = ({
+  from,
+  to,
+  startedAt,
+  lastEvent,
+}: SpringSegment) => {
+  const geometryRef = useRef<THREE.BufferGeometry>(null);
+  const positions = useMemo(
+    () => new Float32Array((SPRING_SEGMENTS + 1) * 3),
+    []
+  );
+  const fromRef = useRef(from);
+  const toRef = useRef(to);
+
+  useEffect(() => {
+    fromRef.current = from;
+  }, [from]);
+  useEffect(() => {
+    toRef.current = to;
+  }, [to]);
+
+  useFrame(() => {
+    const geometry = geometryRef.current;
+    if (!geometry) return;
+    const a = fromRef.current;
+    const b = toRef.current;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dz = b.z - a.z;
+    const planarDist = Math.hypot(dx, dy);
+    const nx = planarDist > 0 ? -dy / planarDist : 0;
+    const ny = planarDist > 0 ? dx / planarDist : 0;
+    const wallNow =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    const amplitudePx = computeSpringAmplitudePx(wallNow, startedAt, lastEvent);
+    const amplitude = amplitudePx * PLANE_SCALE;
+    const phase = wallNow * SPRING_PHASE_SPEED;
+    for (let i = 0; i <= SPRING_SEGMENTS; i += 1) {
+      const t = i / SPRING_SEGMENTS;
+      const sine = Math.sin(t * Math.PI * SPRING_WAVES + phase);
+      const fade = Math.exp(-t * SPRING_DAMPING);
+      const offset = amplitude * sine * fade;
+      const idx = i * 3;
+      positions[idx] = a.x + dx * t + nx * offset;
+      positions[idx + 1] = a.y + dy * t + ny * offset;
+      positions[idx + 2] = a.z + dz * t;
+    }
+    const attr = geometry.attributes.position;
+    if (attr) {
+      attr.needsUpdate = true;
+      geometry.computeBoundingSphere();
+    }
+  });
+
+  return (
+    <>
+      <line>
+        <bufferGeometry ref={geometryRef}>
+          <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        </bufferGeometry>
+        <lineBasicMaterial
+          color="#d2d8e0"
+          transparent
+          opacity={SPRING_LINE_OPACITY}
+          toneMapped={false}
+        />
+      </line>
+      <mesh position={[from.x, from.y, from.z]}>
+        <sphereGeometry args={[SPRING_GLOW_RADIUS, 12, 12]} />
+        <meshBasicMaterial
+          color="#e2e8e0"
+          toneMapped={false}
+          transparent
+          opacity={0.6}
+        />
+      </mesh>
+      <mesh position={[to.x, to.y, to.z]}>
+        <sphereGeometry args={[SPRING_GLOW_RADIUS, 12, 12]} />
+        <meshBasicMaterial
+          color="#f8fafc"
+          toneMapped={false}
+          transparent
+          opacity={0.6}
+        />
+      </mesh>
+    </>
   );
 };
 

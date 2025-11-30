@@ -27,7 +27,7 @@ const DISABLE_INTERPOLATION =
   process.env.NEXT_PUBLIC_DISABLE_INTERP === "true";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const MAX_PROXIMITY_DISTANCE = 800;
+const MAX_CLOSING_SPEED = 100; // twice the server max speed to cover head-on approaches
 type AudioStatus =
   | "idle"
   | "ready"
@@ -36,26 +36,34 @@ type AudioStatus =
   | "blocked"
   | "stopped";
 
-const computeNearestProximity = (state: GameState) => {
+const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
+
+const computeApproachIntensity = (state: GameState) => {
   const selfId = state.selfId;
   if (!selfId) return 0;
   const selfPlayer = state.players[selfId];
   if (!selfPlayer) return 0;
-  const { position: selfPos } = selfPlayer.cell;
+  const { position: selfPos, velocity: selfVel } = selfPlayer.cell;
   let minDist = Number.POSITIVE_INFINITY;
-  Object.entries(state.players).forEach(([id, player]) => {
-    if (id === selfId) return;
+  let nearestPlayer: PlayerSnapshot | null = null;
+  for (const player of Object.values(state.players)) {
+    if (player.id === selfId) continue;
     const dx = player.cell.position.x - selfPos.x;
     const dy = player.cell.position.y - selfPos.y;
     const dist = Math.hypot(dx, dy);
     if (dist < minDist) {
       minDist = dist;
+      nearestPlayer = player;
     }
-  });
-  if (!isFinite(minDist)) return 0;
-  const clamped = Math.min(minDist, MAX_PROXIMITY_DISTANCE);
-  const proximity = 1 - clamped / MAX_PROXIMITY_DISTANCE;
-  return Math.min(Math.max(proximity, 0), 1);
+  }
+  if (!nearestPlayer || !isFinite(minDist)) return 0;
+  const safeDist = Math.max(minDist, 1e-3);
+  const dirX = (nearestPlayer.cell.position.x - selfPos.x) / safeDist;
+  const dirY = (nearestPlayer.cell.position.y - selfPos.y) / safeDist;
+  const relVelX = selfVel.x - nearestPlayer.cell.velocity.x;
+  const relVelY = selfVel.y - nearestPlayer.cell.velocity.y;
+  const closingSpeed = Math.max(relVelX * dirX + relVelY * dirY, 0);
+  return clamp01(closingSpeed / MAX_CLOSING_SPEED);
 };
 
 const buildInterpolatedState = (state: GameState): GameState => {
@@ -170,12 +178,12 @@ const MobileView = () => {
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
-    const proximity = computeNearestProximity(state);
+    const approachValue = computeApproachIntensity(state);
     const params = buildNoiseCraftParams(
       state.audio,
       state.noiseSlots,
       "personal",
-      proximity
+      approachValue
     );
     postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
   }, [
