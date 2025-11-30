@@ -305,6 +305,8 @@
         return JSON.parse(data);
       }
 
+      const DEFAULT_PATCH_SRC = "/public/examples/falling_in_love_with_waterfalls.ncft";
+
       async function loadInitialProject() {
         const url = new URL(window.location.href);
         const src = url.searchParams.get("src");
@@ -322,6 +324,12 @@
             "Failed to load remote project, falling back to default:",
             e
           );
+        }
+
+        try {
+          return await loadProjectFromSrc(DEFAULT_PATCH_SRC);
+        } catch (e) {
+          console.warn("Failed to load default Falling Waterfalls patch:", e);
         }
 
         return defaultProject;

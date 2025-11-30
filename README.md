@@ -2,6 +2,7 @@
 
 `intersection-nextjs`는 Next.js(App Router) 기반 프런트엔드와 Socket.IO 기반 실시간 서버(`realtime/`)를 함께 담고 있습니다. 개발 환경은 Docker Compose, 프로덕션은 단일 컨테이너 이미지로 배포할 수 있습니다.
 
+
 ## 프로젝트 구조
 
 - `src/app/*`: Next.js App Router 페이지 및 컴포넌트
@@ -112,7 +113,7 @@ docker run -p 3000:3000 intersection:web
 
 ## 환경 변수(요약)
 
-- `NEXT_PUBLIC_WS_URL`: 브라우저가 접속하는 공개 WS 주소(기본 http://localhost:3001/socket)
+- `NEXT_PUBLIC_WS_URL`: 브라우저가 접속하는 공개 WS 주소(기본 http://localhost:3001/socket, prod에서는 배포 환경에 맞추어 설정)
 - `NEXT_PUBLIC_NOISECRAFT_WS_URL`: NoiseCraft iframe 공개 URL(기본 /audiocraft, dev 기본 http://localhost:4000)
 - `NEXT_PUBLIC_NOISECRAFT_PATCH_SRC`: NoiseCraft 임베드가 불러올 .ncft 절대/상대 경로(기본 `/audiocraft/current-project`)
 - `NEXT_PUBLIC_NOISECRAFT_PATCH_PROJECT_ID`: NoiseCraft 서버의 공유 프로젝트 ID(위 설정 대신 선택)
