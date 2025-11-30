@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -6,128 +6,333 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/public/style.css" />
     <style>
-      body { background:#111; color:#eee; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      .wrap { display:flex; gap:8px; align-items:center; padding:16px; }
-      .status { opacity:0.8; font-size:13px; }
-      button { background:#333; color:#fff; border:1px solid #444; border-radius:6px; padding:8px 12px; cursor:pointer; }
-      button:hover { background:#3a3a3a; }
+      body {
+        background: #111;
+        color: #eee;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      .wrap {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 16px;
+      }
+      .status {
+        opacity: 0.8;
+        font-size: 13px;
+      }
+      button {
+        background: #333;
+        color: #fff;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #3a3a3a;
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
       <button id="btn_start">Start Audio</button>
-      <button id="btn_stop" style="display:none">Stop</button>
+      <button id="btn_stop" style="display: none">Stop</button>
+<!--      <button id="btn_open">Open Project</button>-->
       <div class="status" id="status">Idle</div>
     </div>
+    <input
+      type="file"
+      id="file_input"
+      accept=".ncft,.json,application/json"
+      style="display: none"
+    />
 
     <script type="module">
-      import { Model, SetParam, Play, Stop } from '/public/model.js';
-      import { AudioView } from '/public/audioview.js';
+      import { Model, SetParam, Play, Stop } from "/public/model.js";
+      import { AudioView } from "/public/audioview.js";
 
       // 1) 프로젝트(JSON) 준비
       // - 아래 기본 패치는 Knob -> Sine(freq) -> AudioOut 스테레오 라우팅입니다.
       // - 본인이 가진 JSON(프로젝트 스냅샷)을 붙여넣거나, URL 파라미터 src로 가져올 수 있습니다.
       //   예) /public/embedded.html?src=/public/examples/saw_synth_stereo_delay.ncft
       const defaultProject = {
-        title: 'Intersection Audio Patch',
+        title: "Intersection Audio Patch",
         nodes: {
-          "0": {
-            type: 'Knob', name: 'SelfFreq', x: 40, y: 40,
-            ins: [], inNames: [], outNames: [''],
-            params: { minVal: 100, maxVal: 900, value: 220, deviceId: null, controlId: null }
+          0: {
+            type: "Knob",
+            name: "SelfFreq",
+            x: 40,
+            y: 40,
+            ins: [],
+            inNames: [],
+            outNames: [""],
+            params: {
+              minVal: 100,
+              maxVal: 900,
+              value: 220,
+              deviceId: null,
+              controlId: null,
+            },
           },
-          "1": {
-            type: 'Knob', name: 'SelfGain', x: 40, y: 110,
-            ins: [], inNames: [], outNames: [''],
-            params: { minVal: 0, maxVal: 1, value: 0.2, deviceId: null, controlId: null }
+          1: {
+            type: "Knob",
+            name: "SelfGain",
+            x: 40,
+            y: 110,
+            ins: [],
+            inNames: [],
+            outNames: [""],
+            params: {
+              minVal: 0,
+              maxVal: 1,
+              value: 0.2,
+              deviceId: null,
+              controlId: null,
+            },
           },
-          "2": {
-            type: 'Sine', name: 'SelfSine', x: 200, y: 40,
-            ins: [["0", 0], null], inNames: ['freq','sync'], outNames: ['out'],
-            params: { minVal: -1, maxVal: 1 }
+          2: {
+            type: "Sine",
+            name: "SelfSine",
+            x: 200,
+            y: 40,
+            ins: [["0", 0], null],
+            inNames: ["freq", "sync"],
+            outNames: ["out"],
+            params: { minVal: -1, maxVal: 1 },
           },
-          "3": {
-            type: 'Mul', name: 'SelfAmp', x: 340, y: 50,
-            ins: [["2", 0], ["1", 0]], inNames: ['in0','in1'], outNames: ['out'],
-            params: {}
+          3: {
+            type: "Mul",
+            name: "SelfAmp",
+            x: 340,
+            y: 50,
+            ins: [
+              ["2", 0],
+              ["1", 0],
+            ],
+            inNames: ["in0", "in1"],
+            outNames: ["out"],
+            params: {},
           },
-          "4": {
-            type: 'Knob', name: 'ChordA', x: 40, y: 190,
-            ins: [], inNames: [], outNames: [''],
-            params: { minVal: 150, maxVal: 800, value: 261.63, deviceId: null, controlId: null }
+          4: {
+            type: "Knob",
+            name: "ChordA",
+            x: 40,
+            y: 190,
+            ins: [],
+            inNames: [],
+            outNames: [""],
+            params: {
+              minVal: 150,
+              maxVal: 800,
+              value: 261.63,
+              deviceId: null,
+              controlId: null,
+            },
           },
-          "5": {
-            type: 'Sine', name: 'ChordSineA', x: 200, y: 190,
-            ins: [["4", 0], null], inNames: ['freq','sync'], outNames: ['out'],
-            params: { minVal: -1, maxVal: 1 }
+          5: {
+            type: "Sine",
+            name: "ChordSineA",
+            x: 200,
+            y: 190,
+            ins: [["4", 0], null],
+            inNames: ["freq", "sync"],
+            outNames: ["out"],
+            params: { minVal: -1, maxVal: 1 },
           },
-          "6": {
-            type: 'Knob', name: 'ChordB', x: 40, y: 250,
-            ins: [], inNames: [], outNames: [''],
-            params: { minVal: 150, maxVal: 800, value: 329.63, deviceId: null, controlId: null }
+          6: {
+            type: "Knob",
+            name: "ChordB",
+            x: 40,
+            y: 250,
+            ins: [],
+            inNames: [],
+            outNames: [""],
+            params: {
+              minVal: 150,
+              maxVal: 800,
+              value: 329.63,
+              deviceId: null,
+              controlId: null,
+            },
           },
-          "7": {
-            type: 'Sine', name: 'ChordSineB', x: 200, y: 250,
-            ins: [["6", 0], null], inNames: ['freq','sync'], outNames: ['out'],
-            params: { minVal: -1, maxVal: 1 }
+          7: {
+            type: "Sine",
+            name: "ChordSineB",
+            x: 200,
+            y: 250,
+            ins: [["6", 0], null],
+            inNames: ["freq", "sync"],
+            outNames: ["out"],
+            params: { minVal: -1, maxVal: 1 },
           },
-          "8": {
-            type: 'Knob', name: 'ChordC', x: 40, y: 310,
-            ins: [], inNames: [], outNames: [''],
-            params: { minVal: 150, maxVal: 800, value: 392, deviceId: null, controlId: null }
+          8: {
+            type: "Knob",
+            name: "ChordC",
+            x: 40,
+            y: 310,
+            ins: [],
+            inNames: [],
+            outNames: [""],
+            params: {
+              minVal: 150,
+              maxVal: 800,
+              value: 392,
+              deviceId: null,
+              controlId: null,
+            },
           },
-          "9": {
-            type: 'Sine', name: 'ChordSineC', x: 200, y: 310,
-            ins: [["8", 0], null], inNames: ['freq','sync'], outNames: ['out'],
-            params: { minVal: -1, maxVal: 1 }
+          9: {
+            type: "Sine",
+            name: "ChordSineC",
+            x: 200,
+            y: 310,
+            ins: [["8", 0], null],
+            inNames: ["freq", "sync"],
+            outNames: ["out"],
+            params: { minVal: -1, maxVal: 1 },
           },
-          "10": {
-            type: 'Add', name: 'ChordMixA', x: 340, y: 240,
-            ins: [["5", 0], ["7", 0]], inNames: ['in0','in1'], outNames: ['out'],
-            params: {}
+          10: {
+            type: "Add",
+            name: "ChordMixA",
+            x: 340,
+            y: 240,
+            ins: [
+              ["5", 0],
+              ["7", 0],
+            ],
+            inNames: ["in0", "in1"],
+            outNames: ["out"],
+            params: {},
           },
-          "11": {
-            type: 'Add', name: 'ChordMixB', x: 470, y: 270,
-            ins: [["10", 0], ["9", 0]], inNames: ['in0','in1'], outNames: ['out'],
-            params: {}
+          11: {
+            type: "Add",
+            name: "ChordMixB",
+            x: 470,
+            y: 270,
+            ins: [
+              ["10", 0],
+              ["9", 0],
+            ],
+            inNames: ["in0", "in1"],
+            outNames: ["out"],
+            params: {},
           },
-          "12": {
-            type: 'Knob', name: 'ChordGain', x: 40, y: 380,
-            ins: [], inNames: [], outNames: [''],
-            params: { minVal: 0, maxVal: 1, value: 0.2, deviceId: null, controlId: null }
+          12: {
+            type: "Knob",
+            name: "ChordGain",
+            x: 40,
+            y: 380,
+            ins: [],
+            inNames: [],
+            outNames: [""],
+            params: {
+              minVal: 0,
+              maxVal: 1,
+              value: 0.2,
+              deviceId: null,
+              controlId: null,
+            },
           },
-          "13": {
-            type: 'Mul', name: 'ChordAmp', x: 580, y: 270,
-            ins: [["11", 0], ["12", 0]], inNames: ['in0','in1'], outNames: ['out'],
-            params: {}
+          13: {
+            type: "Mul",
+            name: "ChordAmp",
+            x: 580,
+            y: 270,
+            ins: [
+              ["11", 0],
+              ["12", 0],
+            ],
+            inNames: ["in0", "in1"],
+            outNames: ["out"],
+            params: {},
           },
-          "14": {
-            type: 'Add', name: 'MasterMix', x: 720, y: 160,
-            ins: [["3", 0], ["13", 0]], inNames: ['in0','in1'], outNames: ['out'],
-            params: {}
+          14: {
+            type: "Add",
+            name: "MasterMix",
+            x: 720,
+            y: 160,
+            ins: [
+              ["3", 0],
+              ["13", 0],
+            ],
+            inNames: ["in0", "in1"],
+            outNames: ["out"],
+            params: {},
           },
-          "15": {
-            type: 'AudioOut', name: 'Out', x: 880, y: 150,
-            ins: [["14", 0], ["14", 0]], inNames: ['left','right'], outNames: [],
-            params: {}
-          }
-        }
+          15: {
+            type: "AudioOut",
+            name: "Out",
+            x: 880,
+            y: 150,
+            ins: [
+              ["14", 0],
+              ["14", 0],
+            ],
+            inNames: ["left", "right"],
+            outNames: [],
+            params: {},
+          },
+        },
       };
+
+      const resolveProjectEndpoint = (projectId) => {
+        return new URL(
+          `../projects/${projectId}`,
+          window.location.href
+        ).toString();
+      };
+
+      async function loadProjectFromSrc(src) {
+        const resp = await fetch(src, { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const txt = await resp.text();
+        return JSON.parse(txt);
+      }
+
+      async function loadProjectFromId(projectId) {
+        if (!/^[0-9]+$/.test(projectId)) {
+          throw new Error(`Invalid project id "${projectId}"`);
+        }
+        const endpoint = resolveProjectEndpoint(projectId);
+        const resp = await fetch(endpoint, { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json = await resp.json();
+        if (!json || typeof json.data !== "string") {
+          throw new Error("Malformed project payload");
+        }
+        const data = json.data;
+        return JSON.parse(data);
+      }
+
+      const DEFAULT_PATCH_SRC = "/public/examples/falling_in_love_with_waterfalls.ncft";
 
       async function loadInitialProject() {
         const url = new URL(window.location.href);
-        const src = url.searchParams.get('src');
-        if (!src) return defaultProject;
+        const src = url.searchParams.get("src");
+        const projectId = url.searchParams.get("project");
 
         try {
-          const resp = await fetch(src, { cache: 'no-store' });
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const txt = await resp.text();
-          return JSON.parse(txt);
+          if (src) {
+            return await loadProjectFromSrc(src);
+          }
+          if (projectId) {
+            return await loadProjectFromId(projectId);
+          }
         } catch (e) {
-          console.warn('Failed to load src project, using default:', e);
-          return defaultProject;
+          console.warn(
+            "Failed to load remote project, falling back to default:",
+            e
+          );
         }
+
+        try {
+          return await loadProjectFromSrc(DEFAULT_PATCH_SRC);
+        } catch (e) {
+          console.warn("Failed to load default Falling Waterfalls patch:", e);
+        }
+
+        return defaultProject;
       }
 
       // 2) Model + AudioView 초기화 (main.js 없이 순수 엔진만 사용)
@@ -135,111 +340,182 @@
       const audioView = new AudioView(model);
 
       // 간단한 앱 래퍼: 외부에서 상태 접근/변경용
-      const app = {
+        const app = {
         getState: () => model.state,
         setState: (state) => model.load(state),
-        updateParam: (nodeId, paramName, value) => model.update(new SetParam(String(nodeId), paramName, value)),
+        updateParam: (nodeId, paramName, value) =>
+          model.update(new SetParam(String(nodeId), paramName, value)),
         play: () => model.update(new Play()),
         stop: () => model.update(new Stop()),
         model,
-        audioView
+        audioView,
       };
       window.noiseCraftApp = app;
 
+      const statusEl = document.getElementById("status");
+      const btnStart = document.getElementById("btn_start");
+      const btnStop = document.getElementById("btn_stop");
+      const btnOpen = document.getElementById("btn_open");
+      const fileInput = document.getElementById("file_input");
+
+      const ensurePlaying = (customStatus) => {
+        if (!btnStart || !btnStop || !statusEl) return;
+        try {
+          app.play();
+          btnStart.style.display = "none";
+          btnStop.style.display = "inline-block";
+          statusEl.textContent = customStatus || "Playing";
+        } catch (err) {
+          console.warn("Failed to start audio automatically", err);
+          statusEl.textContent = "Autoplay blocked. Click Start.";
+        }
+      };
+
       const handleExternalMessage = (event) => {
         const data = event.data;
-        if (!data || typeof data !== 'object') return;
-        if (data.type === 'noiseCraft:setParams' && Array.isArray(data.params)) {
+        if (!data || typeof data !== "object") return;
+        if (
+          data.type === "noiseCraft:setParams" &&
+          Array.isArray(data.params)
+        ) {
+          try {
+            console.log("[Embedded] received params", data.params);
+          } catch (e) {}
           data.params.forEach((param) => {
             if (!param || param.value === undefined) return;
             const nodeId = param.nodeId ?? param.id;
             if (nodeId === undefined) return;
-            const paramName = param.paramName ?? 'value';
-            app.updateParam(String(nodeId), paramName, Number(param.value));
+            const paramName = param.paramName ?? "value";
+            const id = String(nodeId);
+            const node = app.model?.state?.nodes?.[id];
+            if (!node || !node.params || !(paramName in node.params)) {
+              return;
+            }
+            app.updateParam(id, paramName, Number(param.value));
           });
-        } else if (data.type === 'noiseCraft:play') {
-          app.play();
-          if (statusEl) statusEl.textContent = 'Playing';
-        } else if (data.type === 'noiseCraft:stop') {
+        } else if (data.type === "noiseCraft:play") {
+          ensurePlaying();
+        } else if (data.type === "noiseCraft:stop") {
           app.stop();
-          if (statusEl) statusEl.textContent = 'Stopped';
+          if (statusEl) statusEl.textContent = "Stopped";
         }
       };
-      window.addEventListener('message', handleExternalMessage);
+      window.addEventListener("message", handleExternalMessage);
 
       // 3) 초기 프로젝트 로드
-      const statusEl = document.getElementById('status');
-      const btnStart = document.getElementById('btn_start');
-      const btnStop = document.getElementById('btn_stop');
-
       const initialState = await loadInitialProject();
       app.setState(initialState);
-      statusEl.textContent = 'Project loaded. Click Start to begin audio.';
+      statusEl.textContent = "Project loaded. Click Start to begin audio.";
 
       // 4) 오디오 시작/정지 (브라우저 자동재생 정책 대응)
       btnStart.onclick = () => {
-        app.play();
-        btnStart.style.display = 'none';
-        btnStop.style.display = 'inline-block';
-        statusEl.textContent = 'Playing';
+        ensurePlaying();
       };
       btnStop.onclick = () => {
         app.stop();
-        btnStop.style.display = 'none';
-        btnStart.style.display = 'inline-block';
-        statusEl.textContent = 'Stopped';
+        btnStop.style.display = "none";
+        btnStart.style.display = "inline-block";
+        statusEl.textContent = "Stopped";
       };
+
+      const handleFileSelection = (event) => {
+        const file = event.target?.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const text = e?.target?.result;
+            if (typeof text !== "string")
+              throw new Error("Invalid file content");
+            const data = JSON.parse(text);
+            app.setState(data);
+            statusEl.textContent = `Loaded "${file.name}". Starting…`;
+            ensurePlaying();
+          } catch (err) {
+            console.error("Failed to load project file", err);
+            statusEl.textContent = "Failed to load project";
+            alert(
+              "프로젝트 파일을 불러오지 못했습니다. .ncft/.json 형식을 확인하세요."
+            );
+          } finally {
+            if (event.target) {
+              event.target.value = "";
+            }
+          }
+        };
+        reader.readAsText(file, "utf-8");
+      };
+
+      if (btnOpen && fileInput) {
+        btnOpen.onclick = () => fileInput.click();
+        fileInput.addEventListener("change", handleFileSelection);
+      }
 
       // 5) 실시간 연동: WebSocket 또는 Socket.IO 중 하나를 사용
       const urlParams = new URL(window.location.href).searchParams;
-      const wsURL = urlParams.get('ws') || '';
-      const ioURL = urlParams.get('io') || '';
+      const wsURL = urlParams.get("ws") || "";
+      const ioURL = urlParams.get("io") || "";
 
       // 표준 WebSocket 연동
       if (wsURL) {
         try {
           const socket = new WebSocket(wsURL);
-          socket.addEventListener('open', () => statusEl.textContent = 'Playing (WS connected)');
-          socket.addEventListener('close', () => statusEl.textContent = 'Playing (WS closed)');
-          socket.addEventListener('error', () => statusEl.textContent = 'Playing (WS error)');
-          socket.addEventListener('message', (event) => {
+          socket.addEventListener(
+            "open",
+            () => (statusEl.textContent = "Playing (WS connected)")
+          );
+          socket.addEventListener(
+            "close",
+            () => (statusEl.textContent = "Playing (WS closed)")
+          );
+          socket.addEventListener(
+            "error",
+            () => (statusEl.textContent = "Playing (WS error)")
+          );
+          socket.addEventListener("message", (event) => {
             try {
               const msg = JSON.parse(event.data);
-              if (msg.type === 'setParam') {
+              if (msg.type === "setParam") {
                 app.updateParam(msg.nodeId, msg.paramName, msg.value);
               }
             } catch (e) {
-              console.warn('WS message parse error', e);
+              console.warn("WS message parse error", e);
             }
           });
         } catch (e) {
-          console.warn('Failed to open WebSocket:', e);
+          console.warn("Failed to open WebSocket:", e);
         }
       }
 
       // Socket.IO 연동 (쿼리스트링 io= 으로 서버 URL 지정)
       if (!wsURL && ioURL) {
         // 동적으로 Socket.IO 클라이언트 로드
-        const script = document.createElement('script');
-        script.src = 'https://cdn.socket.io/4.7.4/socket.io.min.js';
+        const script = document.createElement("script");
+        script.src = "https://cdn.socket.io/4.7.4/socket.io.min.js";
         script.onload = () => {
           try {
             // @ts-ignore
-            const sock = window.io(ioURL, { transports: ['websocket'], query: { type: 'spectator' } });
-            const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
-            sock.on('connect', () => setStatus('Playing (IO connected)'));
-            sock.on('disconnect', () => setStatus('Playing (IO disconnected)'));
-            sock.on('param', (msg) => {
+            const sock = window.io(ioURL, {
+              path: "/socket",
+              transports: ["websocket"],
+              query: { type: "spectator" },
+            });
+            const setStatus = (t) => {
+              if (statusEl) statusEl.textContent = t;
+            };
+            sock.on("connect", () => setStatus("Playing (IO connected)"));
+            sock.on("disconnect", () => setStatus("Playing (IO disconnected)"));
+            sock.on("param", (msg) => {
               try {
-                if (msg && msg.type === 'setParam') {
+                if (msg && msg.type === "setParam") {
                   app.updateParam(msg.nodeId, msg.paramName, msg.value);
                 }
               } catch (e) {
-                console.warn('IO param handler error', e);
+                console.warn("IO param handler error", e);
               }
             });
           } catch (e) {
-            console.warn('Failed to open Socket.IO:', e);
+            console.warn("Failed to open Socket.IO:", e);
           }
         };
         document.head.appendChild(script);

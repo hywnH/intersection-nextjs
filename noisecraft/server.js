@@ -12,6 +12,8 @@ import ejs from 'ejs';
 // Load the model so we can validate projects
 import * as model from './public/model.js';
 
+let cachedProjectData = null;
+
 // Initializing application configuration parameters
 const dbFilePath = process.env.DB_FILE_PATH || './database.db';
 const serverHTTPPortNo = process.env.HTTP_PORT_NO  || 7773;
@@ -378,6 +380,40 @@ function getQueryValue(sqlQuery, vars)
 
 // Serve static file requests
 app.use('/public', express.static('public'));
+
+app.post('/current-project', jsonParser, function (req, res)
+{
+    try {
+        let data = req.body?.data ?? req.body?.project ?? req.body;
+        if (typeof data === 'object') {
+            data = JSON.stringify(data);
+        }
+        if (typeof data !== 'string') {
+            return res.sendStatus(400);
+        }
+        JSON.parse(data);
+        cachedProjectData = data;
+        res.setHeader('Content-Type', 'application/json');
+        res.send(JSON.stringify({ ok: true }));
+    } catch (err) {
+        console.warn('Failed to cache project for embed', err);
+        res.sendStatus(400);
+    }
+});
+
+app.get('/current-project', function (req, res)
+{
+    if (!cachedProjectData)
+    {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'application/json');
+        res.send(JSON.stringify({ error: 'No cached project' }));
+        return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(cachedProjectData);
+});
 
 // Compile the index page EJS template
 const indexTemplate = ejs.compile(

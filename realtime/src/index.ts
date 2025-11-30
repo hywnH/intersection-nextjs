@@ -125,6 +125,59 @@ let largestClusterId: string | null = null;
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+const NOISE_SLOT_COUNT = 4;
+type NoiseSlotEntry = {
+  slot: number;
+  nodeIds: string[];
+  label: string;
+};
+const noiseSlotLabels = [
+  "Self Frequency",
+  "Self Gain",
+  "Cluster Chord",
+  "Cluster Gain",
+];
+const createEmptyNoiseSlot = (slot: number): NoiseSlotEntry => ({
+  slot,
+  nodeIds: [],
+  label: noiseSlotLabels[slot] || `Slot ${slot + 1}`,
+});
+let noiseSlots: NoiseSlotEntry[] = Array.from(
+  { length: NOISE_SLOT_COUNT },
+  (_, slot) => createEmptyNoiseSlot(slot)
+);
+
+const sanitizeNoiseSlotPayload = (payload: unknown) => {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    typeof (payload as { slot?: unknown }).slot !== "number"
+  ) {
+    return null;
+  }
+  const slot = (payload as { slot: number }).slot;
+  if (slot < 0 || slot >= NOISE_SLOT_COUNT) {
+    return null;
+  }
+  const rawNodeIds = (payload as { nodeIds?: unknown }).nodeIds;
+  const nodeIds = Array.isArray(rawNodeIds)
+    ? rawNodeIds
+        .map((id) => id)
+        .filter(
+          (id): id is string => typeof id === "string" && id.trim().length > 0
+        )
+    : [];
+  return {
+    slot,
+    nodeIds,
+  };
+};
+
+const broadcastNoiseSlots = () => {
+  io.emit("noiseSlots:update", noiseSlots);
+};
+
 function recomputeClusters() {
   const arr = Array.from(players.values());
   const visited = new Set<string>();
@@ -297,6 +350,8 @@ function removePlayerCollisions(id: string) {
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
+  "http://localhost:4000",
+  "http://127.0.0.1:4000",
   "http://localhost:7773",
   "http://127.0.0.1:7773",
   "https://intersection-web.onrender.com",
@@ -335,6 +390,7 @@ const io = new Server(httpServer, {
 
 io.on("connection", (socket) => {
   const type = (socket.handshake.query?.type as string) || "player";
+  socket.emit("noiseSlots:init", noiseSlots);
 
   if (type === "spectator") {
     spectators.add(socket.id);
@@ -422,6 +478,39 @@ io.on("connection", (socket) => {
     try {
       io.emit("param", payload);
     } catch {}
+  });
+
+  socket.on("noiseSlots:set", (payload: unknown) => {
+    const sanitized = sanitizeNoiseSlotPayload(payload);
+    if (!sanitized) {
+      return;
+    }
+    noiseSlots = noiseSlots.map((entry) =>
+      entry.slot === sanitized.slot
+        ? {
+            ...entry,
+            nodeIds: sanitized.nodeIds.slice(0, 8),
+          }
+        : entry
+    );
+    broadcastNoiseSlots();
+  });
+
+  socket.on("noiseSlots:clear", (payload: unknown) => {
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      typeof (payload as { slot?: unknown }).slot !== "number"
+    ) {
+      return;
+    }
+    const slot = (payload as { slot: number }).slot;
+    if (slot < 0 || slot >= NOISE_SLOT_COUNT) return;
+    noiseSlots = noiseSlots.map((entry) =>
+      entry.slot === slot ? createEmptyNoiseSlot(slot) : entry
+    );
+    broadcastNoiseSlots();
   });
 });
 

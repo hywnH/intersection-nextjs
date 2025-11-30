@@ -45,6 +45,10 @@ const createBaseState = (): Omit<GameState, "mode"> => ({
     cluster: null,
     global: null,
   },
+  noiseSlots: Array.from({ length: 4 }, (_, slot) => ({
+    slot,
+    nodeIds: [],
+  })),
 });
 
 export const createInitialState = (mode: Mode = "personal"): GameState => ({
@@ -189,6 +193,11 @@ export const gameReducer = (
       return {
         ...state,
         audio: { ...state.audio, ...action.audio },
+      };
+    case "SET_NOISE_SLOTS":
+      return {
+        ...state,
+        noiseSlots: action.slots,
       };
     case "PUSH_SNAPSHOT_FRAME": {
       const MAX_BUFFER_MS = 600;

@@ -1,6 +1,6 @@
 "use client";
 
-import type { GameAction, GameState, Mode } from "@/types/game";
+import type { GameAction, GameState, Mode, NoiseSlot } from "@/types/game";
 import type {
   ServerPlayer,
   ServerCollisionEvent,
@@ -46,6 +46,29 @@ export const registerSocketEvents = ({
   getState,
 }: RegisterSocketOptions) => {
   const handlers: Array<[string, (...args: unknown[]) => void]> = [];
+  const normalizeNoiseSlots = (payload: unknown): NoiseSlot[] => {
+    const base = Array.from({ length: 4 }, (_, slot) => ({
+      slot,
+      nodeIds: [] as string[],
+    }));
+    if (!Array.isArray(payload)) return base;
+    return base.map((entry) => {
+      const match = payload.find(
+        (item) =>
+          item &&
+          typeof item === "object" &&
+          !Array.isArray(item) &&
+          (item as { slot?: unknown }).slot === entry.slot
+      ) as { nodeIds?: unknown } | undefined;
+      const rawNodeIds = Array.isArray(match?.nodeIds)
+        ? (match?.nodeIds as unknown[])
+        : [];
+      const nodes = rawNodeIds.filter(
+        (id): id is string => typeof id === "string" && id.length > 0
+      );
+      return { ...entry, nodeIds: nodes.slice(0, 8) };
+    });
+  };
 
   const onConnect = () => {
     dispatch({
@@ -257,6 +280,13 @@ export const registerSocketEvents = ({
     });
   };
 
+  const onNoiseSlots = (payload: unknown) => {
+    dispatch({
+      type: "SET_NOISE_SLOTS",
+      slots: normalizeNoiseSlots(payload),
+    });
+  };
+
   const onLeaderboard = (payload: { players?: number } = {}) => {
     if (typeof payload.players === "number") {
       dispatch({
@@ -340,6 +370,8 @@ export const registerSocketEvents = ({
   handlers.push(["audioSelf", handleAudioSelf]);
   handlers.push(["audioCluster", handleAudioCluster]);
   handlers.push(["audioGlobal", handleAudioGlobal]);
+  handlers.push(["noiseSlots:init", (...args: unknown[]) => onNoiseSlots(args[0])]);
+  handlers.push(["noiseSlots:update", (...args: unknown[]) => onNoiseSlots(args[0])]);
 
   handlers.forEach(([event, handler]) => {
     socket.on(event, handler);

@@ -16,6 +16,7 @@
     "react-dom": "17.0.2",
     "react-scripts": "5.0.0",
     "three": "0.125.0",
+    "meshline": "^3.3.1",
     "threejs-meshline": "2.0.12"
   },
   "devDependencies": {

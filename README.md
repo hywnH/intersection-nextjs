@@ -2,6 +2,7 @@
 
 `intersection-nextjs`는 Next.js(App Router) 기반 프런트엔드와 Socket.IO 기반 실시간 서버(`realtime/`)를 함께 담고 있습니다. 개발 환경은 Docker Compose, 프로덕션은 단일 컨테이너 이미지로 배포할 수 있습니다.
 
+
 ## 프로젝트 구조
 
 - `src/app/*`: Next.js App Router 페이지 및 컴포넌트
@@ -79,6 +80,8 @@ docker compose -f docker-compose.prod.yml up --build -d
 
 - `NEXT_PUBLIC_WS_URL=/socket`
 - `NEXT_PUBLIC_NOISECRAFT_WS_URL=/audiocraft`
+- `NEXT_PUBLIC_NOISECRAFT_PATCH_SRC=/audiocraft/public/examples/your_patch.ncft` (선택)
+- `NEXT_PUBLIC_NOISECRAFT_PATCH_PROJECT_ID=1234` (선택, NoiseCraft 공유 프로젝트 ID)
 
 관련 파일
 
@@ -110,10 +113,20 @@ docker run -p 3000:3000 intersection:web
 
 ## 환경 변수(요약)
 
-- `NEXT_PUBLIC_WS_URL`: 브라우저가 접속하는 공개 WS 주소(기본 http://localhost:3001/socket)
+- `NEXT_PUBLIC_WS_URL`: 브라우저가 접속하는 공개 WS 주소(기본 http://localhost:3001/socket, prod에서는 배포 환경에 맞추어 설정)
 - `NEXT_PUBLIC_NOISECRAFT_WS_URL`: NoiseCraft iframe 공개 URL(기본 /audiocraft, dev 기본 http://localhost:4000)
+- `NEXT_PUBLIC_NOISECRAFT_PATCH_SRC`: NoiseCraft 임베드가 불러올 .ncft 절대/상대 경로(기본 `/audiocraft/current-project`)
+- `NEXT_PUBLIC_NOISECRAFT_PATCH_PROJECT_ID`: NoiseCraft 서버의 공유 프로젝트 ID(위 설정 대신 선택)
 - `REALTIME_INTERNAL_URL`: SSR/서버-서버 통신용 내부 주소(예: http://game:3001)
 - `PORT`, `HOST`: `realtime`에서 사용(Compose/All-in-one에서 각각 주입)
+
+### NoiseCraft 슬롯 브리지(4채널)
+
+- `realtime` Socket.IO 서버(`/socket`)는 4개의 Noise Slot(0~3)을 유지합니다. 각각은 Self Frequency, Self Gain, Cluster Chord, Cluster Gain
+  스트림을 의미하며, 슬롯이 비어 있으면 기본 내장 패치 노드(`0/1/4/6/8/12`)로 되돌아갑니다.
+- `noisecraft` 메인 UI(`http://localhost:4000/`) 우측 하단에 “Noise Slots” 패널이 추가되어 있으며, 그래프에서 선택한 노드를 각 슬롯에
+  매핑하거나 해제할 수 있습니다. 이 정보는 `/socket`으로 브로드캐스트되고 Next.js 프런트가 슬롯별 값을 계산해 해당 노드에 `SetParam`
+  메시지를 전송합니다.
 
 ## 프로토콜 호환(핵심 이벤트)
 
