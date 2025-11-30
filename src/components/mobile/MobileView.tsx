@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGameClient } from "@/lib/game/hooks";
 import { renderScene } from "@/lib/game/renderer";
 import {
@@ -9,19 +9,132 @@ import {
 } from "@/lib/game/input";
 import { addResizeListener } from "@/lib/game/window";
 import CanvasSurface from "@/components/shared/CanvasSurface";
+import { buildNoiseCraftParams, postNoiseCraftParams, resolveNoiseCraftEmbed } from "@/lib/audio/noiseCraft";
+import type { GameState, PlayerSnapshot } from "@/types/game";
 import Hud from "./Hud";
 import StatusBanner from "./StatusBanner";
 import Controls from "./Controls";
+
+const INTERPOLATION_LAG_MS = Number(
+  process.env.NEXT_PUBLIC_INTERP_LAG_MS ?? 80
+);
+const DISABLE_INTERPOLATION =
+  process.env.NEXT_PUBLIC_DISABLE_INTERPOLATION === "true" ||
+  process.env.NEXT_PUBLIC_DISABLE_INTERP === "true";
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+const buildInterpolatedState = (state: GameState): GameState => {
+  if (
+    DISABLE_INTERPOLATION ||
+    state.mode !== "personal" ||
+    state.snapshotBuffer.length === 0
+  ) {
+    return state;
+  }
+
+  const target = Date.now() - INTERPOLATION_LAG_MS;
+  const frames = state.snapshotBuffer;
+  let older = frames[0];
+  let newer = frames[frames.length - 1];
+
+  for (let i = 0; i < frames.length; i += 1) {
+    const frame = frames[i];
+    if (frame.timestamp <= target) {
+      older = frame;
+    }
+    if (frame.timestamp >= target) {
+      newer = frame;
+      break;
+    }
+  }
+
+  if (newer.timestamp < target) {
+    older = newer;
+  }
+
+  let alpha = 0;
+  if (newer !== older && newer.timestamp !== older.timestamp) {
+    alpha = (target - older.timestamp) / (newer.timestamp - older.timestamp);
+    alpha = Math.min(Math.max(alpha, 0), 1);
+  }
+
+  const playerIds = new Set<string>([
+    ...older.order,
+    ...newer.order,
+    ...Object.keys(older.players),
+    ...Object.keys(newer.players),
+  ]);
+  const interpolatedPlayers: Record<string, PlayerSnapshot> = {};
+
+  playerIds.forEach((id) => {
+    const from = older.players[id] ?? newer.players[id];
+    const to = newer.players[id] ?? older.players[id];
+    if (!from || !to) return;
+    const cell = {
+      ...from.cell,
+      position: {
+        x: lerp(from.cell.position.x, to.cell.position.x, alpha),
+        y: lerp(from.cell.position.y, to.cell.position.y, alpha),
+      },
+      velocity: {
+        x: lerp(from.cell.velocity.x, to.cell.velocity.x, alpha),
+        y: lerp(from.cell.velocity.y, to.cell.velocity.y, alpha),
+      },
+    };
+    interpolatedPlayers[id] = {
+      ...from,
+      cell,
+      lastUpdate: Date.now(),
+    };
+  });
+
+  const order = Array.from(playerIds).filter((id) => interpolatedPlayers[id]);
+
+  let camera = state.camera;
+  if (state.selfId && interpolatedPlayers[state.selfId]) {
+    camera = {
+      ...state.camera,
+      position: {
+        x: interpolatedPlayers[state.selfId].cell.position.x,
+        y: interpolatedPlayers[state.selfId].cell.position.y,
+      },
+    };
+  }
+
+  return {
+    ...state,
+    players: interpolatedPlayers,
+    playerOrder: order,
+    camera,
+  };
+};
 
 const MobileView = () => {
   const { state, dispatch, socket } = useGameClient("personal");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const latestState = useRef(state);
+  const audioIframeRef = useRef<HTMLIFrameElement>(null);
+  const [noiseCraftOrigin, setNoiseCraftOrigin] = useState<string | null>(null);
+  const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
 
   useEffect(() => {
     latestState.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const { src, origin } = resolveNoiseCraftEmbed();
+    setNoiseCraftSrc(src);
+    setNoiseCraftOrigin(origin);
+  }, []);
+
+  useEffect(() => {
+    if (!noiseCraftOrigin) return;
+    const params = buildNoiseCraftParams(state.audio, "personal");
+    postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
+  }, [state.audio, noiseCraftOrigin]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -38,9 +151,14 @@ const MobileView = () => {
     window.addEventListener("resize", resize);
 
     const loop = () => {
+      const baseState = latestState.current;
+      const renderState =
+        baseState.mode === "personal"
+          ? buildInterpolatedState(baseState)
+          : baseState;
       renderScene({
         ctx,
-        state: latestState.current,
+        state: renderState,
         width: canvas.width,
         height: canvas.height,
       });
@@ -191,6 +309,19 @@ const MobileView = () => {
       <Hud state={state} />
       <StatusBanner state={state} />
       <Controls />
+      <div className="pointer-events-auto absolute bottom-4 left-4 hidden w-60 flex-col gap-2 rounded-xl bg-black/70 p-3 text-xs text-white sm:flex">
+        <p className="text-white/70">Personal Audio (NoiseCraft)</p>
+        <iframe
+          ref={audioIframeRef}
+          src={noiseCraftSrc}
+          width="220"
+          height="120"
+          allow="autoplay"
+          title="NoiseCraft Personal"
+          style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
+        />
+        <p className="text-white/50">Tap “Start Audio” inside panel.</p>
+      </div>
     </div>
   );
 };

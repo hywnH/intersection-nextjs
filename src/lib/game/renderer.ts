@@ -70,6 +70,7 @@ const renderPlayers = ({
   overrides?: { cameraPosition?: Vec2; zoom?: number };
 }) => {
   ctx.save();
+  const predictionVisualBlend = 0.85;
 
   if (blend > 0.01) {
     ctx.strokeStyle = `rgba(255,255,255,${0.15 * blend})`;
@@ -91,16 +92,33 @@ const renderPlayers = ({
       return;
     }
     const { cell, depth } = player;
+    const hasPredictionMeta =
+      Boolean(
+        player.isPredicted &&
+          player.lastServerPosition &&
+          player.predictionOffset
+      ) && isPersonal;
+    const renderBasePosition = hasPredictionMeta
+      ? {
+          x:
+            player.lastServerPosition!.x +
+            player.predictionOffset!.x * predictionVisualBlend,
+          y:
+            player.lastServerPosition!.y +
+            player.predictionOffset!.y * predictionVisualBlend,
+        }
+      : cell.position;
+
     // dead-reckoning: server 업데이트 시간으로부터 경과시간 동안 속도로 예측
     const t = Math.min((Date.now() - player.lastUpdate) / 1000, 0.25);
     const predicted: Vec2 = {
-      x: cell.position.x + cell.velocity.x * t,
-      y: cell.position.y + cell.velocity.y * t,
+      x: renderBasePosition.x + cell.velocity.x * t,
+      y: renderBasePosition.y + cell.velocity.y * t,
     };
     const planePos = project(state, width, height, predicted, overrides);
     const idx = orderIndex.get(playerId) ?? index;
     const laneY = laneGap * (idx + 1);
-    const lineX = (cell.position.x / state.gameSize.width) * width;
+    const lineX = (renderBasePosition.x / state.gameSize.width) * width;
 
     const screenPos = {
       x: planePos.x * (1 - blend) + lineX * blend,

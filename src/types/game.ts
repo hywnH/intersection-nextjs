@@ -21,6 +21,45 @@ export interface PlayerSnapshot {
   lastUpdate: number;
   isSelf?: boolean;
   depth?: number; // z축(뷰 전환용)
+  isPredicted?: boolean;
+  lastServerPosition?: Vec2;
+  lastServerVelocity?: Vec2;
+  predictionOffset?: Vec2;
+}
+
+export interface SnapshotFrame {
+  timestamp: number;
+  players: Record<string, PlayerSnapshot>;
+  order: string[];
+  fast?: boolean;
+}
+
+export interface AudioChordNote {
+  freq: number;
+  gain: number;
+}
+
+export interface AudioClusterState {
+  clusterId: string;
+  chord: AudioChordNote[];
+  memberCount: number;
+  centroid: Vec2;
+  gain: number;
+  updatedAt: number;
+  source: "cluster" | "global";
+}
+
+export interface AudioSelfState {
+  noiseLevel: number;
+  ambientLevel: number;
+  clusterId: string | null;
+  updatedAt: number;
+}
+
+export interface AudioState {
+  self: AudioSelfState | null;
+  cluster: AudioClusterState | null;
+  global: AudioClusterState | null;
 }
 
 export interface CollisionMark {
@@ -89,6 +128,8 @@ export interface GameState {
   playing: boolean;
   collisionLines: CollisionLine[];
   selfHighlightUntil: number;
+  snapshotBuffer: SnapshotFrame[];
+  audio: AudioState;
 }
 
 export type GameAction =
@@ -114,4 +155,6 @@ export type GameAction =
   | { type: "SET_COLLISION_LINES"; lines: CollisionLine[] }
   | { type: "SET_SELF_HIGHLIGHT"; until: number }
   | { type: "SET_GLOBAL_OVERLAY"; overlay: Partial<GlobalOverlay> }
+  | { type: "SET_AUDIO"; audio: Partial<AudioState> }
+  | { type: "PUSH_SNAPSHOT_FRAME"; frame: SnapshotFrame }
   | { type: "RESET" };

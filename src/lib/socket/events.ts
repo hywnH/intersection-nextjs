@@ -5,8 +5,13 @@ import type {
   ServerPlayer,
   ServerCollisionEvent,
   ServerCollisionLine,
+  ServerAudioSelf,
+  ServerAudioCluster,
+  ServerAudioGlobal,
 } from "@/types/server";
 import { mapServerPayloadToSnapshots } from "@/lib/game/mappers";
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 type MinimalSocket = {
   id?: string | null;
@@ -112,6 +117,7 @@ export const registerSocketEvents = ({
     meta?: {
       collisions?: ServerCollisionLine[];
       collisionEvents?: ServerCollisionEvent[];
+      fast?: boolean;
     }
   ) => {
     const effectivePlayerData = mode === "personal" ? playerData : undefined;
@@ -124,9 +130,37 @@ export const registerSocketEvents = ({
       selfId: currentSelfId,
       displayName,
     });
-    dispatch({ type: "SET_PLAYERS", players, order, selfId: currentSelfId });
+
+    if (mode === "personal" && currentSelfId) {
+      const serverSelf = players[currentSelfId];
+      if (serverSelf) {
+        players[currentSelfId] = {
+          ...serverSelf,
+          isPredicted: false,
+          predictionOffset: { x: 0, y: 0 },
+          lastServerPosition: { ...serverSelf.cell.position },
+          lastServerVelocity: { ...serverSelf.cell.velocity },
+        };
+      }
+    }
 
     if (mode === "personal") {
+      dispatch({
+        type: "PUSH_SNAPSHOT_FRAME",
+        frame: {
+          timestamp: Date.now(),
+          players,
+          order,
+          fast: Boolean(meta?.fast),
+        },
+      });
+    }
+
+    if (!meta?.fast) {
+      dispatch({ type: "SET_PLAYERS", players, order, selfId: currentSelfId });
+    }
+
+    if (mode === "personal" && !meta?.fast) {
       const focus =
         (currentSelfId && players[currentSelfId]?.cell.position) ??
         playerData?.target ??
@@ -172,6 +206,55 @@ export const registerSocketEvents = ({
         highlight,
       });
     }
+  };
+
+  const onAudioSelf = (payload?: ServerAudioSelf) => {
+    if (!payload) return;
+    dispatch({
+      type: "SET_AUDIO",
+      audio: {
+        self: {
+          noiseLevel: payload.noiseLevel ?? 0,
+          ambientLevel: payload.ambientLevel ?? 0,
+          clusterId: payload.clusterId ?? null,
+          updatedAt: Date.now(),
+        },
+      },
+    });
+  };
+
+  const toClusterState = (
+    payload?: ServerAudioCluster,
+    source: "cluster" | "global" = "cluster"
+  ) => {
+    if (!payload) return null;
+    return {
+      clusterId: payload.clusterId,
+      chord: payload.chord ?? [],
+      memberCount: payload.memberCount ?? 0,
+      centroid: payload.centroid ?? { x: 0, y: 0 },
+      gain: payload.gain ?? 0,
+      updatedAt: Date.now(),
+      source,
+    };
+  };
+
+  const onAudioCluster = (payload?: ServerAudioCluster) => {
+    dispatch({
+      type: "SET_AUDIO",
+      audio: {
+        cluster: toClusterState(payload, "cluster"),
+      },
+    });
+  };
+
+  const onAudioGlobal = (payload?: ServerAudioGlobal) => {
+    dispatch({
+      type: "SET_AUDIO",
+      audio: {
+        global: toClusterState(payload?.cluster, "global"),
+      },
+    });
   };
 
   const onLeaderboard = (payload: { players?: number } = {}) => {
@@ -240,6 +323,12 @@ export const registerSocketEvents = ({
   const handleKick = (...args: unknown[]) => onKick((args[0] as string) ?? "");
   const handleDisconnect = () => onDisconnect();
   const handleConnectError = (...args: unknown[]) => onConnectError((args[0] as Error) ?? new Error("connect_error"));
+  const handleAudioSelf = (...args: unknown[]) =>
+    onAudioSelf(args[0] as ServerAudioSelf | undefined);
+  const handleAudioCluster = (...args: unknown[]) =>
+    onAudioCluster(args[0] as ServerAudioCluster | undefined);
+  const handleAudioGlobal = (...args: unknown[]) =>
+    onAudioGlobal(args[0] as ServerAudioGlobal | undefined);
 
   handlers.push(["connect", handleConnect]);
   handlers.push(["welcome", handleWelcome]);
@@ -248,6 +337,9 @@ export const registerSocketEvents = ({
   handlers.push(["kick", handleKick]);
   handlers.push(["disconnect", handleDisconnect]);
   handlers.push(["connect_error", handleConnectError]);
+  handlers.push(["audioSelf", handleAudioSelf]);
+  handlers.push(["audioCluster", handleAudioCluster]);
+  handlers.push(["audioGlobal", handleAudioGlobal]);
 
   handlers.forEach(([event, handler]) => {
     socket.on(event, handler);

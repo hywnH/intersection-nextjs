@@ -39,6 +39,12 @@ const createBaseState = (): Omit<GameState, "mode"> => ({
   playing: false,
   collisionLines: [],
   selfHighlightUntil: 0,
+  snapshotBuffer: [],
+  audio: {
+    self: null,
+    cluster: null,
+    global: null,
+  },
 });
 
 export const createInitialState = (mode: Mode = "personal"): GameState => ({
@@ -179,6 +185,24 @@ export const gameReducer = (
         ...state,
         playing: action.playing,
       };
+    case "SET_AUDIO":
+      return {
+        ...state,
+        audio: { ...state.audio, ...action.audio },
+      };
+    case "PUSH_SNAPSHOT_FRAME": {
+      const MAX_BUFFER_MS = 600;
+      const MAX_BUFFER_FRAMES = 24;
+      const frames = [...state.snapshotBuffer, action.frame];
+      const cutoff = action.frame.timestamp - MAX_BUFFER_MS;
+      const trimmed = frames
+        .filter((frame) => frame.timestamp >= cutoff || frame.fast)
+        .slice(-MAX_BUFFER_FRAMES);
+      return {
+        ...state,
+        snapshotBuffer: trimmed,
+      };
+    }
     default:
       return state;
   }

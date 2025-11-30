@@ -11,7 +11,9 @@ const resolveColor = (player: ServerPlayer): string => {
   return DEFAULT_COLOR;
 };
 
-const pickCell = (player: ServerPlayer): {
+const pickCell = (
+  player: ServerPlayer
+): {
   position: Vec2;
   radius: number;
   mass: number;
@@ -64,6 +66,9 @@ export const toPlayerSnapshot = (
   const name = player.name ?? options.fallbackName ?? "";
   const cell = pickCell(player);
 
+  const lastServerPosition: Vec2 = { ...cell.position };
+  const lastServerVelocity: Vec2 = { ...cell.velocity };
+
   return {
     id,
     name,
@@ -78,6 +83,10 @@ export const toPlayerSnapshot = (
     lastUpdate: Date.now(),
     isSelf: options.isSelf,
     depth: cell.depth,
+    isPredicted: false,
+    lastServerPosition,
+    lastServerVelocity,
+    predictionOffset: { x: 0, y: 0 },
   };
 };
 

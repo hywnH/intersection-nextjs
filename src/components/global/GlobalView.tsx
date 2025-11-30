@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useGameClient } from "@/lib/game/hooks";
 import { renderScene } from "@/lib/game/renderer";
 import CanvasSurface from "@/components/shared/CanvasSurface";
+import {
+  buildNoiseCraftParams,
+  postNoiseCraftParams,
+  resolveNoiseCraftEmbed,
+} from "@/lib/audio/noiseCraft";
 
 type ProjectionMode = "plane" | "lines";
 
@@ -16,6 +21,8 @@ const GlobalView = () => {
   const latestState = useRef(state);
   const [projection, setProjection] = useState<ProjectionMode>("plane");
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [noiseCraftOrigin, setNoiseCraftOrigin] = useState<string | null>(null);
+  const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
   const transitionRef = useRef<{
     from: ProjectionMode;
     to: ProjectionMode;
@@ -90,21 +97,20 @@ const GlobalView = () => {
   }, [dispatch, state.gameSize.height, state.gameSize.width, projection]);
 
   useEffect(() => {
-    const isDev = process.env.NODE_ENV === "development";
-    const ncEnv =
-      process.env.NEXT_PUBLIC_NOISECRAFT_WS_URL ||
-      (isDev ? "http://localhost:4000" : "/audiocraft");
-    const rtEnv =
-      process.env.NEXT_PUBLIC_WS_URL ||
-      (isDev ? "http://localhost:3001/socket" : "/socket");
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const ncBase = ncEnv.startsWith("/") ? origin + ncEnv : ncEnv;
-    const rtUrl = rtEnv.startsWith("/") ? origin + rtEnv : rtEnv;
-    const src = `${ncBase.replace(/\/$/, "")}/public/embedded.html?io=${encodeURIComponent(rtUrl)}`;
+    if (typeof window === "undefined") return;
+    const { src, origin } = resolveNoiseCraftEmbed();
+    setNoiseCraftSrc(src);
+    setNoiseCraftOrigin(origin);
     if (iframeRef.current) {
       iframeRef.current.src = src;
     }
   }, []);
+
+  useEffect(() => {
+    if (!noiseCraftOrigin) return;
+    const params = buildNoiseCraftParams(state.audio, "global");
+    postNoiseCraftParams(iframeRef.current, noiseCraftOrigin, params);
+  }, [state.audio, noiseCraftOrigin]);
 
   const handleProjectionChange = (mode: ProjectionMode) => {
     if (mode === projection) return;
@@ -124,7 +130,7 @@ const GlobalView = () => {
         <div className="mb-2 text-white/70">NoiseCraft</div>
         <iframe
           ref={iframeRef}
-          src={"about:blank"}
+          src={noiseCraftSrc}
           width="420"
           height="120"
           style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
