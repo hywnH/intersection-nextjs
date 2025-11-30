@@ -28,6 +28,7 @@ export interface ServerCollisionLine {
   id: string;
   players: [string, string];
   startedAt: number;
+  lastEvent?: number;
 }
 
 export interface ServerCollisionEvent {

@@ -38,7 +38,7 @@
     <div class="wrap">
       <button id="btn_start">Start Audio</button>
       <button id="btn_stop" style="display: none">Stop</button>
-<!--      <button id="btn_open">Open Project</button>-->
+      <!--      <button id="btn_open">Open Project</button>-->
       <div class="status" id="status">Idle</div>
     </div>
     <input
@@ -305,7 +305,8 @@
         return JSON.parse(data);
       }
 
-      const DEFAULT_PATCH_SRC = "/public/examples/falling_in_love_with_waterfalls.ncft";
+      const DEFAULT_PATCH_SRC =
+        "/public/examples/falling_in_love_with_waterfalls.ncft";
 
       async function loadInitialProject() {
         const url = new URL(window.location.href);
@@ -340,7 +341,7 @@
       const audioView = new AudioView(model);
 
       // 간단한 앱 래퍼: 외부에서 상태 접근/변경용
-        const app = {
+      const app = {
         getState: () => model.state,
         setState: (state) => model.load(state),
         updateParam: (nodeId, paramName, value) =>
@@ -358,6 +359,17 @@
       const btnOpen = document.getElementById("btn_open");
       const fileInput = document.getElementById("file_input");
 
+      const notifyParent = (payload) => {
+        if (!payload || typeof payload !== "object") return;
+        if (window.parent && window.parent !== window) {
+          try {
+            window.parent.postMessage(payload, "*");
+          } catch (err) {
+            console.warn("Failed to notify parent window", err);
+          }
+        }
+      };
+
       const ensurePlaying = (customStatus) => {
         if (!btnStart || !btnStop || !statusEl) return;
         try {
@@ -365,9 +377,11 @@
           btnStart.style.display = "none";
           btnStop.style.display = "inline-block";
           statusEl.textContent = customStatus || "Playing";
+          notifyParent({ type: "noiseCraft:audioState", status: "playing" });
         } catch (err) {
           console.warn("Failed to start audio automatically", err);
           statusEl.textContent = "Autoplay blocked. Click Start.";
+          notifyParent({ type: "noiseCraft:audioState", status: "blocked" });
         }
       };
 
@@ -406,6 +420,11 @@
       const initialState = await loadInitialProject();
       app.setState(initialState);
       statusEl.textContent = "Project loaded. Click Start to begin audio.";
+      notifyParent({
+        type: "noiseCraft:projectLoaded",
+        title: initialState?.title || null,
+      });
+      notifyParent({ type: "noiseCraft:audioState", status: "ready" });
 
       // 4) 오디오 시작/정지 (브라우저 자동재생 정책 대응)
       btnStart.onclick = () => {
@@ -416,6 +435,7 @@
         btnStop.style.display = "none";
         btnStart.style.display = "inline-block";
         statusEl.textContent = "Stopped";
+        notifyParent({ type: "noiseCraft:audioState", status: "stopped" });
       };
 
       const handleFileSelection = (event) => {

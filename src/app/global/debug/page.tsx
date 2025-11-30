@@ -17,7 +17,7 @@ const GlobalPerspectiveView = dynamic(
 export default function GlobalPage() {
   return (
     <div className="h-screen w-full bg-slate-950 text-white">
-      <GlobalPerspectiveView showHud={false} showModeToggle />
+      <GlobalPerspectiveView />
     </div>
   );
 }

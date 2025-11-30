@@ -43,7 +43,11 @@ const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
 const computeBlend = (
   projection: ProjectionMode,
-  transition?: { from: ProjectionMode; to: ProjectionMode; progress: number } | null
+  transition?: {
+    from: ProjectionMode;
+    to: ProjectionMode;
+    progress: number;
+  } | null
 ) => {
   if (!transition) {
     return projection === "lines" ? 1 : 0;
@@ -132,7 +136,10 @@ const renderPlayers = ({
 
     // 깊이감 보조(옵션): z에 비례한 알파나 외곽선
     if (typeof depth === "number" && blend < 0.8) {
-      ctx.strokeStyle = `rgba(255,255,255,${Math.max(0.1, 1 - Math.abs(depth) / 1000)})`;
+      ctx.strokeStyle = `rgba(255,255,255,${Math.max(
+        0.1,
+        1 - Math.abs(depth) / 1000
+      )})`;
       ctx.stroke();
     }
 
@@ -159,6 +166,56 @@ const renderPlayers = ({
   });
   ctx.restore();
 };
+const drawSpringLine = (
+  ctx: CanvasRenderingContext2D,
+  from: Vec2,
+  to: Vec2,
+  opts: {
+    phase: number;
+    amplitude: number;
+    segments?: number;
+    damping?: number;
+    waves?: number;
+  }
+) => {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) {
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    return;
+  }
+  const segments = opts.segments ?? 18;
+  const damping = opts.damping ?? 2.4;
+  const waves = opts.waves ?? 3.4;
+  const nx = -dy / distance;
+  const ny = dx / distance;
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  for (let i = 1; i < segments; i += 1) {
+    const t = i / segments;
+    const sine = Math.sin(t * Math.PI * waves + opts.phase);
+    const fade = Math.exp(-t * damping);
+    const offset = opts.amplitude * sine * fade;
+    ctx.lineTo(from.x + dx * t + nx * offset, from.y + dy * t + ny * offset);
+  }
+  ctx.lineTo(to.x, to.y);
+  ctx.stroke();
+};
+const computeSpringAmplitude = (args: {
+  startedAt: number;
+  lastEvent?: number;
+  now: number;
+}) => {
+  const lastImpulse = args.lastEvent ?? args.startedAt ?? args.now;
+  const sinceLast = Math.max(0, args.now - lastImpulse);
+  const decay = Math.exp(-sinceLast / 1600);
+  const idlePulse = 4 + 2 * Math.sin(args.now / 1000);
+  return idlePulse + 24 * decay;
+};
 const renderCollisionConnections = ({
   ctx,
   state,
@@ -176,8 +233,15 @@ const renderCollisionConnections = ({
 }) => {
   const selfId = state.selfId;
   ctx.save();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(0,255,255,0.4)";
+  const phase =
+    typeof performance !== "undefined"
+      ? performance.now() * 0.012
+      : Date.now() * 0.012;
+  const wallNow = Date.now();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.65)";
+  ctx.shadowColor = "rgba(255,255,255,0.8)";
+  ctx.shadowBlur = 8;
   state.collisionLines.forEach((pair) => {
     if (state.mode === "personal" && selfId) {
       if (!pair.players.includes(selfId)) {
@@ -203,14 +267,23 @@ const renderCollisionConnections = ({
       x: planeB.x * (1 - blend) + lineBx * blend,
       y: planeB.y * (1 - blend) + laneBy * blend,
     };
-    ctx.beginPath();
-    ctx.moveTo(posA.x, posA.y);
-    ctx.lineTo(posB.x, posB.y);
-    ctx.stroke();
+    const amplitude = computeSpringAmplitude({
+      startedAt: pair.startedAt,
+      lastEvent: pair.lastEvent,
+      now: wallNow,
+    });
+    drawSpringLine(ctx, posA, posB, {
+      phase,
+      amplitude,
+      segments: 20,
+      damping: 2.1,
+      waves: 4,
+    });
 
-     // Render endpoints without blending to maintain visibility in personal mode
-    ctx.fillStyle = "rgba(0,255,255,0.8)";
-    const dotRadius = blend > 0.7 ? 6 : 8;
+    // Render endpoints without blending to maintain visibility in personal mode
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.shadowBlur = 12;
+    const dotRadius = blend > 0.7 ? 4.5 : 6;
     ctx.beginPath();
     ctx.arc(posA.x, posA.y, dotRadius, 0, Math.PI * 2);
     ctx.fill();
@@ -294,11 +367,19 @@ const renderSelfTrail = ({
   if (!state.selfId) return;
   const trail = state.cellTrails[state.selfId];
   if (!trail || trail.points.length < 2) return;
+  const selfPlayer = state.players[state.selfId];
+  const points = trail.points.map((point) => ({ x: point.x, y: point.y }));
+  if (selfPlayer && points.length > 0) {
+    points[points.length - 1] = {
+      x: selfPlayer.cell.position.x,
+      y: selfPlayer.cell.position.y,
+    };
+  }
   ctx.save();
   ctx.strokeStyle = "rgba(255,255,255,0.3)";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  trail.points.forEach((point, idx) => {
+  points.forEach((point, idx) => {
     const pos = project(
       state,
       width,
@@ -337,6 +418,9 @@ export const renderScene = (params: RenderParams) => {
   params.state.playerOrder.forEach((id, idx) => orderIndex.set(id, idx));
 
   clearScene(params.ctx, params.width, params.height);
+  if (params.state.mode === "global") {
+    renderFireworksBackground(params.ctx, params.width, params.height);
+  }
   if (params.state.playing) {
     if (params.state.mode === "personal") {
       renderSelfTrail(params);
@@ -380,5 +464,5 @@ export const renderScene = (params: RenderParams) => {
       renderPlayers({ ...params, blend, laneGap, orderIndex });
     }
   }
-  renderHud(params);
+  // renderHud(params);
 };

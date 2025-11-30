@@ -1,9 +1,4 @@
-import type {
-  AudioState,
-  AudioClusterState,
-  AudioSelfState,
-  NoiseSlot,
-} from "@/types/game";
+import type { AudioState, NoiseSlot } from "@/types/game";
 
 export interface NoiseCraftParam {
   nodeId: string;
@@ -14,7 +9,7 @@ export interface NoiseCraftParam {
 const SLOT_FALLBACKS: Record<number, { nodes: string[]; label: string }> = {
   // 기본 매핑: 1번 슬롯 → 노드 206, 2번 슬롯 → 노드 183
   0: { nodes: ["206"], label: "fact" },
-  1: { nodes: ["183"], label: "Vol CHORDS" }
+  1: { nodes: ["183"], label: "Vol CHORDS" },
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -23,22 +18,20 @@ const clamp = (value: number, min: number, max: number) =>
 const format = (value: number, precision = 3) =>
   Number(value.toFixed(precision));
 
-const computeSelfFreq = (self: AudioSelfState | null) => {
-  // Slot 1 (index 0): 0.01 ~ 0.05, 공 속도(noiseLevel)에 따라 선형 스케일
+const computeSelfFreq = (approachValue: number) => {
+  // Slot 1 (index 0): 0.01 ~ 0.05, 접근 속도에 따라 선형 스케일
   const min = 0.01;
   const max = 0.05;
-  if (!self) return format(min);
-  const level = clamp(self.noiseLevel, 0, 1);
+  const level = clamp(approachValue, 0, 1);
   const value = min + (max - min) * level;
   return format(value);
 };
 
-const computeSelfGain = (self: AudioSelfState | null) => {
-  // Slot 2 (index 1): 0.15 ~ 0.8, 공 속도(noiseLevel)에 따라 선형 스케일
+const computeSelfGain = (approachValue: number) => {
+  // Slot 2 (index 1): 0.15 ~ 0.8, 접근 속도에 따라 선형 스케일
   const min = 0.15;
   const max = 0.8;
-  if (!self) return format(min);
-  const level = clamp(self.noiseLevel, 0, 1);
+  const level = clamp(approachValue, 0, 1);
   const value = min + (max - min) * level;
   return format(value);
 };
@@ -78,27 +71,39 @@ const appendSlotParams = (
 export const buildNoiseCraftParams = (
   audio: AudioState,
   slots: NoiseSlot[] = [],
-  mode: "personal" | "global"
+  mode: "personal" | "global",
+  approachValue = 0
 ): NoiseCraftParam[] => {
   const params: NoiseCraftParam[] = [];
   if (mode === "personal") {
     appendSlotParams(
       params,
       0,
-      [computeSelfFreq(audio.self)],
+      [computeSelfFreq(approachValue)],
       slots,
       SLOT_FALLBACKS[0].nodes
     );
     appendSlotParams(
       params,
       1,
-      [computeSelfGain(audio.self)],
+      [computeSelfGain(approachValue)],
       slots,
       SLOT_FALLBACKS[1].nodes
     );
   } else {
     appendSlotParams(params, 0, [220], slots, SLOT_FALLBACKS[0].nodes);
     appendSlotParams(params, 1, [0], slots, SLOT_FALLBACKS[1].nodes);
+  }
+
+  if (mode === "personal") {
+    const clampedApproach = format(clamp(approachValue, 0, 1));
+    ["5", "35", "107"].forEach((nodeId) =>
+      params.push({
+        nodeId,
+        paramName: "value",
+        value: clampedApproach,
+      })
+    );
   }
 
   return params;
@@ -113,7 +118,7 @@ export const postNoiseCraftParams = (
   if (process.env.NODE_ENV === "development") {
     // 디버그용: 3000 → iframe으로 전송되는 파라미터 확인
     // eslint-disable-next-line no-console
-    console.log("[NoiseCraft] postParams", { origin, params });
+    // console.log("[NoiseCraft] postParams", { origin, params });
   }
   iframe.contentWindow?.postMessage(
     { type: "noiseCraft:setParams", params },
