@@ -12,10 +12,9 @@ export interface NoiseCraftParam {
 }
 
 const SLOT_FALLBACKS: Record<number, { nodes: string[]; label: string }> = {
-  0: { nodes: ["0"], label: "Self Frequency" },
-  1: { nodes: ["1"], label: "Self Gain" },
-  2: { nodes: ["4", "6", "8"], label: "Cluster Chord" },
-  3: { nodes: ["12"], label: "Cluster Gain" },
+  // 기본 매핑: 1번 슬롯 → 노드 206, 2번 슬롯 → 노드 183
+  0: { nodes: ["206"], label: "fact" },
+  1: { nodes: ["183"], label: "Vol CHORDS" }
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -42,18 +41,6 @@ const computeSelfGain = (self: AudioSelfState | null) => {
   const level = clamp(self.noiseLevel, 0, 1);
   const value = min + (max - min) * level;
   return format(value);
-};
-
-const computeClusterChord = (cluster: AudioClusterState | null) => {
-  if (!cluster?.chord?.length) {
-    return [0, 0, 0];
-  }
-  return cluster.chord.map((note) => format(note.freq, 2));
-};
-
-const computeClusterGain = (cluster: AudioClusterState | null) => {
-  if (!cluster) return 0;
-  return format(clamp(cluster.gain, 0, 1));
 };
 
 const resolveSlotNodes = (
@@ -114,21 +101,6 @@ export const buildNoiseCraftParams = (
     appendSlotParams(params, 1, [0], slots, SLOT_FALLBACKS[1].nodes);
   }
 
-  const clusterSource = mode === "personal" ? audio.cluster : audio.global;
-  appendSlotParams(
-    params,
-    2,
-    computeClusterChord(clusterSource),
-    slots,
-    SLOT_FALLBACKS[2].nodes
-  );
-  appendSlotParams(
-    params,
-    3,
-    [computeClusterGain(clusterSource)],
-    slots,
-    SLOT_FALLBACKS[3].nodes
-  );
   return params;
 };
 
@@ -137,10 +109,15 @@ export const postNoiseCraftParams = (
   origin: string | null,
   params: NoiseCraftParam[]
 ) => {
-  if (!iframe || !origin || !params.length) return;
+  if (!iframe || !params.length) return;
+  if (process.env.NODE_ENV === "development") {
+    // 디버그용: 3000 → iframe으로 전송되는 파라미터 확인
+    // eslint-disable-next-line no-console
+    console.log("[NoiseCraft] postParams", { origin, params });
+  }
   iframe.contentWindow?.postMessage(
     { type: "noiseCraft:setParams", params },
-    origin
+    origin || "*"
   );
 };
 
@@ -180,6 +157,6 @@ export const resolveNoiseCraftEmbed = () => {
     embedSearch.set("src", `${normalizedNcBase}/current-project`);
   }
   const src = `${normalizedNcBase}/public/embedded.html?${embedSearch.toString()}`;
-  const embedOrigin = new URL(ncBase, pageOrigin).origin;
+  const embedOrigin = new URL(src, pageOrigin).origin;
   return { src, origin: embedOrigin };
 };

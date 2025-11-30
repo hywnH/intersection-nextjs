@@ -370,6 +370,9 @@
           data.type === "noiseCraft:setParams" &&
           Array.isArray(data.params)
         ) {
+          try {
+            console.log("[Embedded] received params", data.params);
+          } catch (e) {}
           data.params.forEach((param) => {
             if (!param || param.value === undefined) return;
             const nodeId = param.nodeId ?? param.id;
@@ -485,6 +488,7 @@
           try {
             // @ts-ignore
             const sock = window.io(ioURL, {
+              path: "/socket",
               transports: ["websocket"],
               query: { type: "spectator" },
             });

@@ -31,9 +31,8 @@ let noiseSlotState = SLOT_INFO.map((info) => ({ ...info, nodeIds: [] }));
 // Project model/state
 let model = new Model();
 
-// Graph editor view
-let editor = new Editor(model);
-initNoiseSlotBridge(editor);
+	// Graph editor view
+	let editor = new Editor(model);
 
 // Audio view of the model
 let audioView = new AudioView(model);

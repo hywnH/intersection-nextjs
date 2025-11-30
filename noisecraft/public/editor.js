@@ -381,6 +381,9 @@ export class Editor {
   selectNodes(nodeIds) {
     nodeIds = Array.from(nodeIds);
     console.log(`selecting ${nodeIds.length} nodes`);
+    if (nodeIds.length) {
+      console.log("[NoiseCraft Editor] selected nodeIds:", nodeIds);
+    }
 
     // Unhighlight the currently selected nodes
     for (let nodeId of this.selected) {
