@@ -224,7 +224,7 @@ export const registerSocketEvents = ({
   };
 
   const toClusterState = (
-    payload?: ServerAudioCluster,
+    payload?: ServerAudioCluster | null,
     source: "cluster" | "global" = "cluster"
   ) => {
     if (!payload) return null;
