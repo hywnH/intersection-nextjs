@@ -6,8 +6,8 @@ const HOST = process.env.HOST || "0.0.0.0";
 const SOCKET_PATH = process.env.SOCKET_PATH || "/socket";
 
 // 게임 설정 (intersection 서버와 호환되는 기본값)
-const GAME_WIDTH = 5000;
-const GAME_HEIGHT = 5000;
+const GAME_WIDTH = 1920 * 4;
+const GAME_HEIGHT = 602 * 4;
 const MAX_HEARTBEAT_MS = 5000;
 const TICK_HZ = 120; // 이동 계산 더 촘촘히
 const UPDATE_HZ = 60; // 기본 브로드캐스트 빈도
@@ -67,6 +67,14 @@ const COLLISION_DISTANCE = 80;
 const MAX_SPEED = 320;
 
 const rand = (min: number, max: number) => Math.random() * (max - min) + min;
+
+const randomDepth = () => {
+  const base = rand(800, 2200);
+  const skew = Math.max(0.15, Math.pow(Math.random(), 0.35));
+  const jitter = rand(0.75, 1.25);
+  const sign = Math.random() < 0.5 ? -1 : 1;
+  return sign * base * skew * jitter;
+};
 
 function spawnPoint(): Vec2 {
   const padding = 100;
@@ -411,7 +419,7 @@ io.on("connection", (socket) => {
         name,
         x: pos.x,
         y: pos.y,
-        z: rand(-500, 500),
+        z: randomDepth(),
         desiredVx: 0,
         desiredVy: 0,
         radius: 20,

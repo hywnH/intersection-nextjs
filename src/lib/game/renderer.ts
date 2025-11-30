@@ -43,7 +43,11 @@ const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
 const computeBlend = (
   projection: ProjectionMode,
-  transition?: { from: ProjectionMode; to: ProjectionMode; progress: number } | null
+  transition?: {
+    from: ProjectionMode;
+    to: ProjectionMode;
+    progress: number;
+  } | null
 ) => {
   if (!transition) {
     return projection === "lines" ? 1 : 0;
@@ -132,7 +136,10 @@ const renderPlayers = ({
 
     // 깊이감 보조(옵션): z에 비례한 알파나 외곽선
     if (typeof depth === "number" && blend < 0.8) {
-      ctx.strokeStyle = `rgba(255,255,255,${Math.max(0.1, 1 - Math.abs(depth) / 1000)})`;
+      ctx.strokeStyle = `rgba(255,255,255,${Math.max(
+        0.1,
+        1 - Math.abs(depth) / 1000
+      )})`;
       ctx.stroke();
     }
 
@@ -208,7 +215,7 @@ const renderCollisionConnections = ({
     ctx.lineTo(posB.x, posB.y);
     ctx.stroke();
 
-     // Render endpoints without blending to maintain visibility in personal mode
+    // Render endpoints without blending to maintain visibility in personal mode
     ctx.fillStyle = "rgba(0,255,255,0.8)";
     const dotRadius = blend > 0.7 ? 6 : 8;
     ctx.beginPath();
@@ -294,11 +301,19 @@ const renderSelfTrail = ({
   if (!state.selfId) return;
   const trail = state.cellTrails[state.selfId];
   if (!trail || trail.points.length < 2) return;
+  const selfPlayer = state.players[state.selfId];
+  const points = trail.points.map((point) => ({ x: point.x, y: point.y }));
+  if (selfPlayer && points.length > 0) {
+    points[points.length - 1] = {
+      x: selfPlayer.cell.position.x,
+      y: selfPlayer.cell.position.y,
+    };
+  }
   ctx.save();
   ctx.strokeStyle = "rgba(255,255,255,0.3)";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  trail.points.forEach((point, idx) => {
+  points.forEach((point, idx) => {
     const pos = project(
       state,
       width,

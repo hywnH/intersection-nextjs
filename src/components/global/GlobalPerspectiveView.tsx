@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
@@ -16,18 +10,101 @@ import {
   Edges,
   Grid,
 } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { useGameClient } from "@/lib/game/hooks";
-import type { PlayerSnapshot } from "@/types/game";
+import type { GameState, PlayerSnapshot } from "@/types/game";
+import { analyzeClusters, type AnnotatedCluster } from "@/lib/game/clusters";
 
 const PLANE_SCALE = 0.03;
-const DEPTH_SCALE = 0.002;
+const FRONT_DEPTH_SCALE = 0.03;
+const ORBIT_DEPTH_SCALE = 0.1;
 const CAMERA_HEIGHT_FACTOR = 0.25;
-const CAMERA_DISTANCE_FACTOR = 0.5;
+const CAMERA_DISTANCE_FACTOR = 1.4;
+const FRONT_PULLBACK = 5.6;
+const ORBIT_PULLBACK = 2.4;
+const WEAK_FOV = 26;
+const FRONT_ZOOM = 6;
+const ORBIT_ZOOM = 3;
+const CAMERA_TRANSITION_MS = 1100;
 
-type MouseRef = React.MutableRefObject<[number, number]>;
+type ViewMode = "front" | "perspective";
+type PlayerEntry = GameState["players"][string];
+
+interface GlobalPerspectiveViewProps {
+  showHud?: boolean;
+  showModeToggle?: boolean;
+}
+
+interface CameraAnimatorProps {
+  viewMode: ViewMode;
+  frontPosition: THREE.Vector3;
+  orbitPosition: THREE.Vector3;
+  transitionRef: React.MutableRefObject<{
+    from: THREE.Vector3;
+    to: THREE.Vector3;
+    fromZoom: number;
+    toZoom: number;
+    start: number;
+  } | null>;
+  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>;
+  cameraRef: React.MutableRefObject<THREE.PerspectiveCamera | null>;
+}
+
+const CameraAnimator = ({
+  viewMode,
+  frontPosition,
+  orbitPosition,
+  transitionRef,
+  controlsRef,
+  cameraRef,
+}: CameraAnimatorProps) => {
+  useEffect(() => {
+    const camera = cameraRef.current;
+    if (!camera) return;
+    const target = viewMode === "front" ? frontPosition : orbitPosition;
+    transitionRef.current = {
+      from: camera.position.clone(),
+      to: target.clone(),
+      fromZoom: camera.zoom,
+      toZoom: viewMode === "front" ? FRONT_ZOOM : ORBIT_ZOOM,
+      start: performance.now(),
+    };
+  }, [viewMode, frontPosition, orbitPosition, cameraRef, transitionRef]);
+
+  useFrame(() => {
+    const controls = controlsRef.current;
+    const camera = cameraRef.current;
+    if (!controls || !camera) return;
+    const transition = transitionRef.current;
+    if (transition) {
+      const t = (performance.now() - transition.start) / CAMERA_TRANSITION_MS;
+      const progress = Math.min(1, t);
+      const eased =
+        progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+      camera.position.lerpVectors(transition.from, transition.to, eased);
+      camera.zoom =
+        transition.fromZoom + (transition.toZoom - transition.fromZoom) * eased;
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+      controls.update();
+      if (progress >= 1) {
+        transitionRef.current = null;
+      }
+      return;
+    }
+    controls.autoRotate = viewMode === "perspective";
+    controls.enableRotate = viewMode === "perspective";
+    controls.enablePan = viewMode === "perspective";
+    controls.update();
+  });
+
+  return null;
+};
 
 const toWorldX = (x: number, width: number) => (x - width / 2) * PLANE_SCALE;
 const toWorldY = (y: number, height: number) => (height / 2 - y) * PLANE_SCALE;
@@ -59,11 +136,12 @@ const PlayerPlane = ({
         <meshStandardMaterial
           color={isFocused ? "#1d3d7a" : "#060b1c"}
           transparent
-          opacity={isFocused ? 0.45 : 0.3}
+          opacity={isFocused ? 0.18 : 0.01}
+          depthWrite={false}
           metalness={0.1}
           roughness={0.8}
         />
-        <Edges color={isFocused ? "#93c5fd" : "#475569"} />
+        <Edges color={isFocused ? "#1e293b" : "#0f172a"} />
       </mesh>
       <Html
         position={[planeWidth / 2 - 0.4, planeHeight / 2 - 0.4, 0.01]}
@@ -118,102 +196,6 @@ const EmptyState = ({ message }: { message: string }) => (
   </div>
 );
 
-const BackgroundParticles = ({
-  count,
-  mouse,
-}: {
-  count: number;
-  mouse: MouseRef;
-}) => {
-  const meshRef = useRef<THREE.InstancedMesh | null>(null);
-  const lightRef = useRef<THREE.PointLight | null>(null);
-  const { size, viewport } = useThree();
-  const aspect = size.width / viewport.width;
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-  const geometry = useMemo(() => new THREE.DodecahedronGeometry(0.22, 0), []);
-  const material = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: "#050814",
-        emissive: "#0c1224",
-        roughness: 0.8,
-        metalness: 0.35,
-      }),
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      geometry.dispose();
-      material.dispose();
-    };
-  }, [geometry, material]);
-
-  const particles = useMemo(() => {
-    return Array.from({ length: count }).map(() => ({
-      t: Math.random() * 100,
-      factor: 20 + Math.random() * 120,
-      speed: 0.01 + Math.random() / 150,
-      xFactor: -80 + Math.random() * 160,
-      yFactor: -50 + Math.random() * 100,
-      zFactor: -80 + Math.random() * 160,
-      mx: 0,
-      my: 0,
-    }));
-  }, [count]);
-
-  useFrame(() => {
-    if (!meshRef.current) return;
-    particles.forEach((particle, index) => {
-      const { factor, speed, xFactor, yFactor, zFactor } = particle;
-      particle.t += speed / 2;
-      const { t } = particle;
-      const a = Math.cos(t) + Math.sin(t * 1) / 10;
-      const b = Math.sin(t) + Math.cos(t * 2) / 10;
-      const s = Math.cos(t);
-      particle.mx += (mouse.current[0] - particle.mx) * 0.01;
-      particle.my += (-mouse.current[1] - particle.my) * 0.01;
-      dummy.position.set(
-        particle.mx * 5 * a +
-          xFactor +
-          Math.cos((t / 10) * factor) +
-          (Math.sin(t) * factor) / 10,
-        particle.my * 5 * b +
-          yFactor +
-          Math.sin((t / 10) * factor) +
-          (Math.cos(t * 2) * factor) / 10,
-        particle.my * 3 * b +
-          zFactor +
-          Math.cos((t / 10) * factor) +
-          (Math.sin(t * 3) * factor) / 10
-      );
-      dummy.scale.setScalar(Math.max(0.2, s));
-      dummy.rotation.set(s * 5, s * 5, s * 5);
-      dummy.updateMatrix();
-      meshRef.current!.setMatrixAt(index, dummy.matrix);
-    });
-    meshRef.current.instanceMatrix.needsUpdate = true;
-    if (lightRef.current) {
-      lightRef.current.position.set(
-        (mouse.current[0] / aspect) * 10,
-        (-mouse.current[1] / aspect) * 6,
-        0
-      );
-    }
-  });
-
-  return (
-    <group renderOrder={-30}>
-      <pointLight ref={lightRef} distance={80} intensity={6} color="#93c5fd" />
-      <instancedMesh
-        ref={meshRef}
-        args={[geometry, material, count]}
-        frustumCulled={false}
-      />
-    </group>
-  );
-};
-
 const PostProcessing = () => {
   const composerRef = useRef<EffectComposer | null>(null);
   const { gl, scene, camera, size } = useThree();
@@ -222,18 +204,17 @@ const PostProcessing = () => {
     const renderPass = new RenderPass(scene, camera);
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(size.width, size.height),
-      1.5,
-      0.8,
+      2.3,
+      0.95,
       0
     );
-    bloomPass.threshold = 0.2;
-    bloomPass.strength = 1.35;
-    bloomPass.radius = 0.65;
+    bloomPass.threshold = 0.08;
+    bloomPass.strength = 2.1;
+    bloomPass.radius = 0.9;
 
     const composer = new EffectComposer(gl);
     composer.addPass(renderPass);
     composer.addPass(bloomPass);
-    bloomPass.renderToScreen = true;
     composer.setSize(size.width, size.height);
     composerRef.current = composer;
 
@@ -254,25 +235,90 @@ const PostProcessing = () => {
   return null;
 };
 
-const GlobalPerspectiveView = () => {
+const GlobalPerspectiveView = ({
+  showHud = true,
+  showModeToggle = true,
+}: GlobalPerspectiveViewProps) => {
   const { state, players } = useGameClient("global");
-  const pointerRef = useRef<[number, number]>([0, 0]);
+  const [viewMode, setViewMode] = useState<ViewMode>("front");
+  const { clusters, assignments } = useMemo(
+    () => analyzeClusters(players),
+    [players]
+  );
+  const significantClusters = useMemo(
+    () => clusters.filter((cluster) => cluster.isMulti),
+    [clusters]
+  );
+
+  return (
+    <div className="relative h-screen w-screen overflow-hidden bg-slate-950">
+      <GlobalSpace state={state} players={players} viewMode={viewMode} />
+      {showModeToggle && (
+        <ModeToggle viewMode={viewMode} onChange={setViewMode} />
+      )}
+      {showHud && (
+        <GlobalHud
+          state={state}
+          players={players}
+          significantClusters={significantClusters}
+          clusterAssignments={assignments}
+        />
+      )}
+    </div>
+  );
+};
+
+const GlobalSpace = ({
+  state,
+  players,
+  viewMode,
+}: {
+  state: GameState;
+  players: PlayerEntry[];
+  viewMode: ViewMode;
+}) => {
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const transitionRef = useRef<{
+    from: THREE.Vector3;
+    to: THREE.Vector3;
+    fromZoom: number;
+    toZoom: number;
+    start: number;
+  } | null>(null);
 
   const planeWidth = state.gameSize.width * PLANE_SCALE;
   const planeHeight = state.gameSize.height * PLANE_SCALE;
+  const cameraDistance = Math.max(24, planeWidth * CAMERA_DISTANCE_FACTOR);
+  const cameraHeight = Math.max(12, planeHeight * CAMERA_HEIGHT_FACTOR);
+  const frontPosition = useMemo(
+    () =>
+      new THREE.Vector3(
+        0,
+        cameraHeight * 0.08,
+        cameraDistance * FRONT_PULLBACK
+      ),
+    [cameraDistance, cameraHeight]
+  );
+  const orbitPosition = useMemo(() => {
+    return new THREE.Vector3(
+      cameraDistance * ORBIT_PULLBACK,
+      cameraHeight * 0.9,
+      0
+    );
+  }, [cameraDistance, cameraHeight]);
 
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const target = event.currentTarget;
-    const rect = target.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = ((event.clientY - rect.top) / rect.height) * 2 - 1;
-    pointerRef.current = [x, y];
-  };
+  useEffect(() => {
+    const camera = cameraRef.current;
+    if (!camera) return;
+    camera.position.copy(frontPosition);
+    camera.zoom = FRONT_ZOOM;
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+  }, [frontPosition]);
 
-  const handlePointerLeave = () => {
-    pointerRef.current = [0, 0];
-  };
-
+  const activeDepthScale =
+    viewMode === "perspective" ? ORBIT_DEPTH_SCALE : FRONT_DEPTH_SCALE;
   const planeData = useMemo(() => {
     if (!players.length) return [];
     const fallbackGap = 600;
@@ -284,7 +330,7 @@ const GlobalPerspectiveView = () => {
 
     return players.map((player, index) => {
       const targetDepth = depthValues[index];
-      const depth = (targetDepth - average + index * 120) * DEPTH_SCALE;
+      const depth = (targetDepth - average + index * 120) * activeDepthScale;
       return {
         player,
         depth,
@@ -292,153 +338,258 @@ const GlobalPerspectiveView = () => {
         worldY: toWorldY(player.cell.position.y, state.gameSize.height),
       };
     });
-  }, [players, state.gameSize.height, state.gameSize.width]);
+  }, [players, state.gameSize.height, state.gameSize.width, activeDepthScale]);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-slate-950">
-      <div
-        className="absolute inset-0"
-        onPointerMove={handlePointerMove}
-        onPointerLeave={handlePointerLeave}
-      >
-        {players.length === 0 ? (
-          <EmptyState message="연결 대기 중..." />
-        ) : (
-          <Suspense fallback={<EmptyState message="3D 뷰 로딩 중..." />}>
-            <Canvas
-              className="h-full w-full"
-              linear
-              dpr={[1, 2]}
-              camera={{
-                position: [
-                  0,
-                  Math.max(8, planeHeight * CAMERA_HEIGHT_FACTOR),
-                  Math.max(14, planeWidth * CAMERA_DISTANCE_FACTOR),
-                ],
-                fov: 55,
-              }}
-              shadows
-              onCreated={({ gl }) => {
-                gl.shadowMap.enabled = true;
-                gl.shadowMap.type = THREE.PCFSoftShadowMap;
-                gl.toneMapping = THREE.ACESFilmicToneMapping;
-                gl.toneMappingExposure = 1.4;
-                gl.setClearColor(new THREE.Color("#020207"));
-                if ("physicallyCorrectLights" in gl) {
-                  (
-                    gl as THREE.WebGLRenderer & {
-                      physicallyCorrectLights?: boolean;
-                    }
-                  ).physicallyCorrectLights = true;
-                }
-                gl.autoClear = false;
-                if ("outputColorSpace" in gl) {
-                  gl.outputColorSpace = THREE.SRGBColorSpace;
-                }
-              }}
-            >
-              <fog attach="fog" args={["#02030f", 80, 260]} />
-              <BackgroundParticles
-                count={players.length > 0 ? 600 : 320}
-                mouse={pointerRef}
+    <div className="absolute inset-0">
+      {players.length === 0 ? (
+        <EmptyState message="연결 대기 중..." />
+      ) : (
+        <Suspense fallback={<EmptyState message="3D 뷰 로딩 중..." />}>
+          <Canvas
+            className="h-full w-full"
+            linear
+            dpr={1}
+            camera={{
+              position: [
+                0,
+                Math.max(8, planeHeight * CAMERA_HEIGHT_FACTOR),
+                Math.max(14, planeWidth * CAMERA_DISTANCE_FACTOR),
+              ],
+              fov: 55,
+            }}
+            shadows
+            onCreated={({ gl }) => {
+              gl.shadowMap.enabled = true;
+              gl.shadowMap.type = THREE.PCFSoftShadowMap;
+              gl.toneMapping = THREE.ACESFilmicToneMapping;
+              gl.toneMappingExposure = 1.4;
+              gl.setClearColor(new THREE.Color("#020207"));
+              if ("physicallyCorrectLights" in gl) {
+                (
+                  gl as THREE.WebGLRenderer & {
+                    physicallyCorrectLights?: boolean;
+                  }
+                ).physicallyCorrectLights = true;
+              }
+              gl.autoClear = false;
+              if ("outputColorSpace" in gl) {
+                gl.outputColorSpace = THREE.SRGBColorSpace;
+              }
+            }}
+          >
+            <ambientLight intensity={0.35} color="#94a3b8" />
+            <pointLight
+              position={[16, 18, 26]}
+              intensity={5}
+              distance={280}
+              decay={2}
+              color="#fff6e5"
+              castShadow
+            />
+            <pointLight
+              position={[-28, -10, -24]}
+              intensity={3.2}
+              distance={260}
+              decay={1.8}
+              color="#60a5fa"
+            />
+            <spotLight
+              position={[0, 0, 90]}
+              angle={0.6}
+              penumbra={0.85}
+              intensity={1.8}
+              color="#f472b6"
+              castShadow
+            />
+            <PerspectiveCamera
+              ref={cameraRef}
+              makeDefault
+              position={[frontPosition.x, frontPosition.y, frontPosition.z]}
+              fov={WEAK_FOV}
+              near={0.1}
+              far={4000}
+              onUpdate={(camera) => camera.lookAt(0, 0, 0)}
+            />
+            <OrbitControls
+              ref={controlsRef}
+              enableDamping
+              dampingFactor={0.08}
+              autoRotate={viewMode === "perspective"}
+              autoRotateSpeed={0.25}
+              enableRotate={viewMode === "perspective"}
+              enablePan={viewMode === "perspective"}
+              enableZoom={false}
+              minPolarAngle={0.3}
+              maxPolarAngle={Math.PI - 0.4}
+              target={[0, 0, 0]}
+            />
+            <CameraAnimator
+              viewMode={viewMode}
+              frontPosition={frontPosition}
+              orbitPosition={orbitPosition}
+              transitionRef={transitionRef}
+              controlsRef={controlsRef}
+              cameraRef={cameraRef}
+            />
+            <Grid
+              args={[planeWidth * 2, planeHeight * 2]}
+              position={[0, 0, 0]}
+              cellSize={1}
+              sectionSize={4}
+              sectionThickness={0.25}
+              cellColor="#04060d"
+              sectionColor="#0b1227"
+              fadeDistance={80}
+              fadeStrength={1.2}
+            />
+            <PostProcessing />
+            {planeData.map(({ player, depth, worldX, worldY }) => (
+              <PlayerPlane
+                key={player.id}
+                player={player}
+                depth={depth}
+                planeWidth={planeWidth}
+                planeHeight={planeHeight}
+                isFocused={player.isSelf ?? false}
+                worldX={worldX}
+                worldY={worldY}
               />
-              <ambientLight intensity={0.35} color="#94a3b8" />
-              <pointLight
-                position={[16, 18, 26]}
-                intensity={5}
-                distance={280}
-                decay={2}
-                color="#fff6e5"
-                castShadow
-              />
-              <pointLight
-                position={[-28, -10, -24]}
-                intensity={3.2}
-                distance={260}
-                decay={1.8}
-                color="#60a5fa"
-              />
-              <spotLight
-                position={[0, 0, 90]}
-                angle={0.6}
-                penumbra={0.85}
-                intensity={1.8}
-                color="#f472b6"
-                castShadow
-              />
-              <PerspectiveCamera
-                makeDefault
-                position={[
-                  0,
-                  Math.max(8, planeHeight * CAMERA_HEIGHT_FACTOR),
-                  Math.max(14, planeWidth * CAMERA_DISTANCE_FACTOR),
-                ]}
-                fov={55}
-              />
-              <OrbitControls
-                enableDamping
-                dampingFactor={0.08}
-                minPolarAngle={0.2}
-                maxPolarAngle={Math.PI - 0.24}
-                target={[0, 0, 0]}
-              />
-              <Grid
-                args={[planeWidth * 2, planeHeight * 2]}
-                position={[0, 0, 0]}
-                cellSize={1}
-                sectionSize={4}
-                sectionThickness={0.6}
-                cellColor="#0f172a"
-                sectionColor="#1d4ed8"
-                fadeDistance={60}
-                fadeStrength={1}
-              />
-              <PostProcessing />
-              {planeData.map(({ player, depth, worldX, worldY }) => (
-                <PlayerPlane
-                  key={player.id}
-                  player={player}
-                  depth={depth}
-                  planeWidth={planeWidth}
-                  planeHeight={planeHeight}
-                  isFocused={player.isSelf ?? false}
-                  worldX={worldX}
-                  worldY={worldY}
-                />
-              ))}
-            </Canvas>
-          </Suspense>
-        )}
-      </div>
-      <div className="pointer-events-none absolute left-0 top-0 z-20 flex h-full w-64 flex-col gap-4 bg-black/60 p-6 text-white">
-        <p className="text-xs uppercase tracking-[0.4em] text-blue-300">
-          Perspective
-        </p>
-        <h2 className="text-2xl font-semibold">실시간 참여자</h2>
-        <div className="flex-1 overflow-auto text-sm text-white/70">
-          {players.length === 0 ? (
-            <p className="text-white/40">연결 대기 중...</p>
-          ) : (
-            <ul className="space-y-2">
-              {players.map((player) => (
-                <li key={player.id} className="rounded-lg bg-white/5 p-2">
-                  <p className="text-white">{player.name || "익명"}</p>
-                  <p className="text-xs text-white/60">
-                    depth {(player.depth ?? 0).toFixed(0)} | 좌표{" "}
-                    {player.cell.position.x.toFixed(0)},{" "}
-                    {player.cell.position.y.toFixed(0)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="text-xs text-white/60">
-          인원 {state.ui.population.toLocaleString()}
-        </div>
-      </div>
+            ))}
+          </Canvas>
+        </Suspense>
+      )}
     </div>
   );
 };
+
+const ModeToggle = ({
+  viewMode,
+  onChange,
+}: {
+  viewMode: ViewMode;
+  onChange: (mode: ViewMode) => void;
+}) => (
+  <div className="pointer-events-auto absolute right-6 top-6 z-30 flex gap-2">
+    <button
+      type="button"
+      onClick={() => onChange("front")}
+      className={`rounded-full px-4 py-2 text-sm ${
+        viewMode === "front"
+          ? "bg-white text-black"
+          : "bg-white/10 text-white/70"
+      }`}
+    >
+      Front
+    </button>
+    <button
+      type="button"
+      onClick={() => onChange("perspective")}
+      className={`rounded-full px-4 py-2 text-sm ${
+        viewMode === "perspective"
+          ? "bg-white text-black"
+          : "bg-white/10 text-white/70"
+      }`}
+    >
+      Orbit
+    </button>
+  </div>
+);
+
+const GlobalHud = ({
+  state,
+  players,
+  significantClusters,
+  clusterAssignments,
+}: {
+  state: GameState;
+  players: PlayerEntry[];
+  significantClusters: AnnotatedCluster[];
+  clusterAssignments: Map<string, AnnotatedCluster>;
+}) => (
+  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-6">
+    <div className="pointer-events-auto w-full max-w-5xl rounded-2xl bg-black/70 p-5 text-white">
+      <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-white/70">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.45em] text-blue-300">
+            Perspective
+          </p>
+          <p className="text-base font-semibold text-white">실시간 참여자</p>
+        </div>
+        <span>인원 {state.ui.population.toLocaleString()}</span>
+      </div>
+      <div className="mt-4">
+        <p className="text-[11px] uppercase tracking-[0.35em] text-emerald-300">
+          Clusters
+        </p>
+        {significantClusters.length === 0 ? (
+          <p className="mt-2 text-xs text-white/50">
+            아직 근접한 클러스터가 없습니다.
+          </p>
+        ) : (
+          <div className="mt-2 flex gap-3 overflow-x-auto pb-1 pr-2 text-xs text-white/80">
+            {significantClusters.map((cluster) => (
+              <div
+                key={cluster.id}
+                className="min-w-[200px] rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+              >
+                <div className="flex items-center justify-between text-white">
+                  <span className="font-medium">{cluster.label}</span>
+                  <span className="text-[11px] text-white/60">
+                    {cluster.memberCount}명
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-white/60">
+                  중심 ({cluster.centroid.x.toFixed(0)},{" "}
+                  {cluster.centroid.y.toFixed(0)})
+                </p>
+                <p className="mt-1 text-[11px] text-white/50">
+                  참여자{" "}
+                  {cluster.members
+                    .map((member) => member.name || "익명")
+                    .join(", ")}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="mt-4 border-t border-white/10 pt-4">
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] uppercase tracking-[0.35em] text-sky-300">
+            Participants
+          </p>
+        </div>
+        {players.length === 0 ? (
+          <p className="mt-2 text-xs text-white/40">연결 대기 중...</p>
+        ) : (
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1 pr-2 text-xs">
+            {players.map((player) => {
+              const clusterInfo = clusterAssignments.get(player.id);
+              const clusterLabel = clusterInfo
+                ? `${clusterInfo.label}${
+                    clusterInfo.isMulti ? ` · ${clusterInfo.memberCount}명` : ""
+                  }`
+                : "단독";
+              return (
+                <div
+                  key={player.id}
+                  className="flex min-w-[200px] flex-col rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                >
+                  <span className="text-white">{player.name || "익명"}</span>
+                  <span className="text-[11px] text-white/60">
+                    {clusterLabel} · depth {(player.depth ?? 0).toFixed(0)} ·
+                    좌표 {player.cell.position.x.toFixed(0)},{" "}
+                    {player.cell.position.y.toFixed(0)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
 export default GlobalPerspectiveView;

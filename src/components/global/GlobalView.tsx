@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGameClient } from "@/lib/game/hooks";
 import { renderScene } from "@/lib/game/renderer";
 import CanvasSurface from "@/components/shared/CanvasSurface";
@@ -9,6 +9,7 @@ import {
   postNoiseCraftParams,
   resolveNoiseCraftEmbed,
 } from "@/lib/audio/noiseCraft";
+import { analyzeClusters } from "@/lib/game/clusters";
 
 type ProjectionMode = "plane" | "lines";
 
@@ -28,6 +29,12 @@ const GlobalView = () => {
     to: ProjectionMode;
     start: number;
   } | null>(null);
+  const { clusters: clusterSummaries, assignments: clusterAssignments } =
+    useMemo(() => analyzeClusters(players), [players]);
+  const significantClusters = useMemo(
+    () => clusterSummaries.filter((cluster) => cluster.isMulti),
+    [clusterSummaries]
+  );
 
   useEffect(() => {
     latestState.current = state;
@@ -62,8 +69,11 @@ const GlobalView = () => {
     window.addEventListener("resize", resize);
 
     const loop = () => {
-      let transition: { from: ProjectionMode; to: ProjectionMode; progress: number } | null =
-        null;
+      let transition: {
+        from: ProjectionMode;
+        to: ProjectionMode;
+        progress: number;
+      } | null = null;
       const t = transitionRef.current;
       if (t) {
         const progress = Math.min(
@@ -108,7 +118,11 @@ const GlobalView = () => {
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
-    const params = buildNoiseCraftParams(state.audio, state.noiseSlots, "global");
+    const params = buildNoiseCraftParams(
+      state.audio,
+      state.noiseSlots,
+      "global"
+    );
     postNoiseCraftParams(iframeRef.current, noiseCraftOrigin, params);
   }, [state.audio, noiseCraftOrigin]);
 
@@ -163,27 +177,93 @@ const GlobalView = () => {
           Lines
         </button>
       </div>
-      <div className="pointer-events-none absolute left-0 top-0 flex h-full w-64 flex-col gap-4 bg-black/60 p-6 text-white">
-        <p className="text-xs uppercase tracking-[0.4em] text-blue-300">
-          Spectator
-        </p>
-        <h2 className="text-2xl font-semibold">실시간 참여자</h2>
-        <div className="flex-1 overflow-auto text-sm text-white/70">
-          {players.length === 0 ? (
-            <p className="text-white/40">연결 대기 중...</p>
-          ) : (
-            <ul className="space-y-2">
-              {players.map((player) => (
-                <li key={player.id} className="rounded-lg bg-white/5 p-2">
-                  <p className="text-white">{player.name || "익명"}</p>
-                  <p className="text-xs text-white/60">
-                    좌표 ({player.cell.position.x.toFixed(0)},{" "}
-                    {player.cell.position.y.toFixed(0)})
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-4 pb-6">
+        <div className="pointer-events-auto w-full max-w-5xl rounded-2xl bg-black/70 p-5 text-white">
+          <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-white/70">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.45em] text-blue-300">
+                Spectator
+              </p>
+              <p className="text-base font-semibold text-white">
+                실시간 참여자
+              </p>
+            </div>
+            <span>인원 {state.ui.population.toLocaleString()}</span>
+          </div>
+          <div className="mt-4">
+            <p className="text-[11px] uppercase tracking-[0.35em] text-emerald-300">
+              Clusters
+            </p>
+            {significantClusters.length === 0 ? (
+              <p className="mt-2 text-xs text-white/50">
+                아직 근접한 클러스터가 없습니다.
+              </p>
+            ) : (
+              <div className="mt-2 flex gap-3 overflow-x-auto pb-1 pr-2 text-xs text-white/80">
+                {significantClusters.map((cluster) => (
+                  <div
+                    key={cluster.id}
+                    className="min-w-[200px] rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between text-white">
+                      <span className="font-medium">{cluster.label}</span>
+                      <span className="text-[11px] text-white/60">
+                        {cluster.memberCount}명
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-white/60">
+                      중심 ({cluster.centroid.x.toFixed(0)},{" "}
+                      {cluster.centroid.y.toFixed(0)})
+                    </p>
+                    <p className="mt-1 text-[11px] text-white/50">
+                      참여자{" "}
+                      {cluster.members
+                        .map((member) => member.name || "익명")
+                        .join(", ")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mt-4 border-t border-white/10 pt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] uppercase tracking-[0.35em] text-sky-300">
+                Participants
+              </p>
+            </div>
+            {players.length === 0 ? (
+              <p className="mt-2 text-xs text-white/40">연결 대기 중...</p>
+            ) : (
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-1 pr-2 text-xs">
+                {players.map((player) => {
+                  const clusterInfo = clusterAssignments.get(player.id);
+                  const clusterLabel = clusterInfo
+                    ? `${clusterInfo.label}${
+                        clusterInfo.isMulti
+                          ? ` · ${clusterInfo.memberCount}명`
+                          : ""
+                      }`
+                    : "단독";
+                  return (
+                    <div
+                      key={player.id}
+                      className="flex min-w-[180px] flex-col rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                    >
+                      <span className="text-white">
+                        {player.name || "익명"}
+                      </span>
+                      <span className="text-[11px] text-white/60">
+                        {clusterLabel} · 좌표 (
+                        {player.cell.position.x.toFixed(0)},{" "}
+                        {player.cell.position.y.toFixed(0)})
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

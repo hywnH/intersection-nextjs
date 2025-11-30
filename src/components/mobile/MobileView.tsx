@@ -9,7 +9,11 @@ import {
 } from "@/lib/game/input";
 import { addResizeListener } from "@/lib/game/window";
 import CanvasSurface from "@/components/shared/CanvasSurface";
-import { buildNoiseCraftParams, postNoiseCraftParams, resolveNoiseCraftEmbed } from "@/lib/audio/noiseCraft";
+import {
+  buildNoiseCraftParams,
+  postNoiseCraftParams,
+  resolveNoiseCraftEmbed,
+} from "@/lib/audio/noiseCraft";
 import type { GameState, PlayerSnapshot } from "@/types/game";
 import Hud from "./Hud";
 import StatusBanner from "./StatusBanner";
@@ -132,7 +136,11 @@ const MobileView = () => {
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
-    const params = buildNoiseCraftParams(state.audio, state.noiseSlots, "personal");
+    const params = buildNoiseCraftParams(
+      state.audio,
+      state.noiseSlots,
+      "personal"
+    );
     postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
   }, [state.audio, noiseCraftOrigin]);
 
@@ -189,7 +197,10 @@ const MobileView = () => {
       const nx = Math.max(-1, Math.min(1, pointer.x / (canvas.width * 0.25)));
       const ny = Math.max(-1, Math.min(1, pointer.y / (canvas.height * 0.25)));
       const CLIENT_MAX_SPEED = 320; // 서버 MAX_SPEED와 동일하게 유지
-      const controlVelocity = { x: nx * CLIENT_MAX_SPEED, y: ny * CLIENT_MAX_SPEED };
+      const controlVelocity = {
+        x: nx * CLIENT_MAX_SPEED,
+        y: ny * CLIENT_MAX_SPEED,
+      };
       dispatch({
         type: "SET_INPUT",
         input: {
@@ -306,9 +317,9 @@ const MobileView = () => {
   return (
     <div className="relative min-h-screen w-full bg-black">
       <CanvasSurface ref={canvasRef} />
-      <Hud state={state} />
-      <StatusBanner state={state} />
-      <Controls />
+      {/* <Hud state={state} /> */}
+      {/* <StatusBanner state={state} /> */}
+      {/* <Controls /> */}
       <div className="pointer-events-auto absolute bottom-4 left-4 hidden w-60 flex-col gap-2 rounded-xl bg-black/70 p-3 text-xs text-white sm:flex">
         <p className="text-white/70">Personal Audio (NoiseCraft)</p>
         <iframe

@@ -1,6 +1,9 @@
 services:
   web:
     image: node:24-alpine
+    cpus: 2 # 논리 CPU 2개까지만 사용
+    mem_limit: 4g # 메모리 4GB 제한
+    memswap_limit: 4g # 스왑도 동일하게 제한 (선택)
     working_dir: /app
     # 외부 직접 접근 포트
     ports:
@@ -28,6 +31,9 @@ services:
 
   game:
     image: node:24-alpine
+    cpus: 1.5
+    mem_limit: 2g
+    memswap_limit: 2g
     working_dir: /server
     ports:
       - "3001:3001"
@@ -48,6 +54,9 @@ services:
 
   noisecraft:
     image: node:24-alpine
+    cpus: 1
+    mem_limit: 1g
+    memswap_limit: 1g
     working_dir: /srv
     ports:
       - "4000:4000"
