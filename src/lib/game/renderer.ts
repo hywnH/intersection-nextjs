@@ -418,9 +418,6 @@ export const renderScene = (params: RenderParams) => {
   params.state.playerOrder.forEach((id, idx) => orderIndex.set(id, idx));
 
   clearScene(params.ctx, params.width, params.height);
-  if (params.state.mode === "global") {
-    renderFireworksBackground(params.ctx, params.width, params.height);
-  }
   if (params.state.playing) {
     if (params.state.mode === "personal") {
       renderSelfTrail(params);
