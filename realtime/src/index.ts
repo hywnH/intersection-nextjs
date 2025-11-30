@@ -12,6 +12,9 @@ const MAX_HEARTBEAT_MS = 5000;
 const TICK_HZ = 120; // 이동 계산 더 촘촘히
 const UPDATE_HZ = 60; // 기본 브로드캐스트 빈도
 const SELF_UPDATE_HZ = 120; // 자기 플레이어 전용 고주파수
+const CLUSTER_RADIUS = 420;
+const CLUSTER_REFRESH_INTERVAL_MS = 200;
+const BASE_CHORD = [261.63, 329.63, 392];
 
 type Vec2 = { x: number; y: number };
 
@@ -33,6 +36,15 @@ interface Player {
   vy: number;
 }
 
+interface ClusterInfo {
+  id: string;
+  memberIds: string[];
+  memberCount: number;
+  centroid: Vec2;
+  gain: number;
+  chord: Array<{ freq: number; gain: number }>;
+}
+
 const players = new Map<string, Player>();
 const spectators = new Set<string>();
 const collisionLines = new Map<
@@ -52,6 +64,7 @@ const collisionEvents: Array<{
   timestamp: number;
 }> = [];
 const COLLISION_DISTANCE = 80;
+const MAX_SPEED = 320;
 
 const rand = (min: number, max: number) => Math.random() * (max - min) + min;
 
@@ -65,7 +78,6 @@ function spawnPoint(): Vec2 {
 
 function moveTowards(p: Player, dt: number) {
   // 가속/감속 기반 부드러운 움직임: 클라이언트가 보낸 원하는 속도에 수렴
-  const MAX_SPEED = 320; // px/s
   const SMOOTH = 0.1; // 응답성(0~1)
   const desiredVx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVx));
   const desiredVy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVy));
@@ -104,6 +116,129 @@ function visiblePlayers(forId: string) {
     .map(toServerPlayer);
   return list;
 }
+
+let clusterSnapshot: ClusterInfo[] = [];
+let playerClusterMap = new Map<string, string>();
+let lastClusterRefresh = 0;
+let largestClusterId: string | null = null;
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+function recomputeClusters() {
+  const arr = Array.from(players.values());
+  const visited = new Set<string>();
+  const assignments = new Map<string, string>();
+  const clusters: ClusterInfo[] = [];
+  const radiusSq = CLUSTER_RADIUS * CLUSTER_RADIUS;
+
+  for (const player of arr) {
+    if (visited.has(player.id)) continue;
+    const queue: Player[] = [player];
+    visited.add(player.id);
+    const members: Player[] = [];
+
+    while (queue.length) {
+      const current = queue.pop()!;
+      members.push(current);
+      for (const candidate of arr) {
+        if (visited.has(candidate.id)) continue;
+        const dx = current.x - candidate.x;
+        const dy = current.y - candidate.y;
+        if (dx * dx + dy * dy <= radiusSq) {
+          visited.add(candidate.id);
+          queue.push(candidate);
+        }
+      }
+    }
+
+    const clusterId = members[0]?.id ?? `cluster-${clusters.length}`;
+    members.forEach((member) => assignments.set(member.id, clusterId));
+    const centroid = members.reduce(
+      (acc, member) => {
+        acc.x += member.x;
+        acc.y += member.y;
+        return acc;
+      },
+      { x: 0, y: 0 }
+    );
+    const memberCount = members.length || 1;
+    centroid.x /= memberCount;
+    centroid.y /= memberCount;
+    const gain = clamp(memberCount / 4, 0.1, 1);
+    const chord = BASE_CHORD.map((freq, idx) => ({
+      freq: Number(
+        (freq * (1 + (memberCount - 1) * 0.02 * (idx + 1))).toFixed(2)
+      ),
+      gain: Number((gain * (1 - idx * 0.15)).toFixed(3)),
+    }));
+    clusters.push({
+      id: clusterId,
+      memberIds: members.map((m) => m.id),
+      memberCount,
+      centroid,
+      gain,
+      chord,
+    });
+  }
+
+  clusterSnapshot = clusters;
+  playerClusterMap = assignments;
+  largestClusterId =
+    clusters.reduce<ClusterInfo | null>(
+      (prev, current) =>
+        !prev || current.memberCount > prev.memberCount ? current : prev,
+      null
+    )?.id ?? null;
+  lastClusterRefresh = Date.now();
+}
+
+function ensureClustersFresh(force = false) {
+  if (force || Date.now() - lastClusterRefresh > CLUSTER_REFRESH_INTERVAL_MS) {
+    recomputeClusters();
+  }
+}
+
+const serializeCluster = (cluster: ClusterInfo) => ({
+  clusterId: cluster.id,
+  chord: cluster.chord,
+  memberCount: cluster.memberCount,
+  centroid: cluster.centroid,
+  gain: cluster.gain,
+});
+
+const computeNoiseLevel = (p: Player) =>
+  clamp(Math.hypot(p.vx, p.vy) / MAX_SPEED, 0, 1);
+
+const computeAmbientLevel = () => clamp(players.size / 12, 0, 1);
+
+const emitAudioForPlayer = (player: Player) => {
+  const socket = io.sockets.sockets.get(player.id);
+  if (!socket) return;
+  const clusterId = playerClusterMap.get(player.id) ?? null;
+  const cluster = clusterSnapshot.find((c) => c.id === clusterId);
+  socket.emit("audioSelf", {
+    noiseLevel: computeNoiseLevel(player),
+    ambientLevel: computeAmbientLevel(),
+    clusterId,
+  });
+  if (cluster) {
+    socket.emit("audioCluster", serializeCluster(cluster));
+  }
+};
+
+const emitAudioGlobal = (socketId: string) => {
+  const socket = io.sockets.sockets.get(socketId);
+  if (!socket) return;
+  if (!clusterSnapshot.length) {
+    socket.emit("audioGlobal", { cluster: null });
+    return;
+  }
+  const cluster =
+    clusterSnapshot.find((c) => c.id === largestClusterId) ??
+    clusterSnapshot[0];
+  socket.emit("audioGlobal", { cluster: serializeCluster(cluster) });
+};
 
 const pairKey = (a: string, b: string) => (a < b ? `${a}:${b}` : `${b}:${a}`);
 
@@ -237,6 +372,7 @@ io.on("connection", (socket) => {
         width: GAME_WIDTH,
         height: GAME_HEIGHT,
       });
+      ensureClustersFresh(true);
     });
 
     socket.on(
@@ -277,6 +413,7 @@ io.on("connection", (socket) => {
     spectators.delete(socket.id);
     players.delete(socket.id);
     removePlayerCollisions(socket.id);
+    ensureClustersFresh(true);
   });
 
   // 외부 파라미터 브리지: 클라이언트가 보낸 파라미터 변경을 모두에게 브로드캐스트
@@ -304,6 +441,7 @@ setInterval(() => {
 // 업데이트 브로드캐스트
 setInterval(() => {
   detectCollisions();
+  ensureClustersFresh();
   const collisionSnapshot = Array.from(collisionLines.values());
   const eventsSnapshot = collisionEvents.splice(0);
 
@@ -327,6 +465,7 @@ setInterval(() => {
       { collisions: collisionSnapshot, collisionEvents: eventsSnapshot }
     );
     s.emit("leaderboard", { players: players.size });
+    emitAudioGlobal(id);
   }
 
   // 각 플레이어별 업데이트
@@ -338,11 +477,13 @@ setInterval(() => {
       collisionEvents: eventsSnapshot,
     });
     s.emit("leaderboard", { players: players.size });
+    emitAudioForPlayer(p);
   }
 }, 1000 / UPDATE_HZ);
 
 // 자기 플레이어 전용 고주파수 업데이트
 setInterval(() => {
+  ensureClustersFresh();
   const collisionSnapshot = Array.from(collisionLines.values());
   const eventsSnapshot = collisionEvents.slice();
   for (const p of players.values()) {
@@ -353,6 +494,7 @@ setInterval(() => {
       collisionEvents: eventsSnapshot,
       fast: true,
     });
+    emitAudioForPlayer(p);
   }
 }, 1000 / SELF_UPDATE_HZ);
 

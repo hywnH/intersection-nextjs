@@ -40,6 +40,11 @@ const createBaseState = (): Omit<GameState, "mode"> => ({
   collisionLines: [],
   selfHighlightUntil: 0,
   snapshotBuffer: [],
+  audio: {
+    self: null,
+    cluster: null,
+    global: null,
+  },
 });
 
 export const createInitialState = (mode: Mode = "personal"): GameState => ({
@@ -179,6 +184,11 @@ export const gameReducer = (
       return {
         ...state,
         playing: action.playing,
+      };
+    case "SET_AUDIO":
+      return {
+        ...state,
+        audio: { ...state.audio, ...action.audio },
       };
     case "PUSH_SNAPSHOT_FRAME": {
       const MAX_BUFFER_MS = 600;

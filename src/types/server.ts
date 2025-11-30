@@ -42,3 +42,26 @@ export interface ServerTellPlayerMovePayload {
   playerData?: ServerPlayer;
   userData?: ServerPlayer[];
 }
+
+export interface ServerAudioChord {
+  freq: number;
+  gain: number;
+}
+
+export interface ServerAudioCluster {
+  clusterId: string;
+  chord: ServerAudioChord[];
+  memberCount: number;
+  centroid: { x: number; y: number };
+  gain: number;
+}
+
+export interface ServerAudioSelf {
+  noiseLevel: number;
+  ambientLevel: number;
+  clusterId: string | null;
+}
+
+export interface ServerAudioGlobal {
+  cluster: ServerAudioCluster | null;
+}

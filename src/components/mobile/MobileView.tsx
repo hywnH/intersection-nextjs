@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGameClient } from "@/lib/game/hooks";
 import { renderScene } from "@/lib/game/renderer";
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/lib/game/input";
 import { addResizeListener } from "@/lib/game/window";
 import CanvasSurface from "@/components/shared/CanvasSurface";
+import { buildNoiseCraftParams, postNoiseCraftParams, resolveNoiseCraftEmbed } from "@/lib/audio/noiseCraft";
 import type { GameState, PlayerSnapshot } from "@/types/game";
 import Hud from "./Hud";
 import StatusBanner from "./StatusBanner";
@@ -114,10 +115,26 @@ const MobileView = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const latestState = useRef(state);
+  const audioIframeRef = useRef<HTMLIFrameElement>(null);
+  const [noiseCraftOrigin, setNoiseCraftOrigin] = useState<string | null>(null);
+  const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
 
   useEffect(() => {
     latestState.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const { src, origin } = resolveNoiseCraftEmbed();
+    setNoiseCraftSrc(src);
+    setNoiseCraftOrigin(origin);
+  }, []);
+
+  useEffect(() => {
+    if (!noiseCraftOrigin) return;
+    const params = buildNoiseCraftParams(state.audio, "personal");
+    postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
+  }, [state.audio, noiseCraftOrigin]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -292,6 +309,19 @@ const MobileView = () => {
       <Hud state={state} />
       <StatusBanner state={state} />
       <Controls />
+      <div className="pointer-events-auto absolute bottom-4 left-4 hidden w-60 flex-col gap-2 rounded-xl bg-black/70 p-3 text-xs text-white sm:flex">
+        <p className="text-white/70">Personal Audio (NoiseCraft)</p>
+        <iframe
+          ref={audioIframeRef}
+          src={noiseCraftSrc}
+          width="220"
+          height="120"
+          allow="autoplay"
+          title="NoiseCraft Personal"
+          style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
+        />
+        <p className="text-white/50">Tap “Start Audio” inside panel.</p>
+      </div>
     </div>
   );
 };
