@@ -395,5 +395,5 @@ export const renderScene = (params: RenderParams) => {
       renderPlayers({ ...params, blend, laneGap, orderIndex });
     }
   }
-  renderHud(params);
+  // renderHud(params);
 };

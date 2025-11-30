@@ -14,7 +14,7 @@ export interface NoiseCraftParam {
 const SLOT_FALLBACKS: Record<number, { nodes: string[]; label: string }> = {
   // 기본 매핑: 1번 슬롯 → 노드 206, 2번 슬롯 → 노드 183
   0: { nodes: ["206"], label: "fact" },
-  1: { nodes: ["183"], label: "Vol CHORDS" }
+  1: { nodes: ["183"], label: "Vol CHORDS" },
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -78,7 +78,8 @@ const appendSlotParams = (
 export const buildNoiseCraftParams = (
   audio: AudioState,
   slots: NoiseSlot[] = [],
-  mode: "personal" | "global"
+  mode: "personal" | "global",
+  proximityValue = 0
 ): NoiseCraftParam[] => {
   const params: NoiseCraftParam[] = [];
   if (mode === "personal") {
@@ -101,6 +102,17 @@ export const buildNoiseCraftParams = (
     appendSlotParams(params, 1, [0], slots, SLOT_FALLBACKS[1].nodes);
   }
 
+  if (mode === "personal") {
+    const clampedProximity = format(clamp(proximityValue, 0, 1));
+    ["5", "35", "107"].forEach((nodeId) =>
+      params.push({
+        nodeId,
+        paramName: "value",
+        value: clampedProximity,
+      })
+    );
+  }
+
   return params;
 };
 
@@ -110,11 +122,11 @@ export const postNoiseCraftParams = (
   params: NoiseCraftParam[]
 ) => {
   if (!iframe || !params.length) return;
-  if (process.env.NODE_ENV === "development") {
-    // 디버그용: 3000 → iframe으로 전송되는 파라미터 확인
-    // eslint-disable-next-line no-console
-    console.log("[NoiseCraft] postParams", { origin, params });
-  }
+  // if (process.env.NODE_ENV === "development") {
+  //   // 디버그용: 3000 → iframe으로 전송되는 파라미터 확인
+  //   // eslint-disable-next-line no-console
+  //   // console.log("[NoiseCraft] postParams", { origin, params });
+  // }
   iframe.contentWindow?.postMessage(
     { type: "noiseCraft:setParams", params },
     origin || "*"

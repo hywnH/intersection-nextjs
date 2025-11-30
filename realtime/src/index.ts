@@ -64,7 +64,20 @@ const collisionEvents: Array<{
   timestamp: number;
 }> = [];
 const COLLISION_DISTANCE = 80;
+const MIN_GRAVITY_DISTANCE = 80;
 const MAX_SPEED = 320;
+const PLAYER_BASE_MASS = 5000;
+const INPUT_SMOOTH = 0.1;
+const GRAVITY_TARGET_SPEED_RATIO = 0.5;
+const TARGET_GRAVITY_VELOCITY = MAX_SPEED * GRAVITY_TARGET_SPEED_RATIO;
+const MAX_GRAVITY_ACCEL = TARGET_GRAVITY_VELOCITY * INPUT_SMOOTH * TICK_HZ; // accel so steady-state ≈ 0.5 user max
+const GRAVITY_G =
+  (MAX_GRAVITY_ACCEL * MIN_GRAVITY_DISTANCE * MIN_GRAVITY_DISTANCE) /
+  PLAYER_BASE_MASS;
+const LOG_GRAVITY = 0;
+const LOG_GRAVITY_INTERVAL_MS = Number(
+  process.env.LOG_GRAVITY_INTERVAL_MS || 1000
+);
 
 const rand = (min: number, max: number) => Math.random() * (max - min) + min;
 
@@ -86,13 +99,59 @@ function spawnPoint(): Vec2 {
 
 function moveTowards(p: Player, dt: number) {
   // 가속/감속 기반 부드러운 움직임: 클라이언트가 보낸 원하는 속도에 수렴
-  const SMOOTH = 0.1; // 응답성(0~1)
+  const SMOOTH = INPUT_SMOOTH; // 응답성(0~1)
   const desiredVx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVx));
   const desiredVy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVy));
   p.vx += (desiredVx - p.vx) * SMOOTH;
   p.vy += (desiredVy - p.vy) * SMOOTH;
   p.x = Math.max(0, Math.min(GAME_WIDTH, p.x + p.vx * dt));
   p.y = Math.max(0, Math.min(GAME_HEIGHT, p.y + p.vy * dt));
+}
+
+function applyNearestGravity(p: Player, list: Player[], dt: number) {
+  if (list.length <= 1 || p.massTotal <= 0) return;
+  let nearest: Player | null = null;
+  let nearestDistSq = Number.POSITIVE_INFINITY;
+  for (const other of list) {
+    if (other.id === p.id) continue;
+    const dx = other.x - p.x;
+    const dy = other.y - p.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq === 0) continue;
+    if (distSq < nearestDistSq) {
+      nearest = other;
+      nearestDistSq = distSq;
+    }
+  }
+  if (!nearest) return;
+  const dist = Math.max(Math.sqrt(nearestDistSq), MIN_GRAVITY_DISTANCE);
+  const dirX = (nearest.x - p.x) / dist;
+  const dirY = (nearest.y - p.y) / dist;
+  const denom = dist * dist;
+  if (denom <= 0 || !Number.isFinite(denom)) {
+    return;
+  }
+  const accelMagnitude = Math.min(
+    (GRAVITY_G * Math.max(nearest.massTotal, 1)) / denom,
+    MAX_GRAVITY_ACCEL
+  );
+  p.vx += accelMagnitude * dirX * dt;
+  p.vy += accelMagnitude * dirY * dt;
+  if (LOG_GRAVITY) {
+    const now = Date.now();
+    const lastLog = lastGravityLogByPlayer.get(p.id) ?? 0;
+    if (now - lastLog >= LOG_GRAVITY_INTERVAL_MS) {
+      console.log("[gravity]", {
+        playerId: p.id,
+        targetId: nearest.id,
+        dist: Number(dist.toFixed(2)),
+        accel: Number(accelMagnitude.toFixed(2)),
+        vx: Number(p.vx.toFixed(2)),
+        vy: Number(p.vy.toFixed(2)),
+      });
+      lastGravityLogByPlayer.set(p.id, now);
+    }
+  }
 }
 
 function toServerPlayer(p: Player) {
@@ -154,6 +213,7 @@ let noiseSlots: NoiseSlotEntry[] = Array.from(
   { length: NOISE_SLOT_COUNT },
   (_, slot) => createEmptyNoiseSlot(slot)
 );
+const lastGravityLogByPlayer = new Map<string, number>();
 
 const sanitizeNoiseSlotPayload = (payload: unknown) => {
   if (
@@ -423,7 +483,7 @@ io.on("connection", (socket) => {
         desiredVx: 0,
         desiredVy: 0,
         radius: 20,
-        massTotal: 400,
+        massTotal: PLAYER_BASE_MASS,
         color: "rgba(255,255,255,0.8)",
         screenWidth: existing?.screenWidth || 0,
         screenHeight: existing?.screenHeight || 0,
@@ -526,11 +586,13 @@ io.on("connection", (socket) => {
 setInterval(() => {
   const now = Date.now();
   const dt = 1 / TICK_HZ;
-  for (const p of players.values()) {
+  const playerList = Array.from(players.values());
+  for (const p of playerList) {
     if (now - p.lastHeartbeat > MAX_HEARTBEAT_MS) {
       // 하트비트 타임아웃: 단순히 타겟 무시
       continue;
     }
+    applyNearestGravity(p, playerList, dt);
     moveTowards(p, dt);
   }
 }, 1000 / TICK_HZ);
