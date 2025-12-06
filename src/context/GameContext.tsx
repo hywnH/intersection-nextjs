@@ -41,8 +41,24 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     if (!envWsUrl) return;
 
     try {
-      const absoluteUrl = new URL(envWsUrl, window.location.origin);
-      setServerUrl(absoluteUrl.toString());
+      const page = window.location;
+      const absoluteUrl = new URL(envWsUrl, page.origin);
+
+      // 개발용 localhost/127.0.0.1이 설정된 경우,
+      // 현재 접속한 호스트(IP/도메인)에 맞게 호스트만 교체
+      if (
+        absoluteUrl.hostname === "localhost" ||
+        absoluteUrl.hostname === "127.0.0.1"
+      ) {
+        const port = absoluteUrl.port || "3001";
+        const path = absoluteUrl.pathname || "/socket";
+        const protocol = page.protocol;
+        const hostPart = port ? `${page.hostname}:${port}` : page.hostname;
+        const rewritten = `${protocol}//${hostPart}${path}`;
+        setServerUrl(rewritten);
+      } else {
+        setServerUrl(absoluteUrl.toString());
+      }
     } catch {
       setServerUrl(envWsUrl);
     }

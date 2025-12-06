@@ -141,6 +141,8 @@ export const registerSocketEvents = ({
       collisions?: ServerCollisionLine[];
       collisionEvents?: ServerCollisionEvent[];
       fast?: boolean;
+      gravity?: { x: number; y: number; dist: number } | null;
+      isCollidingSelf?: boolean;
     }
   ) => {
     const effectivePlayerData = mode === "personal" ? playerData : undefined;
@@ -157,12 +159,23 @@ export const registerSocketEvents = ({
     if (mode === "personal" && currentSelfId) {
       const serverSelf = players[currentSelfId];
       if (serverSelf) {
+        const gravityDir =
+          meta?.gravity && Number.isFinite(meta.gravity.dist)
+            ? { x: meta.gravity.x, y: meta.gravity.y }
+            : undefined;
+        const gravityDist =
+          meta?.gravity && Number.isFinite(meta.gravity.dist)
+            ? meta.gravity.dist
+            : undefined;
         players[currentSelfId] = {
           ...serverSelf,
           isPredicted: false,
           predictionOffset: { x: 0, y: 0 },
           lastServerPosition: { ...serverSelf.cell.position },
           lastServerVelocity: { ...serverSelf.cell.velocity },
+          gravityDir,
+          gravityDist,
+          isCollidingSelf: Boolean(meta?.isCollidingSelf),
         };
       }
     }
@@ -338,15 +351,16 @@ export const registerSocketEvents = ({
   const handleWelcome = (
     ...args: unknown[]
   ) => onWelcome(args[0] as ServerPlayer | undefined, args[1] as { width?: number; height?: number } | undefined);
-  const handlePlayerMove = (
-    ...args: unknown[]
-  ) =>
+  const handlePlayerMove = (...args: unknown[]) =>
     onPlayerMove(
       args[0] as ServerPlayer | undefined,
       (args[1] as ServerPlayer[]) ?? [],
       args[2] as {
         collisions?: ServerCollisionLine[];
         collisionEvents?: ServerCollisionEvent[];
+        fast?: boolean;
+        gravity?: { x: number; y: number; dist: number } | null;
+        isCollidingSelf?: boolean;
       }
     );
   const handleLeaderboard = (...args: unknown[]) => onLeaderboard((args[0] as { players?: number }) ?? {});
