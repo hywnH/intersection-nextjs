@@ -23,6 +23,7 @@
   "scripts": {
     "start": "node server.js",
     "watch": "nodemon server.js",
-    "build": "esbuild public/main.js public/audioworklet.js public/help.js public/browse.js --bundle --outdir=deploy/public"
+    "build": "esbuild public/main.js public/audioworklet.js public/help.js public/browse.js --bundle --outdir=deploy/public",
+    "open-test-workspace": "node ../scripts/open-test-workspace.mjs"
   }
 }
