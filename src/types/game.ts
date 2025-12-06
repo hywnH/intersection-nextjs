@@ -25,6 +25,10 @@ export interface PlayerSnapshot {
   lastServerPosition?: Vec2;
   lastServerVelocity?: Vec2;
   predictionOffset?: Vec2;
+  // 서버에서 계산한 중력 방향/거리 및 충돌 여부(개인 뷰 연출용)
+  gravityDir?: Vec2;
+  gravityDist?: number;
+  isCollidingSelf?: boolean;
 }
 
 export interface SnapshotFrame {

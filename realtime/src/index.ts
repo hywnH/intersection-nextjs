@@ -10,8 +10,8 @@ const GAME_WIDTH = 1920 * 4;
 const GAME_HEIGHT = 602 * 4;
 const MAX_HEARTBEAT_MS = 5000;
 const TICK_HZ = 120; // 이동 계산 더 촘촘히
-const UPDATE_HZ = 60; // 기본 브로드캐스트 빈도
-const SELF_UPDATE_HZ = 120; // 자기 플레이어 전용 고주파수
+const UPDATE_HZ = 30; // 기본 브로드캐스트 빈도 (모든 클라이언트)
+const SELF_UPDATE_HZ = 30; // 자기 플레이어 전용 보간용 업데이트
 const CLUSTER_RADIUS = 420;
 const CLUSTER_REFRESH_INTERVAL_MS = 200;
 const BASE_CHORD = [261.63, 329.63, 392];
@@ -34,6 +34,10 @@ interface Player {
   lastHeartbeat: number;
   vx: number;
   vy: number;
+   // 서버가 계산한 중력 방향/거리(가장 가까운 플레이어 기준)
+  gravityDirX: number;
+  gravityDirY: number;
+  gravityDist: number;
 }
 
 interface ClusterInfo {
@@ -63,12 +67,14 @@ const collisionEvents: Array<{
   radius: number;
   timestamp: number;
 }> = [];
+// 현재 프레임에서 실제로 충돌한 플레이어 id 집합 (isColliding 플래그용)
+const collidingNow = new Set<string>();
 const COLLISION_DISTANCE = 80;
 const MIN_GRAVITY_DISTANCE = 80;
 const MAX_SPEED = 320;
 const PLAYER_BASE_MASS = 5000;
-const INPUT_SMOOTH = 0.1;
-const GRAVITY_TARGET_SPEED_RATIO = 0.5;
+const INPUT_SMOOTH = 0.6;
+const GRAVITY_TARGET_SPEED_RATIO = 0.8;
 const TARGET_GRAVITY_VELOCITY = MAX_SPEED * GRAVITY_TARGET_SPEED_RATIO;
 const MAX_GRAVITY_ACCEL = TARGET_GRAVITY_VELOCITY * INPUT_SMOOTH * TICK_HZ; // accel so steady-state ≈ 0.5 user max
 const GRAVITY_G =
@@ -109,7 +115,13 @@ function moveTowards(p: Player, dt: number) {
 }
 
 function applyNearestGravity(p: Player, list: Player[], dt: number) {
-  if (list.length <= 1 || p.massTotal <= 0) return;
+  if (list.length <= 1 || p.massTotal <= 0) {
+    // 다른 플레이어가 없으면 중력 정보 초기화
+    p.gravityDirX = 0;
+    p.gravityDirY = 0;
+    p.gravityDist = Number.POSITIVE_INFINITY;
+    return;
+  }
   let nearest: Player | null = null;
   let nearestDistSq = Number.POSITIVE_INFINITY;
   for (const other of list) {
@@ -123,7 +135,12 @@ function applyNearestGravity(p: Player, list: Player[], dt: number) {
       nearestDistSq = distSq;
     }
   }
-  if (!nearest) return;
+  if (!nearest) {
+    p.gravityDirX = 0;
+    p.gravityDirY = 0;
+    p.gravityDist = Number.POSITIVE_INFINITY;
+    return;
+  }
   const dist = Math.max(Math.sqrt(nearestDistSq), MIN_GRAVITY_DISTANCE);
   const dirX = (nearest.x - p.x) / dist;
   const dirY = (nearest.y - p.y) / dist;
@@ -137,6 +154,10 @@ function applyNearestGravity(p: Player, list: Player[], dt: number) {
   );
   p.vx += accelMagnitude * dirX * dt;
   p.vy += accelMagnitude * dirY * dt;
+  // 시각화/클라이언트용 중력 벡터 저장
+  p.gravityDirX = dirX;
+  p.gravityDirY = dirY;
+  p.gravityDist = dist;
   if (LOG_GRAVITY) {
     const now = Date.now();
     const lastLog = lastGravityLogByPlayer.get(p.id) ?? 0;
@@ -367,6 +388,7 @@ const EVENT_COOLDOWN_MS = 600;
 
 function detectCollisions() {
   const arr = Array.from(players.values());
+  collidingNow.clear();
   for (let i = 0; i < arr.length; i += 1) {
     for (let j = i + 1; j < arr.length; j += 1) {
       const pa = arr[i];
@@ -375,6 +397,9 @@ function detectCollisions() {
       const dy = pa.y - pb.y;
       const dist = Math.hypot(dx, dy);
       if (dist <= COLLISION_DISTANCE) {
+        // 현재 충돌 중인 플레이어 기록
+        collidingNow.add(pa.id);
+        collidingNow.add(pb.id);
         const key = pairKey(pa.id, pb.id);
         const now = Date.now();
         const existing = collisionLines.get(key);
@@ -490,6 +515,9 @@ io.on("connection", (socket) => {
         lastHeartbeat: Date.now(),
         vx: 0,
         vy: 0,
+        gravityDirX: 0,
+        gravityDirY: 0,
+        gravityDist: Number.POSITIVE_INFINITY,
       };
       players.set(socket.id, p);
       socket.emit("welcome", toServerPlayer(p), {
@@ -631,9 +659,20 @@ setInterval(() => {
   for (const p of players.values()) {
     const s = io.sockets.sockets.get(p.id);
     if (!s) continue;
+    const isColliding = collidingNow.has(p.id);
+    const gravity =
+      Number.isFinite(p.gravityDist) && p.gravityDist < Number.POSITIVE_INFINITY
+        ? {
+            x: p.gravityDirX,
+            y: p.gravityDirY,
+            dist: p.gravityDist,
+          }
+        : null;
     s.emit("serverTellPlayerMove", toServerPlayer(p), visiblePlayers(p.id), {
       collisions: collisionSnapshot,
       collisionEvents: eventsSnapshot,
+      gravity,
+      isCollidingSelf: isColliding,
     });
     s.emit("leaderboard", { players: players.size });
     emitAudioForPlayer(p);
@@ -642,16 +681,23 @@ setInterval(() => {
 
 // 자기 플레이어 전용 고주파수 업데이트
 setInterval(() => {
-  ensureClustersFresh();
-  const collisionSnapshot = Array.from(collisionLines.values());
-  const eventsSnapshot = collisionEvents.slice();
   for (const p of players.values()) {
     const s = io.sockets.sockets.get(p.id);
     if (!s) continue;
-    s.emit("serverTellPlayerMove", toServerPlayer(p), visiblePlayers(p.id), {
-      collisions: collisionSnapshot,
-      collisionEvents: eventsSnapshot,
+    const isColliding = collidingNow.has(p.id);
+    const gravity =
+      Number.isFinite(p.gravityDist) && p.gravityDist < Number.POSITIVE_INFINITY
+        ? {
+            x: p.gravityDirX,
+            y: p.gravityDirY,
+            dist: p.gravityDist,
+          }
+        : null;
+    // 보간용 빠른 업데이트: 자기 자신 정보 + 최소 메타만 전송
+    s.emit("serverTellPlayerMove", toServerPlayer(p), [], {
       fast: true,
+      gravity,
+      isCollidingSelf: isColliding,
     });
     emitAudioForPlayer(p);
   }

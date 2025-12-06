@@ -117,23 +117,11 @@ const renderParticleCluster = (
     const subSize = baseSize * 0.5 * (0.75 + zFactor * 0.25); // 크기 증가 (더 겹치게)
     const subAlpha = alpha * (0.85 + zFactor * 0.15); // 알파 증가
     
-    // 서브 파티클 그리기 (파도처럼 부드럽게, 유기적으로 연결)
+    // 서브 파티클 그리기
     ctx.beginPath();
     ctx.arc(subX, subY, subSize, 0, Math.PI * 2);
-    
-    // 더 부드러운 그라데이션 (파도처럼 출렁이는 느낌, 유기적 연결)
-    const gradient = ctx.createRadialGradient(
-      subX, subY, 0,
-      subX, subY, subSize * 4.5 // 더 큰 그라데이션 반경 (더 겹치게)
-    );
-    gradient.addColorStop(0, `rgba(255,255,255,${subAlpha})`);
-    gradient.addColorStop(0.25, `rgba(255,255,255,${subAlpha * 0.9})`); // 더 밝게
-    gradient.addColorStop(0.5, `rgba(255,255,255,${subAlpha * 0.7})`);
-    gradient.addColorStop(0.75, `rgba(255,255,255,${subAlpha * 0.4})`);
-    gradient.addColorStop(0.9, `rgba(255,255,255,${subAlpha * 0.15})`); // 더 긴 꼬리
-    gradient.addColorStop(1, `rgba(255,255,255,0)`);
-    
-    ctx.fillStyle = gradient;
+    // 단색 채우기 (그라데이션 제거)
+    ctx.fillStyle = `rgba(255,255,255,${subAlpha})`;
     ctx.fill();
   }
 };
@@ -146,30 +134,27 @@ const renderParticleBall = (
   baseRadius: number,
   time: number,
   velocity?: Vec2, // 속도 정보
-  nearestPlayerPos?: Vec2, // 가장 가까운 플레이어의 위치 (중력 방향 계산용)
-  nearestPlayerDist?: number // 가장 가까운 플레이어와의 거리 (중력 강도 계산용)
+  gravityDir?: Vec2, // 서버에서 계산된 중력 방향 벡터
+  gravityDist?: number // 서버에서 계산된 가장 가까운 플레이어와의 거리
 ) => {
   // 중력 영향력 계산 (거리 기반만 사용 - 다른 플레이어가 있을 때만)
   // 거리 기반 중력 강도 (가까울수록 강함, 최대 거리 400 기준)
-  const distGravityFactor = nearestPlayerDist !== undefined && nearestPlayerDist < 400
-    ? Math.max(0, 1 - Math.min(nearestPlayerDist / 400, 1))
-    : 0;
-  
-  // 최종 중력 영향력 (0~1) - 오로지 다른 플레이어와의 거리 기반
+  const hasGravity = gravityDist !== undefined && Number.isFinite(gravityDist);
+  const distGravityFactor =
+    hasGravity && gravityDist! < 400
+      ? Math.max(0, 1 - Math.min(gravityDist! / 400, 1))
+      : 0;
+  // 최종 중력 영향력 (0~1)
   const gravityInfluence = distGravityFactor;
-  
-  // 중력 방향 계산 (가장 가까운 플레이어 방향으로)
+
+  // 중력 방향 계산 (이미 서버에서 계산된 벡터를 사용)
   let gravityDirX = 0;
   let gravityDirY = 0;
-  
-  if (nearestPlayerPos && nearestPlayerDist !== undefined && nearestPlayerDist > 0.1) {
-    // 다른 플레이어 방향으로 정규화된 벡터
-    const dx = nearestPlayerPos.x - centerX;
-    const dy = nearestPlayerPos.y - centerY;
-    const dist = Math.hypot(dx, dy);
-    if (dist > 0.1) {
-      gravityDirX = dx / dist;
-      gravityDirY = dy / dist;
+  if (gravityDir) {
+    const mag = Math.hypot(gravityDir.x, gravityDir.y);
+    if (mag > 0.0001) {
+      gravityDirX = gravityDir.x / mag;
+      gravityDirY = gravityDir.y / mag;
     }
   }
   
@@ -536,40 +521,6 @@ const renderPlayers = ({
     
     // 개인 뷰에서 자기 공에 파티클 효과 적용
     if (isPersonal && player.isSelf) {
-      // 가장 가까운 플레이어의 위치와 거리 계산 (중력 방향과 강도 계산용)
-      let nearestPlayerPos: Vec2 | undefined = undefined;
-      let nearestPlayerDist: number | undefined = undefined;
-      
-      if (state.playerOrder.length > 1) {
-        let minDist = Number.POSITIVE_INFINITY;
-        let nearestPos: Vec2 | undefined = undefined;
-        
-        for (const otherId of state.playerOrder) {
-          if (otherId === playerId) continue;
-          const otherPlayer = state.players[otherId];
-          if (!otherPlayer) continue;
-          
-          const dx = otherPlayer.cell.position.x - renderBasePosition.x;
-          const dy = otherPlayer.cell.position.y - renderBasePosition.y;
-          const dist = Math.hypot(dx, dy);
-          
-          if (dist < minDist) {
-            minDist = dist;
-            // 스크린 좌표로 변환
-            const otherScreenPos = project(state, width, height, otherPlayer.cell.position, overrides);
-            nearestPos = {
-              x: otherScreenPos.x * (1 - blend) + (otherPlayer.cell.position.x / state.gameSize.width) * width * blend,
-              y: otherScreenPos.y * (1 - blend) + (otherPlayer.cell.position.y / state.gameSize.height) * height * blend,
-            };
-          }
-        }
-        
-        if (isFinite(minDist) && nearestPos) {
-          nearestPlayerDist = minDist;
-          nearestPlayerPos = nearestPos;
-        }
-      }
-      
       renderParticleBall(
         ctx, 
         screenPos.x, 
@@ -577,8 +528,8 @@ const renderPlayers = ({
         radius, 
         time,
         cell.velocity, // velocity 정보 전달
-        nearestPlayerPos, // 가장 가까운 플레이어의 위치 (중력 방향)
-        nearestPlayerDist // 가장 가까운 플레이어와의 거리 (중력 강도)
+        player.gravityDir, // 서버에서 계산된 중력 방향
+        player.gravityDist // 서버에서 계산된 거리
       );
     } else {
       // 다른 플레이어는 기존 스타일 유지
@@ -694,8 +645,9 @@ const renderCollisionConnections = ({
   const wallNow = Date.now();
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = "rgba(255,255,255,0.65)";
-  ctx.shadowColor = "rgba(255,255,255,0.8)";
-  ctx.shadowBlur = 8;
+  // 그림자 효과 제거
+  ctx.shadowColor = "rgba(0,0,0,0)";
+  ctx.shadowBlur = 0;
   state.collisionLines.forEach((pair) => {
     if (state.mode === "personal" && selfId) {
       if (!pair.players.includes(selfId)) {
@@ -736,7 +688,7 @@ const renderCollisionConnections = ({
 
     // Render endpoints without blending to maintain visibility in personal mode
     ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.shadowBlur = 12;
+    // 점에도 그림자 사용하지 않음
     const dotRadius = blend > 0.7 ? 4.5 : 6;
     ctx.beginPath();
     ctx.arc(posA.x, posA.y, dotRadius, 0, Math.PI * 2);
@@ -793,17 +745,8 @@ const renderCollisionMarks = ({
     const radius =
       mark.radius * (1 - blend) + Math.max(12, mark.radius * 0.2) * blend;
     const alpha = Math.max(0, 1 - age);
-    const gradient = ctx.createRadialGradient(
-      pos.x,
-      pos.y,
-      0,
-      pos.x,
-      pos.y,
-      radius
-    );
-    gradient.addColorStop(0, `rgba(255,255,255,${0.5 * alpha})`);
-    gradient.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = gradient;
+    // 단색 원으로 렌더링 (그라데이션 제거)
+    ctx.fillStyle = `rgba(255,255,255,${0.5 * alpha})`;
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
     ctx.fill();
