@@ -254,8 +254,6 @@ export const registerSocketEvents = ({
           ambientLevel: payload.ambientLevel ?? 0,
           clusterId: payload.clusterId ?? null,
           updatedAt: Date.now(),
-          toneIndex:
-            typeof payload.toneIndex === "number" ? payload.toneIndex : null,
         },
       },
     });

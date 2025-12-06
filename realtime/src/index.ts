@@ -14,20 +14,7 @@ const UPDATE_HZ = 30; // 기본 브로드캐스트 빈도 (모든 클라이언�
 const SELF_UPDATE_HZ = 30; // 자기 플레이어 전용 보간용 업데이트
 const CLUSTER_RADIUS = 420;
 const CLUSTER_REFRESH_INTERVAL_MS = 200;
-// 기본 클러스터 코드: C 메이저/펜타토닉 계열
-const BASE_CHORD = [261.63, 293.66, 392]; // C4, D4, G4
-// 코드 진행: 같은 스케일 안에서 서로 다른 코드(보이싱+음정) 4단계 진행
-const CHORD_PROGRESSION: number[][] = [
-  // 1단계: C-D-G (기존 코드)
-  [261.63, 293.66, 392.0],
-  // 2단계: A-C-E (A minor 느낌)
-  [220.0, 261.63, 329.63],
-  // 3단계: F-G-C (F sus2 느낌)
-  [174.61, 196.0, 261.63],
-  // 4단계: G-A-D (G add2 느낌)
-  [196.0, 220.0, 293.66],
-];
-const CHORD_PROGRESS_PERIOD_MS = 8000; // 8초마다 다음 보이싱으로 진행
+const BASE_CHORD = [261.63, 329.63, 392];
 
 type Vec2 = { x: number; y: number };
 
@@ -290,12 +277,6 @@ function recomputeClusters() {
   const clusters: ClusterInfo[] = [];
   const radiusSq = CLUSTER_RADIUS * CLUSTER_RADIUS;
 
-  // 코드 진행 스텝은 한 번만 계산
-  const now = Date.now();
-  const step =
-    Math.floor(now / CHORD_PROGRESS_PERIOD_MS) % CHORD_PROGRESSION.length;
-  const baseChord = CHORD_PROGRESSION[step] ?? BASE_CHORD;
-
   for (const player of arr) {
     if (visited.has(player.id)) continue;
     const queue: Player[] = [player];
@@ -330,8 +311,10 @@ function recomputeClusters() {
     centroid.x /= memberCount;
     centroid.y /= memberCount;
     const gain = clamp(memberCount / 4, 0.1, 1);
-    const chord = baseChord.map((freq, idx) => ({
-      freq: Number(freq.toFixed(2)),
+    const chord = BASE_CHORD.map((freq, idx) => ({
+      freq: Number(
+        (freq * (1 + (memberCount - 1) * 0.02 * (idx + 1))).toFixed(2)
+      ),
       gain: Number((gain * (1 - idx * 0.15)).toFixed(3)),
     }));
     clusters.push({
@@ -374,16 +357,6 @@ const computeNoiseLevel = (p: Player) =>
 
 const computeAmbientLevel = () => clamp(players.size / 12, 0, 1);
 
-const hashToneIndex = (id: string): number => {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  // 0-11 chromatic note index
-  const tone = Math.abs(hash) % 12;
-  return tone;
-};
-
 const emitAudioForPlayer = (player: Player) => {
   const socket = io.sockets.sockets.get(player.id);
   if (!socket) return;
@@ -393,7 +366,6 @@ const emitAudioForPlayer = (player: Player) => {
     noiseLevel: computeNoiseLevel(player),
     ambientLevel: computeAmbientLevel(),
     clusterId,
-    toneIndex: hashToneIndex(player.id),
   });
   if (cluster) {
     socket.emit("audioCluster", serializeCluster(cluster));

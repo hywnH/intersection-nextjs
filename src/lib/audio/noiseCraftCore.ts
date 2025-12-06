@@ -11,7 +11,6 @@ export interface PersonalAudioMetrics {
   nearestProximity?: number;
   localDensity?: number;
   clusterEnergy?: number;
-  toneNorm?: number;
 }
 
 const SLOT_FALLBACKS: Record<number, { nodes: string[]; label: string }> = {
@@ -88,9 +87,6 @@ export const buildNoiseCraftParams = (
   const params: NoiseCraftParam[] = [];
   const approach = toUnit(metrics.approachIntensity);
   const nearestProximity = toUnit(metrics.nearestProximity);
-  const localDensity = toUnit(metrics.localDensity);
-  const clusterEnergy = toUnit(metrics.clusterEnergy);
-  const toneNorm = toUnit(metrics.toneNorm);
 
   if (mode === "personal") {
     appendSlotParams(
@@ -128,30 +124,6 @@ export const buildNoiseCraftParams = (
       nodeId: "17",
       paramName: "value",
       value: proximityValue,
-    });
-
-    // Local density → filter / texture modulation (0.1 ~ 0.9)
-    const densityValue = format(0.1 + 0.8 * localDensity);
-    params.push({
-      nodeId: "56",
-      paramName: "value",
-      value: densityValue,
-    });
-
-    // Cluster energy → global / aux gain (0 ~ 1)
-    const clusterValue = format(clusterEnergy);
-    params.push({
-      nodeId: "70",
-      paramName: "value",
-      value: clusterValue,
-    });
-
-    // ToneNorm → 패치에서 개인 톤을 받을 노드 (기본은 dummy 노드 ID, 필요 시 교체)
-    const toneValue = format(toneNorm);
-    params.push({
-      nodeId: "300", // TODO: 실제 pitch/voice 컨트롤 노드 ID로 교체
-      paramName: "value",
-      value: toneValue,
     });
   }
 

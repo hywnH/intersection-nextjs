@@ -1,6 +1,5 @@
 import type { GameState, PlayerSnapshot } from "@/types/game";
 import type { PersonalAudioMetrics } from "@/lib/audio/noiseCraft";
-import { normalizeToneIndex, snapToneToChord } from "@/lib/audio/tones";
 
 const MAX_CLOSING_SPEED = 320; // 서버 MAX_SPEED 기준, 상대 속도는 이 이상이면 1로 클램프
 const PROXIMITY_INNER_RADIUS = 800;
@@ -70,19 +69,12 @@ export const computePersonalAudioMetrics = (
     }
   }
 
-  // toneIndex → chord 톤 스냅 → 0~1
-  let toneNorm = 0;
-  const rawTone = state.audio.self?.toneIndex ?? null;
-  if (rawTone !== null) {
-    const snapped = snapToneToChord(rawTone, state.audio.cluster ?? null);
-    toneNorm = normalizeToneIndex(snapped);
-  }
-
   return {
     approachIntensity,
     nearestProximity,
     localDensity,
     clusterEnergy,
-    toneNorm,
   };
 };
+
+

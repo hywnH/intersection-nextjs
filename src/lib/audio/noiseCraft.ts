@@ -26,9 +26,7 @@ export const postNoiseCraftParams = (
   );
 };
 
-export const resolveNoiseCraftEmbed = (
-  kind: "personal" | "global" = "personal"
-) => {
+export const resolveNoiseCraftEmbed = () => {
   if (typeof window === "undefined") {
     return { src: "about:blank", origin: null };
   }
@@ -75,22 +73,10 @@ export const resolveNoiseCraftEmbed = (
     }
     return `${normalizedNcBase}/${raw}`;
   };
-  const basePatchSrc =
+  const patchSrcEnv =
     process.env.NEXT_PUBLIC_NOISECRAFT_PATCH_SRC?.trim() || "";
-  const basePatchProjectId =
+  const patchProjectId =
     process.env.NEXT_PUBLIC_NOISECRAFT_PATCH_PROJECT_ID?.trim() || "";
-
-  const overridePatchSrc =
-    (kind === "personal"
-      ? process.env.NEXT_PUBLIC_NOISECRAFT_PERSONAL_PATCH_SRC
-      : process.env.NEXT_PUBLIC_NOISECRAFT_GLOBAL_PATCH_SRC) ?? "";
-  const overridePatchProjectId =
-    (kind === "personal"
-      ? process.env.NEXT_PUBLIC_NOISECRAFT_PERSONAL_PATCH_PROJECT_ID
-      : process.env.NEXT_PUBLIC_NOISECRAFT_GLOBAL_PATCH_PROJECT_ID) ?? "";
-
-  const patchSrcEnv = (overridePatchSrc || basePatchSrc).trim();
-  const patchProjectId = (overridePatchProjectId || basePatchProjectId).trim();
   const embedSearch = new URLSearchParams();
   embedSearch.set("io", rtUrl);
   if (patchSrcEnv) {
