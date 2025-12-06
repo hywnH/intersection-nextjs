@@ -14,6 +14,9 @@ import {
   postNoiseCraftParams,
   resolveNoiseCraftEmbed,
 } from "@/lib/audio/noiseCraft";
+import { PERSONAL_AUDIO_MODE } from "@/lib/audio/config";
+import { generateIndividualPattern } from "@/lib/audio/sequencerLogic";
+import { computePersonalAudioMetrics } from "@/lib/audio/personalMetrics";
 import type { GameState, PlayerSnapshot } from "@/types/game";
 import Hud from "./Hud";
 import StatusBanner from "./StatusBanner";
@@ -27,7 +30,6 @@ const DISABLE_INTERPOLATION =
   process.env.NEXT_PUBLIC_DISABLE_INTERP === "true";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const MAX_CLOSING_SPEED = 100; // twice the server max speed to cover head-on approaches
 type AudioStatus =
   | "idle"
   | "ready"
@@ -35,36 +37,6 @@ type AudioStatus =
   | "playing"
   | "blocked"
   | "stopped";
-
-const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
-
-const computeApproachIntensity = (state: GameState) => {
-  const selfId = state.selfId;
-  if (!selfId) return 0;
-  const selfPlayer = state.players[selfId];
-  if (!selfPlayer) return 0;
-  const { position: selfPos, velocity: selfVel } = selfPlayer.cell;
-  let minDist = Number.POSITIVE_INFINITY;
-  let nearestPlayer: PlayerSnapshot | null = null;
-  for (const player of Object.values(state.players)) {
-    if (player.id === selfId) continue;
-    const dx = player.cell.position.x - selfPos.x;
-    const dy = player.cell.position.y - selfPos.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < minDist) {
-      minDist = dist;
-      nearestPlayer = player;
-    }
-  }
-  if (!nearestPlayer || !isFinite(minDist)) return 0;
-  const safeDist = Math.max(minDist, 1e-3);
-  const dirX = (nearestPlayer.cell.position.x - selfPos.x) / safeDist;
-  const dirY = (nearestPlayer.cell.position.y - selfPos.y) / safeDist;
-  const relVelX = selfVel.x - nearestPlayer.cell.velocity.x;
-  const relVelY = selfVel.y - nearestPlayer.cell.velocity.y;
-  const closingSpeed = Math.max(relVelX * dirX + relVelY * dirY, 0);
-  return clamp01(closingSpeed / MAX_CLOSING_SPEED);
-};
 
 const buildInterpolatedState = (state: GameState): GameState => {
   if (
@@ -111,10 +83,8 @@ const buildInterpolatedState = (state: GameState): GameState => {
   const interpolatedPlayers: Record<string, PlayerSnapshot> = {};
 
   playerIds.forEach((id) => {
-    const from =
-      older.players[id] ?? newer.players[id] ?? state.players[id];
-    const to =
-      newer.players[id] ?? older.players[id] ?? state.players[id];
+    const from = older.players[id] ?? newer.players[id] ?? state.players[id];
+    const to = newer.players[id] ?? older.players[id] ?? state.players[id];
     if (!from && !to) return;
     if (!from || !to) {
       const single = (from ?? to)!;
@@ -163,7 +133,11 @@ const buildInterpolatedState = (state: GameState): GameState => {
   };
 };
 
-const MobileView = () => {
+type MobileViewProps = {
+  debug?: boolean;
+};
+
+const MobileView = ({ debug = false }: MobileViewProps) => {
   const { state, dispatch, socket } = useGameClient("personal");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
@@ -173,6 +147,12 @@ const MobileView = () => {
   const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
   const [isProjectReady, setIsProjectReady] = useState(false);
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
+  const lastSeqPatternRef = useRef<{
+    bassRow: number | null;
+    baritoneRow: number | null;
+    tenorRow: number | null;
+  } | null>(null);
+  const clusterMixRef = useRef(0);
 
   useEffect(() => {
     latestState.current = state;
@@ -180,7 +160,7 @@ const MobileView = () => {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const { src, origin } = resolveNoiseCraftEmbed();
+    const { src, origin } = resolveNoiseCraftEmbed("personal");
     setNoiseCraftSrc(src);
     setNoiseCraftOrigin(origin);
     setIsProjectReady(false);
@@ -189,14 +169,121 @@ const MobileView = () => {
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
-    const approachValue = computeApproachIntensity(state);
-    const params = buildNoiseCraftParams(
-      state.audio,
-      state.noiseSlots,
-      "personal",
-      approachValue
-    );
-    postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
+    const metrics = computePersonalAudioMetrics(state);
+
+    // 클러스터 진입 시 볼륨이 갑자기 커지지 않도록 clusterEnergy를 부드럽게 보간
+    const targetClusterEnergy = metrics.clusterEnergy ?? 0;
+    const prevMix = clusterMixRef.current;
+    const alpha = 0.15; // 0~1, 값이 작을수록 더 천천히 변함
+    const nextMix = prevMix + (targetClusterEnergy - prevMix) * alpha;
+    clusterMixRef.current = nextMix;
+    const smoothedMetrics = {
+      ...metrics,
+      clusterEnergy: nextMix,
+    };
+
+    // 1) 파라미터 기반 모드
+    if (PERSONAL_AUDIO_MODE === "params" || PERSONAL_AUDIO_MODE === "both") {
+      const params = buildNoiseCraftParams(
+        state.audio,
+        state.noiseSlots,
+        "personal",
+        smoothedMetrics
+      );
+      postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
+    }
+
+    // 2) Sequencer 기반 모드 (MonoSeq 패턴 업데이트)
+    if (
+      (PERSONAL_AUDIO_MODE === "sequencer" || PERSONAL_AUDIO_MODE === "both") &&
+      audioIframeRef.current
+    ) {
+      const selfTone = state.audio.self?.toneIndex ?? null;
+
+      const selfId = state.selfId;
+      const selfPlayer = selfId ? state.players[selfId] : null;
+      const neighborTones: number[] = [];
+
+      if (selfPlayer && selfId) {
+        const { position: selfPos } = selfPlayer.cell;
+        const entries = Object.entries(state.players).filter(
+          ([id]) => id !== selfId
+        );
+
+        // 가장 가까운 2명의 플레이어를 이웃으로 사용
+        const neighbors = entries
+          .map(([id, p]) => {
+            const dx = p.cell.position.x - selfPos.x;
+            const dy = p.cell.position.y - selfPos.y;
+            const dist = Math.hypot(dx, dy);
+            return { id, dist };
+          })
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, 2);
+
+        // 서버와 동일한 해시 함수를 클라이언트에서도 사용해서 톤 결정
+        const hashToneIndex = (id: string): number => {
+          let hash = 0;
+          for (let i = 0; i < id.length; i += 1) {
+            hash = (hash * 31 + id.charCodeAt(i)) | 0;
+          }
+          return Math.abs(hash) % 12;
+        };
+
+        neighbors.forEach(({ id }) => {
+          neighborTones.push(hashToneIndex(id));
+        });
+      }
+
+      const pattern = generateIndividualPattern(selfTone, neighborTones, {
+        cluster: state.audio.cluster,
+        isInCluster:
+          Boolean(state.audio.self?.clusterId) &&
+          Boolean(
+            state.audio.cluster &&
+              state.audio.cluster.clusterId === state.audio.self?.clusterId
+          ),
+      });
+
+      const last = lastSeqPatternRef.current;
+      if (
+        last &&
+        last.bassRow === pattern.bassRow &&
+        last.baritoneRow === pattern.baritoneRow &&
+        last.tenorRow === pattern.tenorRow
+      ) {
+        return;
+      }
+      lastSeqPatternRef.current = pattern;
+
+      const win = audioIframeRef.current.contentWindow;
+      const targetOrigin =
+        process.env.NODE_ENV === "development" ? "*" : noiseCraftOrigin || "*";
+
+      const sendVoice = (nodeId: string, row: number | null) => {
+        const rowIdx = row ?? 0;
+        const value = row === null ? 0 : 1;
+        const NUM_STEPS = 8;
+        for (let stepIdx = 0; stepIdx < NUM_STEPS; stepIdx += 1) {
+          win?.postMessage(
+            {
+              type: "noiseCraft:toggleCell",
+              nodeId,
+              patIdx: 0,
+              stepIdx,
+              rowIdx,
+              value,
+            },
+            targetOrigin
+          );
+        }
+      };
+
+      // indiv_audio_map 기준 MonoSeq 노드 ID (필요하면 docs에서 조정)
+      sendVoice("172", pattern.bassRow);
+      sendVoice("176", pattern.baritoneRow);
+      sendVoice("177", pattern.tenorRow);
+    }
   }, [
     state.audio,
     state.noiseSlots,
@@ -431,19 +518,31 @@ const MobileView = () => {
       {/* <Hud state={state} /> */}
       {/* <StatusBanner state={state} /> */}
       {/* <Controls /> */}
-      <div className="pointer-events-none absolute h-0 w-0 overflow-hidden sm:pointer-events-auto sm:bottom-4 sm:left-4 sm:flex sm:h-auto sm:w-60 sm:flex-col sm:gap-2 sm:rounded-xl sm:bg-black/70 sm:p-3 sm:text-xs sm:text-white">
-        {/* <p className="text-white/70">Personal Audio (NoiseCraft)</p> */}
+      <div
+        className={
+          debug
+            ? "pointer-events-auto absolute bottom-4 left-4 flex h-auto w-80 flex-col gap-2 rounded-xl bg-black/80 p-3 text-xs text-white"
+            : "pointer-events-none absolute h-0 w-0 overflow-hidden"
+        }
+      >
+        {debug && (
+          <p className="mb-1 text-[11px] font-medium text-white/70">
+            Personal Audio (NoiseCraft)
+          </p>
+        )}
         <iframe
           ref={audioIframeRef}
           src={noiseCraftSrc}
-          width="220"
-          height="120"
+          width="320"
+          height="180"
           allow="autoplay"
           title="NoiseCraft Personal"
-          className="h-0 w-0 opacity-0 sm:h-[120px] sm:w-[220px] sm:opacity-100"
-          style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
+          className={debug ? "h-[400px] w-[1000px] opacity-100" : "h-0 w-0"}
+          style={{
+            border: "1px solid rgba(255,255,255,0.2)",
+            borderRadius: 8,
+          }}
         />
-        {/* <p className="text-white/50">Tap “Start Audio” inside panel.</p> */}
       </div>
       {showStartAudioPrompt && (
         <div className="pointer-events-none fixed inset-x-3 bottom-4 z-20 flex justify-center sm:inset-auto sm:bottom-6 sm:left-6 sm:right-auto sm:justify-start">

@@ -254,6 +254,8 @@ export const registerSocketEvents = ({
           ambientLevel: payload.ambientLevel ?? 0,
           clusterId: payload.clusterId ?? null,
           updatedAt: Date.now(),
+          toneIndex:
+            typeof payload.toneIndex === "number" ? payload.toneIndex : null,
         },
       },
     });
@@ -348,9 +350,11 @@ export const registerSocketEvents = ({
   };
 
   const handleConnect = () => onConnect();
-  const handleWelcome = (
-    ...args: unknown[]
-  ) => onWelcome(args[0] as ServerPlayer | undefined, args[1] as { width?: number; height?: number } | undefined);
+  const handleWelcome = (...args: unknown[]) =>
+    onWelcome(
+      args[0] as ServerPlayer | undefined,
+      args[1] as { width?: number; height?: number } | undefined
+    );
   const handlePlayerMove = (...args: unknown[]) =>
     onPlayerMove(
       args[0] as ServerPlayer | undefined,
@@ -363,10 +367,12 @@ export const registerSocketEvents = ({
         isCollidingSelf?: boolean;
       }
     );
-  const handleLeaderboard = (...args: unknown[]) => onLeaderboard((args[0] as { players?: number }) ?? {});
+  const handleLeaderboard = (...args: unknown[]) =>
+    onLeaderboard((args[0] as { players?: number }) ?? {});
   const handleKick = (...args: unknown[]) => onKick((args[0] as string) ?? "");
   const handleDisconnect = () => onDisconnect();
-  const handleConnectError = (...args: unknown[]) => onConnectError((args[0] as Error) ?? new Error("connect_error"));
+  const handleConnectError = (...args: unknown[]) =>
+    onConnectError((args[0] as Error) ?? new Error("connect_error"));
   const handleAudioSelf = (...args: unknown[]) =>
     onAudioSelf(args[0] as ServerAudioSelf | undefined);
   const handleAudioCluster = (...args: unknown[]) =>
@@ -384,8 +390,14 @@ export const registerSocketEvents = ({
   handlers.push(["audioSelf", handleAudioSelf]);
   handlers.push(["audioCluster", handleAudioCluster]);
   handlers.push(["audioGlobal", handleAudioGlobal]);
-  handlers.push(["noiseSlots:init", (...args: unknown[]) => onNoiseSlots(args[0])]);
-  handlers.push(["noiseSlots:update", (...args: unknown[]) => onNoiseSlots(args[0])]);
+  handlers.push([
+    "noiseSlots:init",
+    (...args: unknown[]) => onNoiseSlots(args[0]),
+  ]);
+  handlers.push([
+    "noiseSlots:update",
+    (...args: unknown[]) => onNoiseSlots(args[0]),
+  ]);
 
   handlers.forEach(([event, handler]) => {
     socket.on(event, handler);

@@ -58,6 +58,7 @@ export interface AudioSelfState {
   ambientLevel: number;
   clusterId: string | null;
   updatedAt: number;
+  toneIndex?: number | null;
 }
 
 export interface AudioState {
@@ -163,7 +164,11 @@ export type GameAction =
   | { type: "SET_GAME_SIZE"; gameSize: { width: number; height: number } }
   | { type: "SET_PLAYING"; playing: boolean }
   | { type: "PUSH_COLLISION_MARK"; mark: CollisionMark }
-  | { type: "PUSH_COLLISION_EVENTS"; marks: CollisionMark[]; highlight?: boolean }
+  | {
+      type: "PUSH_COLLISION_EVENTS";
+      marks: CollisionMark[];
+      highlight?: boolean;
+    }
   | { type: "SET_COLLISION_LINES"; lines: CollisionLine[] }
   | { type: "SET_SELF_HIGHLIGHT"; until: number }
   | { type: "SET_GLOBAL_OVERLAY"; overlay: Partial<GlobalOverlay> }

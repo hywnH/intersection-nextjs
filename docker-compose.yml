@@ -25,6 +25,9 @@ services:
       - NEXT_PUBLIC_HOST_URL=http://localhost:3000
       # 내부 통신용 주소 (컨테이너 간)
       - REALTIME_INTERNAL_URL=http://game:3001
+      - NEXT_PUBLIC_PERSONAL_AUDIO_MODE=both
+      - NEXT_PUBLIC_NOISECRAFT_PERSONAL_PATCH_SRC=/examples/indiv_audio_map.ncft
+      - NEXT_PUBLIC_NOISECRAFT_GLOBAL_PATCH_SRC=/examples/indiv_audio_map.ncft
     depends_on:
       - game
       - noisecraft

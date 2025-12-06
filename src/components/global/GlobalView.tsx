@@ -108,7 +108,7 @@ const GlobalView = () => {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const { src, origin } = resolveNoiseCraftEmbed();
+    const { src, origin } = resolveNoiseCraftEmbed("global");
     setNoiseCraftSrc(src);
     setNoiseCraftOrigin(origin);
     if (iframeRef.current) {

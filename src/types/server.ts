@@ -61,6 +61,7 @@ export interface ServerAudioSelf {
   noiseLevel: number;
   ambientLevel: number;
   clusterId: string | null;
+  toneIndex?: number;
 }
 
 export interface ServerAudioGlobal {
