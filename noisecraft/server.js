@@ -8,9 +8,14 @@ import sqlite3 from 'sqlite3';
 import crc from 'crc';
 import crypto from 'crypto';
 import ejs from 'ejs';
+import { fileURLToPath } from 'url';
 
 // Load the model so we can validate projects
 import * as model from './public/model.js';
+
+// ES modules compatibility: __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let cachedProjectData = null;
 
@@ -378,8 +383,69 @@ function getQueryValue(sqlQuery, vars)
 
 //============================================================================
 
-// Serve static file requests
+// POST /save-ncft/:filename - Save .ncft file to examples directory
+// IMPORTANT: Define API routes BEFORE static file middleware to ensure they're matched
+app.post('/save-ncft/:filename', jsonParser, function (req, res) {
+  try {
+    const filename = req.params.filename;
+    
+    // Validate filename (only allow .ncft files, prevent path traversal)
+    if (!filename.endsWith('.ncft') || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+    
+    let data = req.body?.data ?? req.body?.project ?? req.body;
+    if (typeof data === 'object') {
+      data = JSON.stringify(data, null, 2);
+    }
+    if (typeof data !== 'string') {
+      return res.status(400).json({ error: 'Invalid data format' });
+    }
+    
+    // Validate the project data
+    try {
+      const project = JSON.parse(data);
+      model.validateProject(project);
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid project data: ' + err.message });
+    }
+    
+    // Write to examples directory (resolve relative to server.js location)
+    const filePath = path.resolve(__dirname, 'examples', filename);
+    
+    // Ensure the examples directory exists
+    const examplesDir = path.dirname(filePath);
+    if (!fs.existsSync(examplesDir)) {
+      fs.mkdirSync(examplesDir, { recursive: true });
+    }
+    
+    // Write file synchronously
+    fs.writeFileSync(filePath, data, 'utf8');
+    
+    // Verify the file was written
+    if (!fs.existsSync(filePath)) {
+      throw new Error('File write verification failed');
+    }
+    
+    const stats = fs.statSync(filePath);
+    console.log(`✓ Saved ${filename} to ${filePath} (${stats.size} bytes)`);
+    res.json({ 
+      ok: true, 
+      path: filePath,
+      size: stats.size,
+      message: `Successfully saved ${filename}`
+    });
+  } catch (err) {
+    console.error('Failed to save .ncft file:', err);
+    res.status(500).json({ error: 'Failed to save file: ' + err.message });
+  }
+});
+
+// Serve static file requests (after API routes)
 app.use('/public', express.static('public'));
+
+// Serve examples directory
+app.use('/public/examples', express.static('examples'));
 
 app.post('/current-project', jsonParser, function (req, res)
 {
