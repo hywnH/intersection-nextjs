@@ -128,6 +128,122 @@ interface PlayerPlaneProps {
   worldY: number;
 }
 
+const PlayerParticleSphere = ({
+  radius,
+  color,
+  isSelf,
+  position,
+  gravityDir,
+  gravityDist,
+}: {
+  radius: number;
+  color: string;
+  isSelf: boolean;
+  position: [number, number, number];
+  gravityDir?: { x: number; y: number };
+  gravityDist?: number;
+}) => {
+  const pointsRef = useRef<THREE.Points>(null);
+  const geometry = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    // 파티클 수를 줄여서 퍼포먼스와 시인성을 조절
+    const count = 100;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const baseColor = new THREE.Color(color);
+
+    // 중력 영향력 계산 (거리 기반)
+    const hasGravityDist =
+      typeof gravityDist === "number" && Number.isFinite(gravityDist);
+    const maxVisualGravityDist = 900;
+    const distFactor =
+      hasGravityDist && gravityDist! < maxVisualGravityDist
+        ? Math.max(
+            0,
+            1 - Math.min(gravityDist! / maxVisualGravityDist, 1)
+          )
+        : 0;
+
+    // 중력 방향 정규화 (XY 평면 기준)
+    let gx = 0;
+    let gy = 0;
+    let gz = 0;
+    if (gravityDir) {
+      const mag = Math.hypot(gravityDir.x, gravityDir.y);
+      if (mag > 0.0001) {
+        gx = gravityDir.x / mag;
+        gy = gravityDir.y / mag;
+      }
+    }
+    const hasGravity = distFactor > 0 && (gx !== 0 || gy !== 0);
+
+    for (let i = 0; i < count; i += 1) {
+      // 균일한 구 표면 분포
+      const u = Math.random();
+      const v = Math.random();
+      const theta = 2 * Math.PI * u;
+      const phi = Math.acos(2 * v - 1);
+      const dirX = Math.sin(phi) * Math.cos(theta);
+      const dirY = Math.sin(phi) * Math.sin(theta);
+      const dirZ = Math.cos(phi);
+
+      // 중력 방향과의 정렬 정도 (0~1)
+      let align = 0;
+      if (hasGravity) {
+        const dot = dirX * gx + dirY * gy + dirZ * gz;
+        align = Math.max(0, dot);
+      }
+      const alignBoost = Math.pow(align, 1.6);
+
+      // 중력 방향 쪽에서만 약간 더 바깥으로 밀어내기
+      const radialBoost = 0.22 * distFactor * alignBoost;
+      const r = radius * (1 + radialBoost * 1);
+
+      const x = r * dirX;
+      const y = r * dirY;
+      const z = r * dirZ;
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = z;
+
+      // 기본 밝기: 어두운(희미한) 점을 더 많이
+      const baseBrightness = 0.25 + 0.75 * Math.pow(Math.random(), 2.0);
+      const gravityHighlight =
+        hasGravity && align > 0
+          ? 0.9 * distFactor * Math.pow(align, 1.4)
+          : 0;
+      const brightness = Math.min(1, baseBrightness + gravityHighlight);
+
+      colors[i * 3] = baseColor.r * brightness;
+      colors[i * 3 + 1] = baseColor.g * brightness;
+      colors[i * 3 + 2] = baseColor.b * brightness;
+    }
+    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return g;
+  }, [radius]);
+
+  useFrame((_, delta) => {
+    if (!pointsRef.current) return;
+    pointsRef.current.rotation.y += 0.18 * delta;
+    pointsRef.current.rotation.x += 0.07 * delta;
+  });
+
+  return (
+    <points ref={pointsRef} position={position} geometry={geometry}>
+      <pointsMaterial
+        vertexColors
+        // 공 반지름은 유지하면서 개별 파티클 크기는 조금 줄임
+        size={radius * 0.01}
+        sizeAttenuation
+        transparent
+        // 전체 opacity는 낮게, self일 때만 조금 더 진하게
+        opacity={isSelf ? 0.85 : 0.55}
+      />
+    </points>
+  );
+};
+
 const PlayerPlane = ({
   player,
   planeWidth,
@@ -137,64 +253,18 @@ const PlayerPlane = ({
   worldX,
   worldY,
 }: PlayerPlaneProps) => {
-  const radius = Math.max(player.cell.radius * PLANE_SCALE, 0.12);
+  // 글로벌 3D 뷰에서는 공을 조금 더 크게 표시
+  const radius = Math.max(player.cell.radius * PLANE_SCALE * 3.2, 0.36);
   return (
     <group position={[0, 0, depth]}>
-      <mesh>
-        <planeGeometry args={[planeWidth, planeHeight, 1, 1]} />
-        <meshStandardMaterial
-          color={isFocused ? "#1d3d7a" : "#060b1c"}
-          transparent
-          opacity={isFocused ? 0.18 : 0.01}
-          depthWrite={false}
-          metalness={0.1}
-          roughness={0.8}
-        />
-        <Edges color={isFocused ? "#1e293b" : "#0f172a"} />
-      </mesh>
-      <Html
-        position={[planeWidth / 2 - 0.4, planeHeight / 2 - 0.4, 0.01]}
-        transform
-        occlude
-      >
-        <div className="rounded bg-black/70 px-2 py-1 text-xs text-white">
-          {player.name || "익명"}
-        </div>
-      </Html>
-      <mesh position={[worldX, worldY, 0.05]} castShadow receiveShadow>
-        <sphereGeometry args={[radius, 32, 32]} />
-        <meshPhysicalMaterial
-          color={player.cell.color || "#38bdf8"}
-          emissive={player.cell.color || "#38bdf8"}
-          emissiveIntensity={player.isSelf ? 2 : 1.2}
-          metalness={0.6}
-          roughness={0.18}
-          clearcoat={0.75}
-          clearcoatRoughness={0.08}
-        />
-      </mesh>
-      <mesh
-        position={[worldX, worldY, 0]}
-        scale={[1.6, 1.6, 1.6]}
-        renderOrder={-10}
-      >
-        <sphereGeometry args={[radius * 1.15, 32, 32]} />
-        <meshBasicMaterial
-          color={player.cell.color || "#93c5fd"}
-          side={THREE.BackSide}
-          transparent
-          opacity={player.isSelf ? 0.55 : 0.4}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-      {player.isSelf && (
-        <Html position={[worldX, worldY - radius - 0.4, 0.06]} transform>
-          <div className="rounded-full bg-white/90 px-2 py-0.5 text-xs font-semibold text-black">
-            YOU
-          </div>
-        </Html>
-      )}
+      <PlayerParticleSphere
+        radius={radius}
+        color={player.cell.color || "#ffffff"}
+        isSelf={Boolean(player.isSelf)}
+        position={[worldX, worldY, 0.05]}
+        gravityDir={player.gravityDir}
+        gravityDist={player.gravityDist}
+      />
     </group>
   );
 };
@@ -260,7 +330,16 @@ const GlobalPerspectiveView = ({
   );
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-slate-950">
+    <div
+      className="fixed inset-0 overflow-hidden"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(/background-landscape.png)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
       <GlobalSpace state={state} players={players} viewMode={viewMode} />
       {showModeToggle && (
         <ModeToggle viewMode={viewMode} onChange={setViewMode} />
@@ -298,24 +377,41 @@ const GlobalSpace = ({
 
   const planeWidth = state.gameSize.width * PLANE_SCALE;
   const planeHeight = state.gameSize.height * PLANE_SCALE;
-  const cameraDistance = Math.max(24, planeWidth * CAMERA_DISTANCE_FACTOR);
+  const viewportAspect =
+    typeof window !== "undefined" && window.innerHeight > 0
+      ? window.innerWidth / window.innerHeight
+      : 16 / 9;
+
+  // 카메라 FOV/zoom을 고려해, 가로·세로 모두에서
+  // 월드 전체가 화면 안에 들어오도록 필요한 최소 거리 계산
+  const fovRad = (WEAK_FOV * Math.PI) / 180;
+  const halfFovTan = Math.tan(fovRad / 2);
+  const computeRequiredDistance = (zoom: number) => {
+    const minDistForHeight = (planeHeight * zoom) / (2 * halfFovTan);
+    const minDistForWidth =
+      (planeWidth * zoom) / (2 * halfFovTan * viewportAspect);
+    return Math.max(24, minDistForHeight, minDistForWidth);
+  };
+
+  const frontDistance = computeRequiredDistance(FRONT_ZOOM);
+  const orbitDistance = computeRequiredDistance(ORBIT_ZOOM);
   const cameraHeight = Math.max(12, planeHeight * CAMERA_HEIGHT_FACTOR);
   const frontPosition = useMemo(
     () =>
       new THREE.Vector3(
         0,
         cameraHeight * 0.08,
-        cameraDistance * FRONT_PULLBACK
+        frontDistance
       ),
-    [cameraDistance, cameraHeight]
+    [frontDistance, cameraHeight]
   );
   const orbitPosition = useMemo(() => {
     return new THREE.Vector3(
-      cameraDistance * ORBIT_PULLBACK,
+      orbitDistance,
       cameraHeight * 0.9,
       0
     );
-  }, [cameraDistance, cameraHeight]);
+  }, [orbitDistance, cameraHeight]);
 
   useEffect(() => {
     const camera = cameraRef.current;
@@ -359,15 +455,26 @@ const GlobalSpace = ({
     return map;
   }, [planeData]);
 
+  // 게임 월드 비율에 맞춰 가로를 기준으로 세로를 축소(레터박스)
+  const aspectRatio =
+    state.gameSize.width > 0 && state.gameSize.height > 0
+      ? state.gameSize.width / state.gameSize.height
+      : 16 / 9;
+
   return (
-    <div className="absolute inset-0">
+    <div className="absolute inset-0 flex items-center justify-center">
       {players.length === 0 ? (
         <EmptyState message="연결 대기 중..." />
       ) : (
         <Suspense fallback={<EmptyState message="3D 뷰 로딩 중..." />}>
           <Canvas
-            className="h-full w-full"
+            className="w-full h-full"
+            style={{
+              backgroundColor: "transparent",
+              mixBlendMode: "screen",
+            }}
             linear
+            gl={{ alpha: true, antialias: true }}
             dpr={1}
             camera={{
               position: [
@@ -382,8 +489,8 @@ const GlobalSpace = ({
               gl.shadowMap.enabled = true;
               gl.shadowMap.type = THREE.PCFSoftShadowMap;
               gl.toneMapping = THREE.ACESFilmicToneMapping;
-              gl.toneMappingExposure = 1.4;
-              gl.setClearColor(new THREE.Color("#020207"));
+              gl.toneMappingExposure = 1.0;
+              gl.setClearColor(new THREE.Color("#020207"), 0);
               if ("physicallyCorrectLights" in gl) {
                 (
                   gl as THREE.WebGLRenderer & {

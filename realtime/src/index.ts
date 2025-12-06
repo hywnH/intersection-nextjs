@@ -73,8 +73,9 @@ const COLLISION_DISTANCE = 80;
 const MIN_GRAVITY_DISTANCE = 80;
 const MAX_SPEED = 320;
 const PLAYER_BASE_MASS = 5000;
-const INPUT_SMOOTH = 0.6;
-const GRAVITY_TARGET_SPEED_RATIO = 0.8;
+const INPUT_SMOOTH = 0.02;
+// 중력 세기: 실제 이동에는 너무 세지 않도록 절반 정도로 줄임
+const GRAVITY_TARGET_SPEED_RATIO = 0.4;
 const TARGET_GRAVITY_VELOCITY = MAX_SPEED * GRAVITY_TARGET_SPEED_RATIO;
 const MAX_GRAVITY_ACCEL = TARGET_GRAVITY_VELOCITY * INPUT_SMOOTH * TICK_HZ; // accel so steady-state ≈ 0.5 user max
 const GRAVITY_G =
@@ -148,10 +149,12 @@ function applyNearestGravity(p: Player, list: Player[], dt: number) {
   if (denom <= 0 || !Number.isFinite(denom)) {
     return;
   }
-  const accelMagnitude = Math.min(
-    (GRAVITY_G * Math.max(nearest.massTotal, 1)) / denom,
-    MAX_GRAVITY_ACCEL
-  );
+  const accelMagnitude =
+    0.6 *
+    Math.min(
+      (GRAVITY_G * Math.max(nearest.massTotal, 1)) / denom,
+      MAX_GRAVITY_ACCEL
+    );
   p.vx += accelMagnitude * dirX * dt;
   p.vy += accelMagnitude * dirY * dt;
   // 시각화/클라이언트용 중력 벡터 저장
