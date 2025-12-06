@@ -15,6 +15,32 @@ interface RenderParams {
   } | null;
 }
 
+let backgroundPattern: CanvasPattern | null = null;
+
+const getBackgroundPattern = (ctx: CanvasRenderingContext2D) => {
+  if (backgroundPattern) return backgroundPattern;
+  if (typeof document === "undefined") return null;
+  const noiseCanvas = document.createElement("canvas");
+  noiseCanvas.width = 128;
+  noiseCanvas.height = 128;
+  const noiseCtx = noiseCanvas.getContext("2d");
+  if (!noiseCtx) return null;
+  // 짙은 회색 바탕
+  noiseCtx.fillStyle = "#05060b";
+  noiseCtx.fillRect(0, 0, noiseCanvas.width, noiseCanvas.height);
+  // 고정 질감용 노이즈 점
+  const dotCount = 400;
+  for (let i = 0; i < dotCount; i += 1) {
+    const x = Math.random() * noiseCanvas.width;
+    const y = Math.random() * noiseCanvas.height;
+    const alpha = 0.05 + Math.random() * 0.08;
+    noiseCtx.fillStyle = `rgba(255,255,255,${alpha})`;
+    noiseCtx.fillRect(x, y, 1, 1);
+  }
+  backgroundPattern = ctx.createPattern(noiseCanvas, "repeat");
+  return backgroundPattern;
+};
+
 const project = (
   state: GameState,
   width: number,
@@ -35,8 +61,8 @@ export const clearScene = (
   width: number,
   height: number
 ) => {
-  ctx.fillStyle = "#01030a";
-  ctx.fillRect(0, 0, width, height);
+  // 캔버스를 투명하게 지워서, 뒤에 깔린 페이지 배경(이미지 등)이 보이도록 함
+  ctx.clearRect(0, 0, width, height);
 };
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
@@ -133,16 +159,18 @@ const renderParticleBall = (
   centerY: number,
   baseRadius: number,
   time: number,
-  velocity?: Vec2, // 속도 정보
+  _velocity?: Vec2, // 속도 정보 (현재는 사용하지 않지만 시그니처 유지)
   gravityDir?: Vec2, // 서버에서 계산된 중력 방향 벡터
-  gravityDist?: number // 서버에서 계산된 가장 가까운 플레이어와의 거리
+  gravityDist?: number, // 서버에서 계산된 가장 가까운 플레이어와의 거리
+  particleScale = 1 // 파티클 크기 스케일 (글로벌 뷰용)
 ) => {
   // 중력 영향력 계산 (거리 기반만 사용 - 다른 플레이어가 있을 때만)
-  // 거리 기반 중력 강도 (가까울수록 강함, 최대 거리 400 기준)
+  // 거리 기반 중력 강도 (가까울수록 강함, 최대 거리 900 기준까지 서서히 반영)
   const hasGravity = gravityDist !== undefined && Number.isFinite(gravityDist);
+  const maxVisualGravityDist = 900;
   const distGravityFactor =
-    hasGravity && gravityDist! < 400
-      ? Math.max(0, 1 - Math.min(gravityDist! / 400, 1))
+    hasGravity && gravityDist! < maxVisualGravityDist
+      ? Math.max(0, 1 - Math.min(gravityDist! / maxVisualGravityDist, 1))
       : 0;
   // 최종 중력 영향력 (0~1)
   const gravityInfluence = distGravityFactor;
@@ -157,292 +185,77 @@ const renderParticleBall = (
       gravityDirY = gravityDir.y / mag;
     }
   }
-  
-  // 중력이 작을 때: 더 많은 particle, 내부 중심 움직임 (밀집)
-  // 중력이 클 때: 외부로 확장되는 움직임
-  // Particle 수를 훨씬 많이 늘려서 촘촘하게 (빈 공간 최소화)
-  const particleCount = Math.floor(250 + gravityInfluence * 100); // 250~350개 (훨씬 촘촘하게)
-  const layers = 5; // 레이어도 증가
-  
-  // 크기를 더 크게 (1.8배)
-  const adjustedRadius = baseRadius * 1.8;
-  
-  // 각 레이어별로 파티클 렌더링 (뒤에서 앞으로)
-  for (let layer = layers - 1; layer >= 0; layer--) {
-    const layerDepth = layer / layers; // 0 (앞) ~ 1 (뒤)
-    const layerTimeOffset = time + layer * 0.4;
-    
-    for (let i = 0; i < particleCount; i++) {
-      const seed = i * 17.3 + layer * 23.7; // 고유 시드
-      
-      // 균등한 분포를 위한 각도 (원형이 아닌 균등 분포)
-      const angle = (i / particleCount) * Math.PI * 2;
-      const angleVariation = seededRandom(seed * 1.5) * 0.3; // 각도 변형
-      const finalAngle = angle + angleVariation;
-      
-      // 중력이 없을 때: 중심으로 강하게 수축 (작은 반경, 밀집)
-      // 중력이 클 때: 중력 방향으로 확장 (큰 반경, 원 밖으로)
-      const baseRadiusMin = adjustedRadius * (0.1 - (1 - gravityInfluence) * 0.05); // 중력 없을 때 매우 작게
-      const baseRadiusMax = adjustedRadius * (0.5 + gravityInfluence * 1.0); // 중력 클 때 더 크게 (원 밖으로)
-      const radiusVariation = seededRandom(seed * 2.1);
-      const baseRadius = baseRadiusMin + (baseRadiusMax - baseRadiusMin) * radiusVariation;
-      
-      // 기본 위치 (원형 구조 제약 없이 자유롭게)
-      const baseX = centerX + Math.cos(finalAngle) * baseRadius;
-      const baseY = centerY + Math.sin(finalAngle) * baseRadius;
-      
-      // 중력 방향 벡터 (각도 기반)
-      const toGravityAngle = Math.atan2(gravityDirY, gravityDirX);
-      const angleFromGravity = finalAngle - toGravityAngle;
-      const cosAngleFromGravity = Math.cos(angleFromGravity);
-      
-      // 중력이 없을 때: 중심으로 강하게 수축 (움츠림) - 혼자 있을 때 밀집
-      const contractionStrength = (1 - gravityInfluence) * 0.7; // 더 강하게 수축
-      const contractionX = (centerX - baseX) * contractionStrength;
-      const contractionY = (centerY - baseY) * contractionStrength;
-      
-      // 중력이 클 때: 중력 방향으로 강하게 팽창 (확 쏠리는 느낌)
-      const expansionStrength = gravityInfluence * 2.0; // 팽창 강도 대폭 증가
-      // 중력 방향과의 각도에 따라 팽창 강도 조절 (중력 방향일수록 훨씬 더 강하게)
-      const gravityAlignment = Math.max(0, cosAngleFromGravity); // 0~1, 중력 방향일수록 1
-      // 중력 방향일수록 훨씬 더 강하게 쏠리도록 (비선형 증가)
-      const alignmentBoost = Math.pow(gravityAlignment, 0.5); // 제곱근으로 더 부드럽게
-      const expansionAmount = expansionStrength * (0.3 + alignmentBoost * 0.7);
-      const expansionX = gravityDirX * adjustedRadius * expansionAmount;
-      const expansionY = gravityDirY * adjustedRadius * expansionAmount;
-      
-      // 역동적인 움직임 (여러 주파수의 노이즈 조합)
-      const moveSpeed = 0.8 + seededRandom(seed * 4.1) * 0.4;
-      const moveX = noise3D(
-        baseX * 0.008,
-        layerTimeOffset * moveSpeed,
-        seed * 0.1,
-        time * 0.6
-      );
-      const moveY = noise3D(
-        baseY * 0.008,
-        layerTimeOffset * moveSpeed,
-        seed * 0.1 + 50,
-        time * 0.6
-      );
-      const moveZ = noise3D(
-        seed * 0.05,
-        layerTimeOffset * moveSpeed * 0.7,
-        time * 0.5,
-        time * 0.4
-      );
-      
-      // 파도 효과: 중력이 있을 때만 중력 방향으로 파도처럼 출렁임
-      // 중력이 없을 때: 작은 내부 파도만 (밀집 유지)
-      // 중력이 있을 때: 중력 방향으로 강한 파도
-      const waveFrequency = 1.5 + gravityInfluence * 2.5; // 중력이 클수록 파도 주파수 증가
-      const waveSpeed = 0.7 + gravityInfluence * 0.6;
-      const baseWave = (1 - gravityInfluence) * 0.3 * simpleNoise(finalAngle * 1.5, layerTimeOffset * 0.8, time * 0.9); // 중력 없을 때 작은 파도
-      
-      // 중력 방향으로의 파도 (방파제에 부딪혀 튀어나오는 느낌) - 중력이 있을 때만
-      const gravityWave = gravityInfluence * simpleNoise(
-        finalAngle * 3.5 + time * 1.8,
-        layerTimeOffset * 1.3,
-        seed * 0.2
-      );
-      
-      // 파도가 중력 방향으로 강하게 튀어나오는 효과 (중력이 있을 때만)
-      // 중력이 클수록 중력 방향으로 더 강하게
-      const waveDirectionBlend = gravityInfluence * 0.9; // 중력 영향이 클수록 중력 방향으로
-      const waveDirectionX = Math.cos(finalAngle) * (1 - waveDirectionBlend) + gravityDirX * waveDirectionBlend;
-      const waveDirectionY = Math.sin(finalAngle) * (1 - waveDirectionBlend) + gravityDirY * waveDirectionBlend;
-      const waveMagnitude = adjustedRadius * (
-        (1 - gravityInfluence) * 0.05 + // 중력 없을 때 작은 파도
-        gravityInfluence * 0.7 // 중력이 클수록 훨씬 더 큰 파도 (원 밖으로)
-      );
-      
-      const waveX = (baseWave + gravityWave * 1.8) * waveDirectionX * waveMagnitude;
-      const waveY = (baseWave + gravityWave * 1.8) * waveDirectionY * waveMagnitude;
-      
-      // 내부 미세 움직임 (중력이 없을 때만 작게, 중력이 있을 때는 중력 방향으로만)
-      const internalMovement = (1 - gravityInfluence) * 0.08; // 중력 없을 때만 작은 움직임
-      const internalX = moveX * adjustedRadius * internalMovement;
-      const internalY = moveY * adjustedRadius * internalMovement;
-      
-      // 중력 방향으로의 추가 쏠림 효과 (중력이 세질수록 더 강하게)
-      const gravityPullStrength = Math.pow(gravityInfluence, 1.5) * 0.8; // 비선형 증가
-      const gravityPullX = gravityDirX * adjustedRadius * gravityPullStrength * (0.5 + gravityAlignment * 0.5);
-      const gravityPullY = gravityDirY * adjustedRadius * gravityPullStrength * (0.5 + gravityAlignment * 0.5);
-      
-      // 최종 위치: 수축/팽창 + 파도 + 내부 움직임 + 중력 쏠림
-      const x = baseX + contractionX + expansionX + waveX + internalX + gravityPullX;
-      const y = baseY + contractionY + expansionY + waveY + internalY + gravityPullY;
-      
-      // 중심으로부터의 거리 계산 (원 제약 없이 자유롭게)
-      const distFromCenter = Math.hypot(x - centerX, y - centerY);
-      // 중력이 작을 때: 작은 반경 기준, 중력이 클 때: 큰 반경 기준
-      const maxDist = adjustedRadius * (0.5 + gravityInfluence * 1.0);
-      const distFactor = Math.max(0, 1 - Math.min(1, distFromCenter / maxDist));
-      
-      // Z-depth에 따른 크기와 밝기 조절 (3D 입체감)
-      const zDepth = (moveZ + 1) * 0.5; // -1~1을 0~1로
-      const frontFactor = 1 - layerDepth; // 앞 레이어일수록 밝고 큼
-      const sizeMultiplier = (0.6 + zDepth * 0.4) * (0.7 + frontFactor * 0.3);
-      const alphaMultiplier = (0.5 + zDepth * 0.5) * (0.6 + frontFactor * 0.4);
-      
-      // 파티클 크기 (균등하게, 촘촘하게 보이도록)
-      const particleSize = adjustedRadius * 0.16 * sizeMultiplier * (0.85 + distFactor * 0.15);
-      
-      // 투명도 (균등하게 밝게) - 중력이 작을 때 더 밝고 불투명하게
-      const baseAlpha = 0.8 + (1 - gravityInfluence) * 0.2; // 중력 작을 때 더 밝음 (하나로 뭉친 느낌)
-      // 중력이 클 때도 원 밖으로 나간 particle들이 보이도록
-      const alpha = (baseAlpha + layerDepth * 0.1) * alphaMultiplier * (0.7 + distFactor * 0.3);
-      
-      // 작은 파티클 클러스터로 렌더링 (하나의 작은 원을 만드는 느낌)
-      renderParticleCluster(ctx, x, y, particleSize, alpha, time, seed);
-    }
-  }
-  
-  // 중심부 고밀도 파티클 (균등하게 분포, 중력이 작을 때 수축, 클 때 확장)
-  const centerParticleCount = Math.floor(150 + (1 - gravityInfluence) * 100); // 150~250개
-  for (let i = 0; i < centerParticleCount; i++) {
-    const angle = (i / centerParticleCount) * Math.PI * 2;
-    const seed = i * 31.7;
-    
-    // 중력이 작을 때: 중심으로 수축 (작은 반경)
-    // 중력이 클 때: 중력 방향으로 확장
-    const baseRadiusMin = adjustedRadius * (0.1 - (1 - gravityInfluence) * 0.05);
-    const baseRadiusMax = adjustedRadius * (0.4 + gravityInfluence * 0.6);
-    const radiusVariation = seededRandom(seed * 7.3);
-    const baseRadius = baseRadiusMin + (baseRadiusMax - baseRadiusMin) * radiusVariation;
-    
-    const baseX = centerX + Math.cos(angle) * baseRadius;
-    const baseY = centerY + Math.sin(angle) * baseRadius;
-    
-    // 중력 방향 벡터
-    const toGravityAngle = Math.atan2(gravityDirY, gravityDirX);
-    const angleFromGravity = angle - toGravityAngle;
-    const gravityAlignment = Math.max(0, Math.cos(angleFromGravity));
-    
-    // 중력이 없을 때: 중심으로 강하게 수축 (밀집)
-    const contractionStrength = (1 - gravityInfluence) * 0.6; // 더 강하게
-    const contractionX = (centerX - baseX) * contractionStrength;
-    const contractionY = (centerY - baseY) * contractionStrength;
-    
-    // 중력이 클 때: 중력 방향으로 강하게 팽창 (확 쏠림)
-    const expansionStrength = gravityInfluence * 1.5; // 강도 증가
-    const alignmentBoost = Math.pow(gravityAlignment, 0.5);
-    const expansionAmount = expansionStrength * (0.3 + alignmentBoost * 0.7);
-    const expansionX = gravityDirX * adjustedRadius * expansionAmount;
-    const expansionY = gravityDirY * adjustedRadius * expansionAmount;
-    
-    // 역동적인 중심부 움직임
-    const moveX = noise3D(angle * 0.5, time * 0.7, seed, time * 0.9);
-    const moveY = noise3D(angle * 0.5 + Math.PI, time * 0.7, seed + 100, time * 0.9);
-    const moveZ = noise3D(seed * 0.1, time * 0.5, time * 0.6, time * 0.4);
-    
-    // 파도 효과 (중력이 있을 때만 중력 방향으로)
-    const wave = gravityInfluence * simpleNoise(angle * 2.5 + time * 1.2, time * 1.0, seed * 0.3);
-    const waveBlend = gravityInfluence * 0.8; // 중력이 있을 때만
-    const waveX = (Math.cos(angle) * (1 - waveBlend) + gravityDirX * waveBlend) * wave * adjustedRadius * 0.4;
-    const waveY = (Math.sin(angle) * (1 - waveBlend) + gravityDirY * waveBlend) * wave * adjustedRadius * 0.4;
-    
-    // 내부 미세 움직임 (중력이 없을 때만 작게)
-    const internalMovement = (1 - gravityInfluence) * 0.06;
-    const internalX = moveX * adjustedRadius * internalMovement;
-    const internalY = moveY * adjustedRadius * internalMovement;
-    
-    // 중력 방향으로의 추가 쏠림
-    const gravityPullStrength = Math.pow(gravityInfluence, 1.5) * 0.6;
-    const gravityPullX = gravityDirX * adjustedRadius * gravityPullStrength * (0.5 + gravityAlignment * 0.5);
-    const gravityPullY = gravityDirY * adjustedRadius * gravityPullStrength * (0.5 + gravityAlignment * 0.5);
-    
-    const x = baseX + contractionX + expansionX + waveX + internalX + gravityPullX;
-    const y = baseY + contractionY + expansionY + waveY + internalY + gravityPullY;
-    
-    const distFromCenter = Math.hypot(x - centerX, y - centerY);
-    const maxDist = adjustedRadius * (0.4 + gravityInfluence * 0.8);
-    const distFactor = Math.max(0, 1 - Math.min(1, distFromCenter / maxDist));
-    const zDepth = (moveZ + 1) * 0.5;
-    
-    // 파티클 크기와 밝기
-    const particleSize = adjustedRadius * 0.12 * (0.8 + zDepth * 0.2) * (0.7 + distFactor * 0.3);
-    const baseAlpha = 0.85 + (1 - gravityInfluence) * 0.15;
-    const alpha = baseAlpha * (0.8 + zDepth * 0.2) * distFactor;
-    
-    // 중심부도 클러스터로 렌더링
-    renderParticleCluster(ctx, x, y, particleSize, alpha, time, seed);
-  }
-  
-  // 가장자리 파티클들 (중력 방향으로 파도처럼 튀어나옴)
-  const edgeParticleCount = Math.floor(120 + gravityInfluence * 80); // 120~200개
-  for (let i = 0; i < edgeParticleCount; i++) {
-    const angle = (i / edgeParticleCount) * Math.PI * 2;
-    const seed = i * 41.9;
-    
-    // 중력이 작을 때: 작은 반경, 중력이 클 때: 큰 반경 (원 밖으로)
-    const baseRadiusMin = adjustedRadius * (0.7 - (1 - gravityInfluence) * 0.2);
-    const baseRadiusMax = adjustedRadius * (1.0 + gravityInfluence * 1.2); // 중력 클 때 원 밖으로
-    const radiusVariation = seededRandom(seed * 9.1);
-    const baseRadius = baseRadiusMin + (baseRadiusMax - baseRadiusMin) * radiusVariation;
-    
-    const baseX = centerX + Math.cos(angle) * baseRadius;
-    const baseY = centerY + Math.sin(angle) * baseRadius;
-    
-    // 중력 방향 벡터
-    const toGravityAngle = Math.atan2(gravityDirY, gravityDirX);
-    const angleFromGravity = angle - toGravityAngle;
-    const gravityAlignment = Math.max(0, Math.cos(angleFromGravity));
-    
-    // 중력이 없을 때: 중심으로 강하게 수축 (밀집)
-    const contractionStrength = (1 - gravityInfluence) * 0.5; // 더 강하게
-    const contractionX = (centerX - baseX) * contractionStrength;
-    const contractionY = (centerY - baseY) * contractionStrength;
-    
-    // 중력이 클 때: 중력 방향으로 매우 강하게 팽창 (확 쏠림)
-    const expansionStrength = gravityInfluence * 2.2; // 매우 강하게
-    const alignmentBoost = Math.pow(gravityAlignment, 0.5);
-    const expansionAmount = expansionStrength * (0.2 + alignmentBoost * 0.8); // 중력 방향일수록 훨씬 더 강하게
-    const expansionX = gravityDirX * adjustedRadius * expansionAmount;
-    const expansionY = gravityDirY * adjustedRadius * expansionAmount;
-    
-    // 가장자리 파티클의 움직임 (중력이 없을 때는 작게)
-    const moveX = noise3D(angle * 1.2, time * 1.1, seed, time * 1.0);
-    const moveY = noise3D(angle * 1.2 + Math.PI, time * 1.1, seed + 200, time * 1.0);
-    const moveAmount = (1 - gravityInfluence) * 0.1 + gravityInfluence * 0.3;
-    
-    // 파도 효과 (중력이 있을 때만 중력 방향으로 튀어나오는 느낌)
-    const waveFrequency = 2.0 + gravityInfluence * 1.5;
-    const gravityWave = gravityInfluence * simpleNoise(
-      angle * waveFrequency + time * 1.8,
-      time * 1.3,
-      seed * 0.3
+  // 단일 레이어, 고정된 작은 점들로만 구 형태를 표현
+  const adjustedRadius = baseRadius * 1.55;
+  const particleCount = 260;
+  const hasGravDir = gravityInfluence > 0 && (gravityDirX !== 0 || gravityDirY !== 0);
+  const gravAngle = hasGravDir ? Math.atan2(gravityDirY, gravityDirX) : 0;
+
+  for (let i = 0; i < particleCount; i += 1) {
+    // 기본 위치는 시드 기반 고정 분포
+    const u1 = seededRandom(i * 17.3);
+    const u2 = seededRandom(i * 31.7);
+
+    const angle = u1 * Math.PI * 2;
+    // 가장자리에 점이 더 많이 모이도록, 기본 분포 자체를 가장자리 편향으로
+    const edgeBias = Math.pow(u2, 0.2); // 지수 < 1 → 1 근처에 밀도
+    const baseRadiusFactor = 1 * edgeBias; // 안쪽은 비우고, 0.6~1.0 범위에 분포
+
+    // 중력 방향과의 정렬 정도 (1이면 중력 방향, 0이면 반대편)
+    const rawAlign =
+      hasGravDir && Number.isFinite(gravAngle)
+        ? Math.max(0, Math.cos(angle - gravAngle))
+        : 0;
+    // 중력 방향 근처만 더 강하게, 나머지는 완만하게
+    const alignment = Math.pow(rawAlign, 1.6);
+
+    // 반경은 기본적으로 구 형태를 유지하되,
+    // 중력 방향 쪽에서만 조금 더 바깥으로 밀어줌
+    const radialBoost = 0.35 * gravityInfluence * alignment;
+    const radiusFactor = baseRadiusFactor * (0.9 + radialBoost);
+    const radius = adjustedRadius * radiusFactor;
+
+    // 중력 방향으로의 오프셋 (쏠리는 느낌) — 기본 형태는 유지
+    const driftAmount = 0.22 * gravityInfluence * alignment * adjustedRadius;
+    const driftX = hasGravDir ? gravityDirX * driftAmount : 0;
+    const driftY = hasGravDir ? gravityDirY * driftAmount : 0;
+
+    // 부드러운 시간 기반 흔들림 (미세한 움직임만)
+    const wobbleSeedX = i * 13.7;
+    const wobbleSeedY = i * 19.1;
+    const wobbleR =
+      0.15 *
+      adjustedRadius *
+      simpleNoise(wobbleSeedX * 0.3, wobbleSeedY * 0.3, time * 0.15);
+    const wobbleAngle =
+      2 *
+      simpleNoise(wobbleSeedX * 0.5, wobbleSeedY * 0.5, time * 0.18);
+
+    const finalRadius = Math.min(radius + wobbleR, radius);
+    const finalAngle = angle + wobbleAngle;
+
+    const x = centerX + Math.cos(finalAngle) * finalRadius + driftX;
+    const y = centerY + Math.sin(finalAngle) * finalRadius + driftY;
+
+    // 기본 밝기에 시간에 따른 잔잔한 반짝임 + 중력 방향 강조
+    const baseAlpha = 0.55;
+    const flicker =
+      0.6 *
+      simpleNoise(i * 0.7, 0.0, time * 0.1 * i); // -0.18 ~ 0.18
+    const alphaBoost = 0.7 * gravityInfluence * alignment;
+    const alpha = Math.max(
+      0.2,
+      Math.min(1, baseAlpha + flicker + alphaBoost)
     );
-    // 파도가 중력 방향으로 강하게 튀어나오는 효과 (중력이 있을 때만)
-    const waveBlend = gravityInfluence * 0.9;
-    const waveDirectionX = Math.cos(angle) * (1 - waveBlend) + gravityDirX * waveBlend;
-    const waveDirectionY = Math.sin(angle) * (1 - waveBlend) + gravityDirY * waveBlend;
-    const waveMagnitude = adjustedRadius * (gravityInfluence * 0.7); // 중력이 있을 때만
-    
-    const waveX = gravityWave * 1.8 * waveDirectionX * waveMagnitude;
-    const waveY = gravityWave * 1.8 * waveDirectionY * waveMagnitude;
-    
-    // 중력 방향으로의 추가 쏠림 (가장자리에서도 강하게)
-    const gravityPullStrength = Math.pow(gravityInfluence, 1.5) * 1.0;
-    const gravityPullX = gravityDirX * adjustedRadius * gravityPullStrength * (0.4 + gravityAlignment * 0.6);
-    const gravityPullY = gravityDirY * adjustedRadius * gravityPullStrength * (0.4 + gravityAlignment * 0.6);
-    
-    const x = baseX + contractionX + expansionX + waveX + moveX * adjustedRadius * moveAmount + gravityPullX;
-    const y = baseY + contractionY + expansionY + waveY + moveY * adjustedRadius * moveAmount + gravityPullY;
-    
-    const distFromCenter = Math.hypot(x - centerX, y - centerY);
-    // 중력이 클 때는 원 밖으로 나간 particle도 보이도록
-    const maxDist = adjustedRadius * (1.0 + gravityInfluence * 1.5);
-    const distFactor = Math.max(0, 1 - Math.min(1, (distFromCenter - adjustedRadius * 0.8) / (maxDist - adjustedRadius * 0.8)));
-    
-    // 파티클 크기
-    const particleSize = adjustedRadius * 0.1 * (0.8 + distFactor * 0.2);
-    // 밝기 (원 밖으로 나간 particle도 보이도록)
-    const alpha = 0.7 * (0.6 + distFactor * 0.4);
-    
-    if (distFactor > 0.05 || gravityInfluence > 0.3) { // 중력이 클 때는 더 많이 보이도록
-      renderParticleCluster(ctx, x, y, particleSize, alpha, time, seed);
-    }
+
+    // 더 작고 선명한 점 (최소 크기와 스케일을 낮춰서 모바일에서도 작게 보이도록)
+    const size =
+      Math.max(0.2, Math.min(0.5, baseRadius * 0.014)) * particleScale;
+
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.fill();
   }
 };
 
@@ -462,10 +275,11 @@ const renderPlayers = ({
   overrides?: { cameraPosition?: Vec2; zoom?: number };
 }) => {
   ctx.save();
-  const predictionVisualBlend = 0.85;
   const time = performance.now() * 0.001; // 초 단위 시간 (파티클 애니메이션용)
+  const isGlobal = state.mode === "global";
 
-  if (blend > 0.01) {
+  // 글로벌 뷰에서는 plane용 가이드 라인 숨김
+  if (blend > 0.01 && !isGlobal) {
     ctx.strokeStyle = `rgba(255,255,255,${0.15 * blend})`;
     for (let i = 0; i < state.playerOrder.length; i += 1) {
       const laneY = laneGap * (i + 1);
@@ -485,30 +299,10 @@ const renderPlayers = ({
       return;
     }
     const { cell, depth } = player;
-    const hasPredictionMeta =
-      Boolean(
-        player.isPredicted &&
-          player.lastServerPosition &&
-          player.predictionOffset
-      ) && isPersonal;
-    const renderBasePosition = hasPredictionMeta
-      ? {
-          x:
-            player.lastServerPosition!.x +
-            player.predictionOffset!.x * predictionVisualBlend,
-          y:
-            player.lastServerPosition!.y +
-            player.predictionOffset!.y * predictionVisualBlend,
-        }
-      : cell.position;
-
-    // dead-reckoning: server 업데이트 시간으로부터 경과시간 동안 속도로 예측
-    const t = Math.min((Date.now() - player.lastUpdate) / 1000, 0.25);
-    const predicted: Vec2 = {
-      x: renderBasePosition.x + cell.velocity.x * t,
-      y: renderBasePosition.y + cell.velocity.y * t,
-    };
-    const planePos = project(state, width, height, predicted, overrides);
+    // dead-reckoning(속도 기반 추가 예측) 없이,
+    // 현재 스냅샷(또는 보정된 서버 위치)만 기준으로 화면 좌표 계산
+    const renderBasePosition = cell.position;
+    const planePos = project(state, width, height, renderBasePosition, overrides);
     const idx = orderIndex.get(playerId) ?? index;
     const laneY = laneGap * (idx + 1);
     const lineX = (renderBasePosition.x / state.gameSize.width) * width;
@@ -518,7 +312,6 @@ const renderPlayers = ({
       y: planePos.y * (1 - blend) + laneY * blend,
     };
     const radius = cell.radius * state.camera.zoom * (1 - blend) + 8 * blend;
-    
     // 개인 뷰에서 자기 공에 파티클 효과 적용
     if (isPersonal && player.isSelf) {
       renderParticleBall(
@@ -529,10 +322,25 @@ const renderPlayers = ({
         time,
         cell.velocity, // velocity 정보 전달
         player.gravityDir, // 서버에서 계산된 중력 방향
-        player.gravityDist // 서버에서 계산된 거리
+        player.gravityDist, // 서버에서 계산된 거리
+        1
+      );
+    } else if (isGlobal) {
+      // 글로벌 뷰에서는 모든 플레이어를 개인 뷰와 동일한 파티클 스타일로 렌더하되,
+      // 파티클 크기만 조금 더 크게
+      renderParticleBall(
+        ctx,
+        screenPos.x,
+        screenPos.y,
+        radius,
+        time,
+        cell.velocity,
+        player.gravityDir,
+        player.gravityDist,
+        1.5
       );
     } else {
-      // 다른 플레이어는 기존 스타일 유지
+      // 기타 모드에서는 간단한 원으로 유지
       ctx.beginPath();
       ctx.arc(screenPos.x, screenPos.y, radius, 0, Math.PI * 2);
       ctx.fillStyle = cell.color ?? "rgba(255,255,255,0.6)";
@@ -557,12 +365,10 @@ const renderPlayers = ({
       ctx.stroke();
     }
 
-    if (isPersonal && player.isSelf) {
-      ctx.font = "12px Geist, sans-serif";
-      ctx.fillStyle = "rgba(255,255,255,0.8)";
-      ctx.textAlign = "center";
-      ctx.fillText(player.name || "-", screenPos.x, screenPos.y + radius + 14);
-    } else if (blend > 0.3) {
+    // 이름 라벨 렌더링:
+    // - 개인 뷰에서는 이름을 표시하지 않음
+    // - 글로벌 뷰에서도 plane/라인 라벨은 숨김
+    if (!isPersonal && !isGlobal && blend > 0.3) {
       ctx.fillStyle = "rgba(255,255,255,0.8)";
       ctx.font = "12px Geist, sans-serif";
       ctx.textBaseline = "bottom";
@@ -643,7 +449,8 @@ const renderCollisionConnections = ({
       ? performance.now() * 0.012
       : Date.now() * 0.012;
   const wallNow = Date.now();
-  ctx.lineWidth = 2.5;
+  // 개인 뷰에서는 연결 선을 더 가늘게
+  ctx.lineWidth = state.mode === "personal" ? 1.2 : 2.5;
   ctx.strokeStyle = "rgba(255,255,255,0.65)";
   // 그림자 효과 제거
   ctx.shadowColor = "rgba(0,0,0,0)";
@@ -764,19 +571,19 @@ const renderSelfTrail = ({
   if (!state.selfId) return;
   const trail = state.cellTrails[state.selfId];
   if (!trail || trail.points.length < 2) return;
-  const selfPlayer = state.players[state.selfId];
-  const points = trail.points.map((point) => ({ x: point.x, y: point.y }));
-  if (selfPlayer && points.length > 0) {
-    points[points.length - 1] = {
-      x: selfPlayer.cell.position.x,
-      y: selfPlayer.cell.position.y,
-    };
-  }
+  const now = Date.now();
+  const MAX_AGE = 5000; // ms
   ctx.save();
-  ctx.strokeStyle = "rgba(255,255,255,0.3)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  points.forEach((point, idx) => {
+  // 작은 파티클 점으로만 자기 궤적을 표현
+  trail.points.forEach((point, idx) => {
+    const age = now - point.t;
+    if (age > MAX_AGE) return;
+    // 오래된 점일수록 더 투명하고 더 작게
+    const life = 1 - age / MAX_AGE;
+    const baseAlpha = 0.7;
+    const alpha = baseAlpha * life;
+    if (alpha <= 0.02) return;
+
     const pos = project(
       state,
       width,
@@ -784,10 +591,15 @@ const renderSelfTrail = ({
       { x: point.x, y: point.y },
       overrides
     );
-    if (idx === 0) ctx.moveTo(pos.x, pos.y);
-    else ctx.lineTo(pos.x, pos.y);
+
+    const baseSize = 0.4;
+    const size = baseSize * (0.4 + 0.6 * life);
+
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.fill();
   });
-  ctx.stroke();
   ctx.restore();
 };
 

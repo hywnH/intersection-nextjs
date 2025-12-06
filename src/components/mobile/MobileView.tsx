@@ -106,13 +106,24 @@ const buildInterpolatedState = (state: GameState): GameState => {
     ...newer.order,
     ...Object.keys(older.players),
     ...Object.keys(newer.players),
+    ...Object.keys(state.players),
   ]);
   const interpolatedPlayers: Record<string, PlayerSnapshot> = {};
 
   playerIds.forEach((id) => {
-    const from = older.players[id] ?? newer.players[id];
-    const to = newer.players[id] ?? older.players[id];
-    if (!from || !to) return;
+    const from =
+      older.players[id] ?? newer.players[id] ?? state.players[id];
+    const to =
+      newer.players[id] ?? older.players[id] ?? state.players[id];
+    if (!from && !to) return;
+    if (!from || !to) {
+      const single = (from ?? to)!;
+      interpolatedPlayers[id] = {
+        ...single,
+        lastUpdate: Date.now(),
+      };
+      return;
+    }
     const cell = {
       ...from.cell,
       position: {
@@ -225,9 +236,16 @@ const MobileView = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    let logicalWidth = window.innerWidth;
+    let logicalHeight = window.innerHeight;
+
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      logicalWidth = window.innerWidth;
+      logicalHeight = window.innerHeight;
+      canvas.width = Math.floor(logicalWidth * dpr);
+      canvas.height = Math.floor(logicalHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
     resize();
@@ -242,8 +260,8 @@ const MobileView = () => {
       renderScene({
         ctx,
         state: renderState,
-        width: canvas.width,
-        height: canvas.height,
+        width: logicalWidth,
+        height: logicalHeight,
       });
       animationRef.current = requestAnimationFrame(loop);
     };
@@ -265,12 +283,13 @@ const MobileView = () => {
     const updatePointer = (x: number, y: number) => {
       const rect = canvas.getBoundingClientRect();
       const pointer = {
-        x: x - rect.left - canvas.width / 2,
-        y: y - rect.top - canvas.height / 2,
+        // 고해상도 캔버스에서도 입력 좌표는 CSS 크기 기준으로 정규화
+        x: x - rect.left - rect.width / 2,
+        y: y - rect.top - rect.height / 2,
       };
       // 컨트롤러: 포인터를 화면 중심 기준으로 정규화 → 원하는 속도 계산
-      const nx = Math.max(-1, Math.min(1, pointer.x / (canvas.width * 0.25)));
-      const ny = Math.max(-1, Math.min(1, pointer.y / (canvas.height * 0.25)));
+      const nx = Math.max(-1, Math.min(1, pointer.x / (rect.width * 0.25)));
+      const ny = Math.max(-1, Math.min(1, pointer.y / (rect.height * 0.25)));
       const CLIENT_MAX_SPEED = 320; // 서버 MAX_SPEED와 동일하게 유지
       const controlVelocity = {
         x: nx * CLIENT_MAX_SPEED,
