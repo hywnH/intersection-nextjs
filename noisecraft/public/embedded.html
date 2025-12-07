@@ -435,11 +435,11 @@
           if (fallbackSrc) {
             return await loadProjectFromSrc(fallbackSrc);
           }
-          const DEFAULT_PATCH_SRC =
-            "/public/examples/falling_in_love_with_waterfalls.ncft";
+          // Intersection 프로젝트 기본 패치: chord_spatial
+          const DEFAULT_PATCH_SRC = "/public/examples/chord_spatial.ncft";
           return await loadProjectFromSrc(DEFAULT_PATCH_SRC);
         } catch (e) {
-          console.warn("Failed to load default Falling Waterfalls patch:", e);
+          console.warn("Failed to load default chord_spatial patch:", e);
         }
 
         return defaultProject;
