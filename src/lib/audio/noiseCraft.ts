@@ -86,6 +86,13 @@ export const resolveNoiseCraftEmbed = () => {
   } else {
     embedSearch.set("src", `${normalizedNcBase}/current-project`);
   }
+  // /mobile 과 /mobile/debug 에서 iframe 모드를 구분하기 위한 view 쿼리
+  const path = window.location.pathname || "";
+  if (path.startsWith("/mobile/debug")) {
+    embedSearch.set("view", "mobile-debug");
+  } else if (path.startsWith("/mobile")) {
+    embedSearch.set("view", "mobile");
+  }
   const src = `${normalizedNcBase}/public/embedded.html?${embedSearch.toString()}`;
   const embedOrigin = new URL(src, pageOrigin).origin;
   return { src, origin: embedOrigin };
