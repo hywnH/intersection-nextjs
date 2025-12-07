@@ -96,7 +96,7 @@ export const generateDistancePanParams = (
     const panDir = nearest.dx / safeDist; // -1 ~ 1
     // -1~1 → 0.4~0.6 (좌 0.4, 우 0.6)
     pan = 0.5 + panDir * 0.3;
-    pan = Math.max(0.8, Math.min(0.2, pan));
+    pan = Math.max(0.2, Math.min(0.8, pan));
   }
 
   const params: NoiseCraftParam[] = [
