@@ -1,9 +1,6 @@
 name: Deploy to EC2
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       branch:
@@ -29,9 +26,16 @@ jobs:
           script: |
             set -e
 
-            # 필요한 도구 업데이트 (최초 1회 수준)
-            sudo apt-get update -y
-            sudo apt-get install -y git docker.io docker-compose-plugin
+            # 필요한 도구는 EC2에 한 번만 수동 설치하고,
+            # 워크플로우에서는 매 배포마다 재설치 시도하지 않도록 함
+            if ! command -v git >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y git
+            fi
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Docker is not installed on EC2. Please install Docker & docker compose once manually."
+              exit 1
+            fi
 
             # 코드 체크아웃/업데이트
             if [ ! -d ~/intersection-nextjs ]; then
