@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>NoiseCraft Virtual Signal Test Workspace</title>
+    <title>NoiseCraft Global Audio Workspace</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/public/style.css" />
     <style>
@@ -494,7 +494,7 @@
         <div id="noisecraft-container">
           <iframe
             id="noisecraft-iframe"
-            src="/public/embedded.html?src=/public/examples/indiv_audio_map.ncft"
+            src="/public/embedded.html?src=/public/examples/glb_audio_map.ncft"
           ></iframe>
         </div>
       </div>
@@ -560,7 +560,7 @@
       console.log("[Init] Defining StreamNodeMapper class...");
       // Stream-to-Node Mapping Manager (now uses MappingStorage module)
       class StreamNodeMapper {
-        constructor(filename = 'indiv_audio_map.ncft') {
+        constructor(filename = 'glb_audio_map.ncft') {
           this.mappings = [];
           this.filename = filename;
           this.storage = createMappingStorage(filename);
@@ -883,7 +883,7 @@
       // Initialize sequencer logic
       const sequencerLogic = new SequencerLogic();
       
-      // Sequencer node IDs from indiv_audio_map.ncft
+      // Sequencer node IDs from glb_audio_map.ncft
       const SEQUENCER_NODES = {
         individual: {
           bass: "211",      // MonoSeq "bass"
@@ -1252,7 +1252,7 @@
         })
       };
       
-      const streamMapper = new StreamNodeMapper('indiv_audio_map.ncft');
+      const streamMapper = new StreamNodeMapper('glb_audio_map.ncft');
 
       // Node Browser - Load nodes from project file
       let availableNodes = [];
@@ -2414,16 +2414,16 @@
           await streamMapper.loadMappings();
           renderMappings();
           
-          // Enable auto-save for indiv_audio_map.ncft when iframe is ready
+          // Enable auto-save for glb_audio_map.ncft when iframe is ready
           if (iframe.contentWindow) {
             // Small delay to ensure iframe message handler is ready
             setTimeout(() => {
               iframe.contentWindow.postMessage({
                 type: "noiseCraft:enableAutoSave",
                 enabled: true,
-                filename: "indiv_audio_map.ncft"
+                filename: "glb_audio_map.ncft"
               }, "*");
-              console.log("Auto-save enabled for indiv_audio_map.ncft");
+              console.log("Auto-save enabled for glb_audio_map.ncft");
             }, 500);
           }
         });

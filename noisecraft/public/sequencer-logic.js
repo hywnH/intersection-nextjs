@@ -53,93 +53,224 @@ export class SequencerLogic {
     return Math.floor(noteIndex12 / 3);
   }
 
-  generateIndividualPattern(selfParticle, innerParticles) {
-    // Always initialize with zeros (ensures clean state)
-    // Now using 4 rows instead of 12
-    const pattern = {
-      bass: new Array(4).fill(0),
-      baritone: new Array(4).fill(0),
-      tenor: new Array(4).fill(0)
-    };
+  /**
+   * Generate arpeggiator pattern: spread available notes across 12 steps
+   * This creates a random arpeggiator pattern using the available notes as "ingredients"
+   * 
+   * @param {Array} availableNotes - Array of 12-tone note indices (0-11) that are available
+   * @param {Number} numSteps - Number of steps in sequencer (default 12)
+   * @returns {Array} Pattern array: [step0[row0, row1, ..., row11], step1[...], ...]
+   *   Each step has exactly one note active (one row = 1, rest = 0)
+   */
+  generateArpeggiatorPattern(availableNotes, numSteps = 12) {
+    if (!Array.isArray(availableNotes) || availableNotes.length === 0) {
+      // Return empty pattern (all zeros)
+      return Array(numSteps).fill(null).map(() => new Array(12).fill(0));
+    }
+    
+    // Create pattern: array of steps, each step is array of 12 rows
+    const pattern = Array(numSteps).fill(null).map(() => new Array(12).fill(0));
+    
+    // Randomly distribute available notes across steps
+    // Each step gets one note, chosen randomly from available notes
+    for (let step = 0; step < numSteps; step++) {
+      // Pick a random note from available notes
+      const randomNoteIndex = availableNotes[Math.floor(Math.random() * availableNotes.length)];
+      if (randomNoteIndex >= 0 && randomNoteIndex < 12) {
+        // Set this note active at this step
+        pattern[step][randomNoteIndex] = 1;
+      }
+    }
+    
+    return pattern;
+  }
 
-    // Self particle's note ALWAYS goes to bass (even when alone)
-    // Map from 12-tone to 4-row sequencer
+  generateIndividualPattern(selfParticle, innerParticles) {
+    // Collect available notes as "ingredients" for arpeggiator
+    const availableNotes = [];
+    
+    // Self particle's note (always available)
     if (selfParticle && typeof selfParticle.getActiveNoteIndex === 'function') {
       const selfNoteIndex12 = selfParticle.getActiveNoteIndex();
       if (selfNoteIndex12 >= 0 && selfNoteIndex12 < 12) {
-        const rowIndex = this.map12ToneTo4Row(selfNoteIndex12);
-        pattern.bass[rowIndex] = 1;
+        availableNotes.push(selfNoteIndex12);
       }
     }
-
-    // Inner particles' notes are distributed to baritone and tenor
-    // IMPORTANT: Only set baritone/tenor if inner particles exist
-    // This ensures when alone, only bass plays (single tone)
+    
+    // Inner particles' notes (added when in inner radius)
     if (Array.isArray(innerParticles) && innerParticles.length > 0) {
       innerParticles.forEach((innerParticle, index) => {
         if (!innerParticle || typeof innerParticle.getActiveNoteIndex !== 'function') return;
+        if (index >= 2) return; // Only use first 2 inner particles (max 3 notes total)
         
         const noteIndex12 = innerParticle.getActiveNoteIndex();
         if (noteIndex12 >= 0 && noteIndex12 < 12) {
-          const rowIndex = this.map12ToneTo4Row(noteIndex12);
-          if (index === 0) {
-            // First inner particle -> baritone (2-note chord)
-            pattern.baritone[rowIndex] = 1;
-          } else if (index === 1) {
-            // Second inner particle -> tenor (3-note chord)
-            pattern.tenor[rowIndex] = 1;
-          }
-          // Only use first 2 inner particles (max 3-note chord)
+          availableNotes.push(noteIndex12);
         }
       });
     }
-    // If innerParticles is empty or length === 0, baritone and tenor remain all zeros
-    // This means: when alone = only bass plays = single tone ✅
-
-    return pattern;
+    
+    // Generate arpeggiator patterns for each voice (bass, baritone, tenor)
+    // Each voice uses ALL available notes, creating independent arpeggiator patterns
+    const numSteps = 12; // Use 12 steps for arpeggiator pattern
+    
+    // Bass voice: uses all available notes
+    const bassPattern = this.generateArpeggiatorPattern(availableNotes, numSteps);
+    
+    // Baritone voice: uses all available notes (same ingredients, different pattern)
+    const baritonePattern = this.generateArpeggiatorPattern(availableNotes, numSteps);
+    
+    // Tenor voice: uses all available notes (same ingredients, different pattern)
+    const tenorPattern = this.generateArpeggiatorPattern(availableNotes, numSteps);
+    
+    // Return in format compatible with updateMonoSeqSequencer
+    // Convert from NoiseCraft format [step][row] to row-based format for each voice
+    // Actually, we'll return the full pattern directly since updateMonoSeqSequencer can handle it
+    return {
+      bass: bassPattern,
+      baritone: baritonePattern,
+      tenor: tenorPattern,
+      // Keep columns for backwards compatibility (not used in arpeggiator mode)
+      columns: {
+        bass: null,
+        baritone: null,
+        tenor: null
+      }
+    };
   }
 
   /**
    * Generate global sequencer pattern for all particles
-   * Global: multiple columns so audience can hear chord progression
-   * Pattern: bass 1st column -> baritone 1st column -> tenor 1st column -> 
-   *          bass 2nd column -> baritone 2nd column -> ...
+   * Global: 12 columns per voice (bass, baritone, tenor), total 36 positions
+   * Each particle is assigned to ONE of 36 positions (bass 0-11, baritone 0-11, tenor 0-11)
+   * Pattern format: 12-step sequencer patterns [step0[row0...row11], step1[...], ...]
+   * 
+   * Uses Harmonic Progression Algorithm for musically meaningful placement
    * 
    * @param {Array} allParticles - All particles in the system
-   * @returns {Object} Pattern updates for global sequencers
+   * @param {Object} assignments - Optional: pre-assigned positions { particleId: { voice: 'bass'|'baritone'|'tenor', column: 0-11 } }
+   * @param {Object} harmonicPlacer - Optional: GlobalHarmonicPlacer instance (creates new one if not provided)
+   * @returns {Object} Pattern updates: { bass: [12 steps x 12 rows], baritone: [...], tenor: [...] }
    */
-  generateGlobalPattern(allParticles) {
+  generateGlobalPattern(allParticles, assignments = {}, harmonicPlacer = null) {
+    // Initialize patterns: 12 steps, each with 12 rows (one per semitone)
+    const bassPattern = Array(12).fill(null).map(() => new Array(12).fill(0));
+    const baritonePattern = Array(12).fill(null).map(() => new Array(12).fill(0));
+    const tenorPattern = Array(12).fill(null).map(() => new Array(12).fill(0));
+    
+    // Use harmonic placer if provided, otherwise fall back to random
+    // (Caller should import and create GlobalHarmonicPlacer if harmonic placement is desired)
+    
+    // Track used positions to avoid duplicates
+    const usedPositions = {
+      bass: new Set(),
+      baritone: new Set(),
+      tenor: new Set()
+    };
+    
     // Sort particles by ID for consistent ordering
     const sortedParticles = [...allParticles].sort((a, b) => a.id - b.id);
+    const totalUsers = sortedParticles.length;
     
-    const pattern = {
-      bass: new Array(12).fill(0),
-      baritone: new Array(12).fill(0),
-      tenor: new Array(12).fill(0)
-    };
-
-    // Assign notes in order: bass -> baritone -> tenor -> bass -> ...
-    sortedParticles.forEach((particle, index) => {
+    // If harmonic placer is available, use it for new assignments
+    let useHarmonicPlacement = harmonicPlacer !== null && typeof harmonicPlacer.assignNewUser === 'function';
+    
+    // Update harmonic placer with existing assignments
+    if (useHarmonicPlacement) {
+      harmonicPlacer.updateAssignmentsFromMap(assignments, sortedParticles);
+    }
+    
+    sortedParticles.forEach((particle) => {
       const noteIndex = particle.getActiveNoteIndex();
-      if (noteIndex >= 0) {
-        const voiceIndex = index % 3; // 0 = bass, 1 = baritone, 2 = tenor
-        const columnIndex = Math.floor(index / 3); // Which column in the voice
-        
-        // For now, we use 12 columns (one per note), but this can be adjusted
-        // Each voice gets its own pattern with notes at different step positions
-        const stepPosition = (columnIndex * 4) % 16; // Spread across 16 steps
-        
-        if (voiceIndex === 0) {
-          pattern.bass[noteIndex] = 1; // Bass voice
-        } else if (voiceIndex === 1) {
-          pattern.baritone[noteIndex] = 1; // Baritone voice
+      if (noteIndex < 0 || noteIndex >= 12) return;
+      
+      // Get assignment for this particle (voice and column position)
+      let assignment = assignments[particle.id];
+      
+      // If no assignment, use harmonic placement or random fallback
+      if (!assignment) {
+        if (useHarmonicPlacement) {
+          // Use harmonic progression algorithm
+          try {
+            const position = harmonicPlacer.assignNewUser(noteIndex, totalUsers);
+            if (position >= 0 && position < 36) {
+              const voiceIndex = Math.floor(position / 12);
+              const column = position % 12;
+              const voices = ['bass', 'baritone', 'tenor'];
+              const voice = voices[voiceIndex];
+              
+              // Check if position is already used
+              if (!usedPositions[voice].has(column)) {
+                assignment = { voice, column };
+                usedPositions[voice].add(column);
+                harmonicPlacer.addAssignment(noteIndex, position);
+                assignments[particle.id] = assignment; // Update assignments map
+              } else {
+                // Fallback to random if harmonic placement conflicts
+                assignment = this._getRandomAvailablePosition(usedPositions);
+              }
+            } else {
+              // Fallback to random if harmonic placement fails
+              assignment = this._getRandomAvailablePosition(usedPositions);
+            }
+          } catch (e) {
+            console.warn('[SequencerLogic] Harmonic placement failed, using random:', e);
+            assignment = this._getRandomAvailablePosition(usedPositions);
+          }
         } else {
-          pattern.tenor[noteIndex] = 1; // Tenor voice
+          // Random fallback
+          assignment = this._getRandomAvailablePosition(usedPositions);
         }
+        
+        if (!assignment) {
+          console.warn(`[Global] All 36 positions are filled, skipping particle ${particle.id}`);
+          return;
+        }
+      } else {
+        // Track existing assignment
+        usedPositions[assignment.voice].add(assignment.column);
+      }
+      
+      // Place note at assigned column (step) and row (noteIndex)
+      const targetPattern = assignment.voice === 'bass' ? bassPattern :
+                           assignment.voice === 'baritone' ? baritonePattern : tenorPattern;
+      
+      if (assignment.column >= 0 && assignment.column < 12 && 
+          noteIndex >= 0 && noteIndex < 12) {
+        targetPattern[assignment.column][noteIndex] = 1;
       }
     });
+    
+    return {
+      bass: bassPattern,
+      baritone: baritonePattern,
+      tenor: tenorPattern,
+      assignments: assignments // Return assignments for tracking
+    };
+  }
 
-    return pattern;
+  /**
+   * Helper: Get random available position (fallback method)
+   * @private
+   */
+  _getRandomAvailablePosition(usedPositions) {
+    const voices = ['bass', 'baritone', 'tenor'];
+    const availableVoices = voices.filter(voice => usedPositions[voice].size < 12);
+    
+    if (availableVoices.length === 0) {
+      return null; // All positions filled
+    }
+    
+    const randomVoice = availableVoices[Math.floor(Math.random() * availableVoices.length)];
+    const availableColumns = Array.from({length: 12}, (_, i) => i)
+      .filter(col => !usedPositions[randomVoice].has(col));
+    
+    if (availableColumns.length === 0) {
+      return null;
+    }
+    
+    const randomColumn = availableColumns[Math.floor(Math.random() * availableColumns.length)];
+    return { voice: randomVoice, column: randomColumn };
   }
 
   /**
@@ -222,26 +353,85 @@ export function convertNotePatternToNoiseCraft(notePattern, numSteps = 4, stepPo
   return pattern;
 }
 
-// Track current step position for each voice to create cycling pattern
-const voiceStepPositions = new Map(); // nodeId -> current step (0-3)
+// Track column positions for each voice (persistent random assignment per particle)
+const voiceColumnPositions = new Map(); // nodeId -> column position (0-3)
 
 /**
  * Update a MonoSeq sequencer node in NoiseCraft with a new pattern
+ * Supports both single-note patterns and arpeggiator patterns (full 12x12 grid)
  * @param {Object} iframeWindow - The NoiseCraft iframe window
  * @param {String} nodeId - The MonoSeq node ID
  * @param {Number} patternIndex - Which pattern to update (usually 0)
- * @param {Array} notePattern - Array like [1,0,0,...,0] for the note to play (12 elements)
- * @param {Number} numSteps - Number of steps in sequencer (default 4 for faster cycling)
+ * @param {Array} notePattern - Can be:
+ *   - Array like [1,0,0,...,0] for single note (4 or 12 elements) - OLD FORMAT
+ *   - Array of arrays: [[step0[row0, row1, ...], step1[...], ...] - ARPEGGIATOR FORMAT (12 steps x 12 rows)
+ * @param {Number} numSteps - Number of steps in sequencer (default 12 for arpeggiator, was 4)
+ * @param {Number} columnPosition - Optional: deprecated for arpeggiator mode
  */
-export function updateMonoSeqSequencer(iframeWindow, nodeId, patternIndex, notePattern, numSteps = 4) {
+export function updateMonoSeqSequencer(iframeWindow, nodeId, patternIndex, notePattern, numSteps = 12, columnPosition = null) {
   if (!iframeWindow || !nodeId || !Array.isArray(notePattern)) {
     console.warn('Invalid parameters for updateMonoSeqSequencer:', { iframeWindow, nodeId, notePattern });
     return;
   }
   
+  // Check if this is arpeggiator format (array of arrays) or old single-note format
+  // Arpeggiator format: [[step0[row0, row1, ...]], [step1[...]], ...]
+  // Old format: [1, 0, 0, ..., 0] (single row array)
+  const isArpeggiatorFormat = notePattern.length > 0 && 
+                               Array.isArray(notePattern[0]) && 
+                               typeof notePattern[0][0] === 'number';
+  
+  if (isArpeggiatorFormat) {
+    // ARPEGGIATOR MODE: Full pattern [step][row]
+    const patternSteps = notePattern.length;
+    const patternRows = notePattern[0]?.length || 12;
+    
+    requestAnimationFrame(() => {
+      // Clear all steps and rows first
+      for (let step = 0; step < numSteps; step++) {
+        for (let row = 0; row < patternRows; row++) {
+          iframeWindow.postMessage({
+            type: "noiseCraft:toggleCell",
+            nodeId: String(nodeId),
+            patIdx: patternIndex,
+            stepIdx: step,
+            rowIdx: row,
+            value: 0 // Clear cell
+          }, "*");
+        }
+      }
+      
+      // Then set the arpeggiator pattern
+      requestAnimationFrame(() => {
+        let cellCount = 0;
+        for (let step = 0; step < Math.min(patternSteps, numSteps); step++) {
+          const stepPattern = notePattern[step];
+          if (!Array.isArray(stepPattern)) continue;
+          
+          for (let row = 0; row < Math.min(stepPattern.length, patternRows); row++) {
+            if (stepPattern[row] === 1) {
+              iframeWindow.postMessage({
+                type: "noiseCraft:toggleCell",
+                nodeId: String(nodeId),
+                patIdx: patternIndex,
+                stepIdx: step,
+                rowIdx: row,
+                value: 1 // Set cell
+              }, "*");
+              cellCount++;
+            }
+          }
+        }
+        console.log(`[Sequencer] Updated node ${nodeId} with arpeggiator pattern: ${patternSteps} steps, ${cellCount} active cells`);
+      });
+    });
+    return;
+  }
+  
+  // OLD FORMAT: Single note pattern [1,0,0,...,0] (backwards compatibility)
   // Validate note pattern (now supports both 4 and 12 elements)
   if (notePattern.length !== 4 && notePattern.length !== 12) {
-    console.warn('Note pattern must have 4 or 12 elements, got:', notePattern.length);
+    console.warn('Note pattern must have 4 or 12 elements (or be arpeggiator format), got:', notePattern.length);
     return;
   }
   
@@ -250,8 +440,22 @@ export function updateMonoSeqSequencer(iframeWindow, nodeId, patternIndex, noteP
   // Find active note index (should be exactly one)
   const activeNoteIndex = notePattern.findIndex(val => val === 1);
   
-  // Get or initialize step position for this voice (cycle through steps for continuity)
-  let currentStep = voiceStepPositions.get(nodeId) ?? 0;
+  // Get or assign column position (step 0-3) for this voice
+  // Column position is persistent per voice/node - assigned randomly once and reused
+  let stepPosition;
+  if (columnPosition !== null && columnPosition >= 0 && columnPosition < numSteps) {
+    // Use provided column position
+    stepPosition = columnPosition;
+    voiceColumnPositions.set(nodeId, stepPosition);
+  } else {
+    // Get stored column position or assign random one
+    stepPosition = voiceColumnPositions.get(nodeId);
+    if (stepPosition === undefined) {
+      // Assign random column position (0-3) - this is the "random placement" requirement
+      stepPosition = Math.floor(Math.random() * numSteps);
+      voiceColumnPositions.set(nodeId, stepPosition);
+    }
+  }
   
   // If no active note (all zeros), clear ALL steps and ALL rows to ensure silence
   // This is critical for baritone/tenor when particle is alone
@@ -292,22 +496,18 @@ export function updateMonoSeqSequencer(iframeWindow, nodeId, patternIndex, noteP
       }
     }
     
-    // Place note at current step position
+    // Place note at the assigned column position (random, persistent)
     requestAnimationFrame(() => {
       iframeWindow.postMessage({
         type: "noiseCraft:toggleCell",
         nodeId: String(nodeId),
         patIdx: patternIndex,
-        stepIdx: currentStep,
+        stepIdx: stepPosition, // Use persistent random column position
         rowIdx: activeNoteIndex,
         value: 1 // Set cell
       }, "*");
       
-      // Advance to next step for next update (cycle 0->1->2->3->0)
-      currentStep = (currentStep + 1) % numSteps;
-      voiceStepPositions.set(nodeId, currentStep);
-      
-      console.log(`[Sequencer] Updated node ${nodeId}, pattern ${patternIndex}, step ${(currentStep - 1 + numSteps) % numSteps}, row ${activeNoteIndex}, next step: ${currentStep}`);
+      console.log(`[Sequencer] Updated node ${nodeId}, pattern ${patternIndex}, column ${stepPosition} (random persistent), row ${activeNoteIndex}`);
     });
   });
 }

@@ -421,6 +421,68 @@
       const model = new Model();
       const audioView = new AudioView(model);
       const editor = new Editor(model);
+      
+      // Expose AudioWorkletNode to parent window for spatial audio processing
+      let mediaStreamDestination = null;
+      let audioWorkletNode = null;
+      
+      // Hook into AudioView to expose audio nodes for spatial processing
+      const originalPlayAudio = audioView.playAudio.bind(audioView);
+      audioView.playAudio = async function(state) {
+        await originalPlayAudio(state);
+        
+        // Create MediaStreamDestination to capture audio for spatial processing
+        if (audioView.audioCtx && audioView.audioWorklet && !mediaStreamDestination) {
+          try {
+            mediaStreamDestination = audioView.audioCtx.createMediaStreamDestination();
+            audioWorkletNode = audioView.audioWorklet;
+            
+            // Connect AudioWorklet to BOTH destination and MediaStreamDestination
+            // - destination: For self audio (always plays, even without spatial processing)
+            // - MediaStreamDestination: For spatial processing in parent window
+            audioWorkletNode.disconnect();
+            audioWorkletNode.connect(audioView.audioCtx.destination); // Self audio - always on
+            audioWorkletNode.connect(mediaStreamDestination); // For spatial processing
+            
+            // Expose MediaStreamDestination to parent window for direct access
+            // MediaStream objects cannot be transferred via postMessage reliably
+            // Instead, expose it on the window object for parent to access
+            window.noiseCraftMediaStream = mediaStreamDestination.stream;
+            window.noiseCraftAudioContext = audioView.audioCtx;
+            
+            // Notify parent that stream is ready (parent will access it directly)
+            notifyParent({
+              type: "noiseCraft:audioStreamReady",
+              audioContextSampleRate: audioView.audioCtx.sampleRate
+            });
+            
+            console.log("[NoiseCraft] Audio stream ready for spatial processing");
+            console.log("[NoiseCraft] MediaStream available at window.noiseCraftMediaStream");
+          } catch (err) {
+            console.warn("[NoiseCraft] Failed to create MediaStreamDestination:", err);
+          }
+        }
+      };
+      
+      const originalStopAudio = audioView.stopAudio.bind(audioView);
+      audioView.stopAudio = function() {
+        if (mediaStreamDestination) {
+          try {
+            if (audioWorkletNode) {
+              audioWorkletNode.disconnect(mediaStreamDestination);
+            }
+          } catch (e) {
+            // Ignore
+          }
+          mediaStreamDestination = null;
+          audioWorkletNode = null;
+          
+          notifyParent({
+            type: "noiseCraft:audioStreamStopped"
+          });
+        }
+        originalStopAudio();
+      };
 
       // Hook into node selection to notify parent window
       const originalSelectNodes = editor.selectNodes.bind(editor);
