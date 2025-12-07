@@ -42,7 +42,7 @@ const SPRING_IDLE_BASE = 0.3;
 const SPRING_DECAY_MS = 1600;
 const SPRING_MAX_PX = 10;
 const SPRING_GLOW_RADIUS = 0.8;
-const SPRING_LINE_OPACITY = 0.1;
+const SPRING_LINE_OPACITY = 0.6;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
@@ -304,8 +304,8 @@ const PostProcessing = () => {
       0
     );
     bloomPass.threshold = 0.08;
-    bloomPass.strength = 2.1;
-    bloomPass.radius = 0.9;
+    bloomPass.strength = 0.9;
+    bloomPass.radius = 0.4;
 
     const composer = new EffectComposer(gl);
     composer.addPass(renderPass);
@@ -534,9 +534,6 @@ const GlobalPerspectiveView = ({
           className="h-[64px] w-[260px]"
           style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
         />
-        <p className="mt-1 text-[11px] text-white/50">
-          패널 안에서 Start Audio 클릭
-        </p>
       </div>
       {showModeToggle && (
         <ModeToggle viewMode={viewMode} onChange={setViewMode} />
@@ -854,11 +851,16 @@ const CollisionMarks3D = ({
 }) => {
   const marks = useMemo(() => {
     const now = Date.now();
-    const DURATION = 300000; // 5분(300초) 동안 유지
+    const CORE_DURATION = 300000; // 5분 (코어 점)
+    const PARTICLE_DURATION = 50000; // 50초 (파티클/스파클)
     return state.collisionMarks
       .map((mark) => {
-        const age = (now - mark.timestamp) / DURATION;
-        if (age >= 1) return null;
+        const coreAge = (now - mark.timestamp) / CORE_DURATION;
+        if (coreAge >= 1) return null;
+        const particleAge = Math.min(
+          1,
+          (now - mark.timestamp) / PARTICLE_DURATION
+        );
         const worldX = toWorldX(mark.position.x, state.gameSize.width);
         const worldY = toWorldY(mark.position.y, state.gameSize.height);
         const players = mark.players
@@ -866,16 +868,34 @@ const CollisionMarks3D = ({
               .map((id) => state.players[id])
               .filter((p) => p !== undefined)
           : [];
+        // 충돌한 두 플레이어의 가운데 depth (없으면 0)
+        let depth = 0;
+        if (mark.players && mark.players.length) {
+          const depths = mark.players
+            .map((id) => lookup.get(id))
+            .filter(
+              (
+                entry
+              ): entry is { worldX: number; worldY: number; depth: number } =>
+                Boolean(entry)
+            )
+            .map((entry) => entry.depth);
+          if (depths.length > 0) {
+            depth = depths.reduce((sum, d) => sum + d, 0) / depths.length;
+          }
+        }
         return {
           ...mark,
           worldX,
           worldY,
-          age,
+          depth,
+          coreAge,
+          particleAge,
           players,
         };
       })
       .filter((mark): mark is NonNullable<typeof mark> => mark !== null);
-  }, [state.collisionMarks, state.gameSize, state.players]);
+  }, [state.collisionMarks, state.gameSize, state.players, lookup]);
 
   if (!marks.length) return null;
 
@@ -907,7 +927,9 @@ const CollisionGlowEffect = ({
     id: string;
     worldX: number;
     worldY: number;
-    age: number;
+    depth: number;
+    coreAge: number;
+    particleAge: number;
     radius: number;
     players: PlayerSnapshot[];
   };
@@ -930,8 +952,8 @@ const CollisionGlowEffect = ({
     const pulse3 = 0.9 + 0.1 * Math.sin(now * 0.0025);
     const combinedPulse = (pulse1 + pulse2 + pulse3) / 3;
 
-    // 나이에 따라 매우 천천히 사라짐 (5분에 걸쳐)
-    const life = 1 - mark.age;
+    // 코어 점은 10분 동안 유지
+    const life = 1 - mark.coreAge;
     // 매우 부드러운 감쇠
     const fadeOut = Math.pow(life, 0.3);
 
@@ -954,7 +976,11 @@ const CollisionGlowEffect = ({
   });
 
   // 초기 위치
-  const position: [number, number, number] = [mark.worldX, mark.worldY, 0.3];
+  const position: [number, number, number] = [
+    mark.worldX,
+    mark.worldY,
+    mark.depth,
+  ];
 
   // 반짝이는 파티클 (별 주변의 작은 반짝임 - 흰색)
   const sparkleGeometry = useMemo(() => {
@@ -985,8 +1011,9 @@ const CollisionGlowEffect = ({
   }, [mark.id, mark.radius]);
 
   useFrame(() => {
-    if (sparkleRef.current && mark.age < 0.99) {
-      const life = 1 - mark.age;
+    if (sparkleRef.current && mark.particleAge < 0.99) {
+      // 스파클은 50초 안에서만 보이도록 (particleAge 기준)
+      const life = 1 - mark.particleAge;
       const material = sparkleRef.current.material as THREE.PointsMaterial;
       if (material) {
         material.opacity = 0.6 * life;
@@ -1017,7 +1044,7 @@ const CollisionGlowEffect = ({
       </mesh> */}
 
       {/* 반짝이는 파티클 (별 주변의 작은 반짝임) */}
-      {mark.age < 0.99 && (
+      {mark.particleAge < 0.99 && (
         <points ref={sparkleRef} geometry={sparkleGeometry}>
           <pointsMaterial
             vertexColors
@@ -1040,6 +1067,7 @@ const CollisionParticleBurst = ({
     id: string;
     worldX: number;
     worldY: number;
+    depth: number;
     age: number;
     radius: number;
     players: PlayerSnapshot[];
@@ -1050,7 +1078,7 @@ const CollisionParticleBurst = ({
   const startTimeRef = useRef<number>(performance.now());
 
   const { geometry, velocities } = useMemo(() => {
-    const particleCount = 120; // 더 많은 파티클
+    const particleCount = 40; // 더 많은 파티클
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
     const velocities: Array<{ x: number; y: number; z: number }> = [];
@@ -1107,8 +1135,8 @@ const CollisionParticleBurst = ({
     if (!pointsRef.current || !velocitiesRef.current) return;
 
     const elapsed = (performance.now() - startTimeRef.current) * 0.001; // 초
-    // 파티클이 더 오래 살아있도록 (5분에 맞춰 천천히 사라짐)
-    const maxLife = 300; // 5분 동안 살아있음
+    // 파티클은 최대 50초까지만 유지 (particleAge와 동일 스케일)
+    const maxLife = 50;
     const life = Math.max(0, 1 - elapsed / maxLife);
 
     if (life <= 0) return;
@@ -1148,13 +1176,13 @@ const CollisionParticleBurst = ({
     }
   });
 
-  // 5분 동안 렌더링
-  if (mark.age > 0.99) return null;
+  // 파티클은 50초까지만 렌더링 (particleAge 기준)
+  if (mark.particleAge > 0.99) return null;
 
   return (
     <points
       ref={pointsRef}
-      position={[mark.worldX, mark.worldY, 0.3]}
+      position={[mark.worldX, mark.worldY, mark.depth]}
       geometry={geometry}
     >
       <pointsMaterial
@@ -1178,6 +1206,7 @@ const CollisionObjectParticles = ({
     id: string;
     worldX: number;
     worldY: number;
+    depth: number;
     age: number;
     radius: number;
     players: PlayerSnapshot[];
@@ -1207,7 +1236,7 @@ const CollisionObjectParticles = ({
       if (!playerWorld) return;
 
       // 각 object에서 파티클 추출 (운석 파편처럼)
-      const particleCount = 25; // object당 파티클 수
+      const particleCount = 12; // object당 파티클 수
       const playerColor = new THREE.Color("#ffffff");
 
       for (let i = 0; i < particleCount; i += 1) {
@@ -1224,7 +1253,8 @@ const CollisionObjectParticles = ({
         allParticles.push({
           x: playerWorld.worldX - mark.worldX + offsetX,
           y: playerWorld.worldY - mark.worldY + offsetY,
-          z: playerWorld.depth + offsetZ,
+          // 마크 depth(충돌 중앙) 기준 상대 위치
+          z: playerWorld.depth - mark.depth + offsetZ,
           color: playerColor.clone(),
         });
       }
@@ -1278,8 +1308,8 @@ const CollisionObjectParticles = ({
     if (!pointsRef.current || !geometry || !velocitiesRef.current) return;
 
     const elapsed = (performance.now() - startTimeRef.current) * 0.001; // 초
-    // 파티클이 오래 살아있도록 (5분에 맞춰 천천히 사라짐)
-    const maxLife = 300; // 5분 동안 살아있음
+    // 오브젝트 파편도 최대 50초까지만 유지
+    const maxLife = 50;
     const life = Math.max(0, 1 - elapsed / maxLife);
 
     if (life <= 0) return;
@@ -1319,12 +1349,13 @@ const CollisionObjectParticles = ({
     }
   });
 
-  if (!geometry || mark.age > 0.99) return null;
+  // 오브젝트 파편도 50초까지만 렌더링
+  if (!geometry || mark.particleAge > 0.99) return null;
 
   return (
     <points
       ref={pointsRef}
-      position={[mark.worldX, mark.worldY, 0.3]}
+      position={[mark.worldX, mark.worldY, mark.depth]}
       geometry={geometry}
     >
       <pointsMaterial

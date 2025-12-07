@@ -14,10 +14,10 @@ services:
     command: >
       sh -c "corepack enable &&
              corepack prepare yarn@1.22.22 --activate &&
-             yarn install &&
-             yarn dev -p 3000 -H 0.0.0.0"
+             YARN_PRODUCTION=false yarn install &&
+             yarn prod"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       # 브라우저에서 접속하는 공개 WS/HTTP 주소
       # 로컬 개발에서는 localhost:3001 / localhost:4000 사용,
       # EC2 배포 시에는 /socket 및 HTTPS 도메인으로 덮어쓰기 가능
