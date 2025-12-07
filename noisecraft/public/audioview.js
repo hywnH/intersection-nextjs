@@ -125,7 +125,10 @@ export class AudioView
      */
     async playAudio(state)
     {
-        assert (!this.audioCtx);
+        // 이미 초기화된 상태에서 다시 호출될 수 있으므로
+        // 두 번째 호출은 무시하고 조용히 반환
+        if (this.audioCtx)
+            return;
 
         this.audioCtx = new AudioContext({
             latencyHint: 'interactive',
@@ -162,13 +165,19 @@ export class AudioView
      */
     stopAudio()
     {
-        assert (this.audioCtx);
+        // 이미 정지된 상태에서 한 번 더 호출될 수 있으므로
+        // 방어적으로 null 체크 후 정리
+        if (this.audioWorklet)
+        {
+            this.audioWorklet.disconnect();
+            this.audioWorklet = null;
+        }
 
-        this.audioWorklet.disconnect();
-        this.audioWorklet = null;
-
-        this.audioCtx.close();
-        this.audioCtx = null;
+        if (this.audioCtx)
+        {
+            this.audioCtx.close();
+            this.audioCtx = null;
+        }
     }
 
     /**

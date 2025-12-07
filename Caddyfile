@@ -1,0 +1,7 @@
+intersection-nextjs.site, www.intersection-nextjs.site {
+  reverse_proxy web:3000
+}
+
+ncft.intersection-nextjs.site {
+  reverse_proxy noisecraft:4000
+}
