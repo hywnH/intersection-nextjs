@@ -117,7 +117,9 @@
       import { AudioView } from "/public/audioview.js";
       import { Editor } from "/public/editor.js";
 
-      const isEmbedded = window.self !== window.top;
+      const urlForEmbed = new URL(window.location.href);
+      const editorMode = urlForEmbed.searchParams.get("editor") || "";
+      const isEmbedded = window.self !== window.top && editorMode !== "full";
       if (isEmbedded) {
         // 임베디드 모드에서는 패널(에디터)을 숨기고 버튼 영역만 딱 맞게 보이도록 레이아웃 축소
         document.addEventListener("DOMContentLoaded", () => {
@@ -390,13 +392,11 @@
         return JSON.parse(data);
       }
 
-      const DEFAULT_PATCH_SRC =
-        "/public/examples/falling_in_love_with_waterfalls.ncft";
-
       async function loadInitialProject() {
         const url = new URL(window.location.href);
         const src = url.searchParams.get("src");
         const projectId = url.searchParams.get("project");
+        const fallbackSrc = url.searchParams.get("fallbackSrc");
 
         try {
           if (src) {
@@ -432,6 +432,11 @@
         }
 
         try {
+          if (fallbackSrc) {
+            return await loadProjectFromSrc(fallbackSrc);
+          }
+          const DEFAULT_PATCH_SRC =
+            "/public/examples/falling_in_love_with_waterfalls.ncft";
           return await loadProjectFromSrc(DEFAULT_PATCH_SRC);
         } catch (e) {
           console.warn("Failed to load default Falling Waterfalls patch:", e);

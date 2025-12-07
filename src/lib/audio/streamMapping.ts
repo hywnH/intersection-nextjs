@@ -1,333 +1,131 @@
 import type { GameState } from "@/types/game";
 import type { NoiseCraftParam } from "@/lib/audio/noiseCraftCore";
 
-type StreamName =
-  | "attraction"
-  | "velocity"
-  | "distance"
-  | "closingSpeed"
-  | "isOuter"
-  | "pan";
-
-type InterpolationMode = "linear" | "logarithmic" | "exponential";
-
-interface StreamConfig {
-  stream: StreamName;
-  interpolation: InterpolationMode;
-  inputMin: number;
-  inputMax: number;
-  outputMin: number;
-  outputMax: number;
-}
-
-type Operation =
-  | "none"
-  | "add"
-  | "subtract"
-  | "multiply"
-  | "divide"
-  | "min"
-  | "max"
-  | "average";
-
-export interface StreamMapping {
-  nodeId: string;
-  paramName: string;
-  operation: Operation;
-  enabled: boolean;
-  streams: StreamConfig[];
-}
-
-export interface InteractionSignals {
-  attraction: number;
-  velocity: number;
-  distance: number;
-  closingSpeed: number;
-  isOuter: number;
-  pan: number;
-}
-
-const MAX_SPEED = 320;
-const MAX_RELATIVE_SPEED = MAX_SPEED * 2;
-const INNER_RADIUS = 800;
-const OUTER_RADIUS = 1000;
+const MIN_PAN_DISTANCE = 80;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
+// 거리 → 0.2~1 매핑:
+//  - 1000~300: 0.2~0.5 (선형)
+//  - 300~100: 0.5~1.0 (선형)
+//  - ≥1000: 0.2, ≤100: 1.0
+const mapDistanceToValue = (dist: number): number => {
+  if (!Number.isFinite(dist)) return 0;
+  if (dist >= 1000) return 0.2;
+  if (dist >= 300) {
+    const t = (1000 - dist) / (1000 - 300); // 0 at 1000, 1 at 300
+    return 0.2 + t * (0.5 - 0.2);
+  }
+  if (dist >= 100) {
+    const t = (300 - dist) / (300 - 100); // 0 at 300, 1 at 100
+    return 0.5 + t * (1.0 - 0.5);
+  }
+  return 1.0;
+};
+
+// 거리 제곱에 반비례하는 "중력" 스타일 매핑:
+//  - dist가 멀어질수록 빠르게 줄어들지만
+//  - 완전히 0까지는 가지 않고 0.3을 바닥으로 유지
+const mapDistanceToGravity = (dist: number): number => {
+  if (!Number.isFinite(dist)) return 0.05;
+  if (dist <= 100) return 1;
+  const SCALE = 300; // 이 값 기준으로 세기가 절반 근처로 떨어지도록
+  const ratio = dist / SCALE;
+  const inv = 1 / (1 + ratio * ratio); // 0 < inv ≤ 1
+  const MIN = 0.05;
+  return MIN + (0.5 - MIN) * inv;
+};
+
 /**
- * Compute interaction-based signals from the current personal game state
- * using the local player as the reference (self) and the nearest neighbor.
+ * Generate spatial params for individual_audio_simple / chord_spatial patches:
+ * - node 220: nearest distance (0 far ~ 1 close)
+ * - node 221: second-nearest distance (0 far ~ 1 close, or 0 if 없음)
+ * - node 233: nearest direction (0~1, angle -π~π → 0~1)
+ * - node 240: second-nearest direction (0~1, 없으면 0.5)
+ * - node 222: nearest pan (0.4~0.6, 좌 0.4, 우 0.6, 너무 가까우면 0.5)
  */
-export const computeInteractionSignals = (
+export const generateDistancePanParams = (
   state: GameState
-): InteractionSignals | null => {
-  const selfId = state.selfId;
-  if (!selfId) return null;
-  const selfPlayer = state.players[selfId];
-  if (!selfPlayer) return null;
-
-  const { position: selfPos, velocity: selfVel } = selfPlayer.cell;
-  const gravityDir = selfPlayer.gravityDir;
-  const gravityDist = selfPlayer.gravityDist;
-
-  let nearestDist = Number.POSITIVE_INFINITY;
-  let nearestDx = 0;
-  let nearestDy = 0;
-  let nearestVelX = 0;
-  let nearestVelY = 0;
-  let hasNeighbor = false;
-
-  for (const player of Object.values(state.players)) {
-    if (player.id === selfId) continue;
-    const dx = player.cell.position.x - selfPos.x;
-    const dy = player.cell.position.y - selfPos.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < nearestDist) {
-      nearestDist = dist;
-      nearestDx = dx;
-      nearestDy = dy;
-      nearestVelX = player.cell.velocity.x;
-      nearestVelY = player.cell.velocity.y;
-      hasNeighbor = true;
-    }
-  }
-
-  if (!hasNeighbor || !Number.isFinite(nearestDist)) {
-    return null;
-  }
-
-  const safeDist = Math.max(nearestDist, 1e-3);
-
-  // 기본 방향 벡터는 서버에서 계산한 중력 벡터를 우선 사용하고,
-  // 없으면 가장 가까운 플레이어 방향(nearestDx, nearestDy)을 사용
-  let dirX = 0;
-  let dirY = 0;
-  if (gravityDir && (gravityDir.x !== 0 || gravityDir.y !== 0)) {
-    const mag = Math.hypot(gravityDir.x, gravityDir.y) || 1;
-    dirX = gravityDir.x / mag;
-    dirY = gravityDir.y / mag;
-  } else {
-    dirX = nearestDx / safeDist;
-    dirY = nearestDy / safeDist;
-  }
-
-  const relVelX = selfVel.x - nearestVelX;
-  const relVelY = selfVel.y - nearestVelY;
-  const speed = Math.hypot(selfVel.x, selfVel.y);
-  const closingSpeedRaw = Math.max(relVelX * dirX + relVelY * dirY, 0);
-
-  const speedNorm = clamp01(speed / MAX_SPEED);
-
-  const maxAttractionDist = OUTER_RADIUS * 3;
-  const clampedDist = Math.min(nearestDist, maxAttractionDist);
-  const attraction = 1 - clampedDist / maxAttractionDist;
-
-  // 상대 속도는 두 플레이어 속도의 합까지 갈 수 있으므로 640(=320*2) 기준으로 정규화
-  const closingSpeed = clamp01(closingSpeedRaw / MAX_RELATIVE_SPEED);
-
-  let isOuter = 0;
-  if (nearestDist > INNER_RADIUS && nearestDist <= OUTER_RADIUS) {
-    isOuter = 1;
-  }
-
-  // 좌우 팬: 화면상의 상대 X 오프셋 기준으로 -1~1
-  const panDirX = nearestDx / safeDist;
-  const pan = Math.max(-1, Math.min(1, panDirX));
-
-  return {
-    attraction,
-    velocity: speedNorm,
-    distance: nearestDist,
-    closingSpeed,
-    isOuter,
-    pan,
-  };
-};
-
-const interpolate = (
-  value: number,
-  mode: InterpolationMode,
-  inputMin: number,
-  inputMax: number,
-  outputMin: number,
-  outputMax: number
-): number => {
-  if (!Number.isFinite(value)) return outputMin;
-  const denom = inputMax - inputMin || 1;
-  const normalized = Math.max(0, Math.min(1, (value - inputMin) / denom));
-  let transformed = normalized;
-
-  if (mode === "logarithmic") {
-    transformed = Math.log(normalized * 9 + 1) / Math.log(10);
-  } else if (mode === "exponential") {
-    transformed = (Math.pow(10, normalized) - 1) / 9;
-  }
-
-  return outputMin + transformed * (outputMax - outputMin);
-};
-
-const computeMappingValue = (
-  mapping: StreamMapping,
-  signals: InteractionSignals
-): number | null => {
-  const values = mapping.streams.map((streamConfig) => {
-    const raw = signals[streamConfig.stream];
-    if (raw === undefined || raw === null) return 0;
-    return interpolate(
-      raw,
-      streamConfig.interpolation || "linear",
-      streamConfig.inputMin,
-      streamConfig.inputMax,
-      streamConfig.outputMin,
-      streamConfig.outputMax
-    );
-  });
-
-  if (!values.length) return null;
-  if (values.length === 1 || mapping.operation === "none") {
-    return values[0];
-  }
-
-  let result = values[0];
-  const op = mapping.operation;
-
-  for (let i = 1; i < values.length; i += 1) {
-    const next = values[i];
-    if (op === "add") {
-      result += next;
-    } else if (op === "subtract") {
-      result -= next;
-    } else if (op === "multiply") {
-      result *= next;
-    } else if (op === "divide") {
-      result = next !== 0 ? result / next : result;
-    } else if (op === "min") {
-      result = Math.min(result, next);
-    } else if (op === "max") {
-      result = Math.max(result, next);
-    } else if (op === "average") {
-      result = (result * i + next) / (i + 1);
-    }
-  }
-
-  return result;
-};
-
-export const DEFAULT_STREAM_MAPPINGS: StreamMapping[] = [
-  {
-    nodeId: "171",
-    paramName: "value",
-    operation: "multiply",
-    enabled: false,
-    streams: [
-      {
-        stream: "closingSpeed",
-        interpolation: "exponential",
-        inputMin: 0,
-        inputMax: 0.5,
-        outputMin: 0.1,
-        outputMax: 0.9,
-      },
-    ],
-  },
-  {
-    nodeId: "206",
-    paramName: "value",
-    operation: "add",
-    enabled: true,
-    streams: [
-      {
-        stream: "velocity",
-        interpolation: "logarithmic",
-        inputMin: 0,
-        inputMax: 0.5,
-        outputMin: 0.005,
-        outputMax: 0.025,
-      },
-    ],
-  },
-  {
-    nodeId: "163",
-    paramName: "value",
-    operation: "add",
-    enabled: false,
-    streams: [
-      {
-        stream: "distance",
-        interpolation: "linear",
-        inputMin: 0,
-        inputMax: 1000,
-        outputMin: 0.2,
-        outputMax: 0.8,
-      },
-    ],
-  },
-  {
-    nodeId: "183",
-    paramName: "value",
-    operation: "none",
-    enabled: true,
-    streams: [
-      {
-        stream: "attraction",
-        interpolation: "linear",
-        inputMin: 0,
-        inputMax: 1,
-        outputMin: 0,
-        outputMax: 0.8,
-      },
-    ],
-  },
-  {
-    nodeId: "194",
-    paramName: "value",
-    operation: "none",
-    enabled: false,
-    streams: [
-      {
-        stream: "isOuter",
-        interpolation: "linear",
-        inputMin: 0,
-        inputMax: 1,
-        outputMin: 0.05,
-        outputMax: 0.2,
-      },
-    ],
-  },
-  {
-    nodeId: "214",
-    paramName: "value",
-    operation: "none",
-    enabled: true,
-    streams: [
-      {
-        stream: "pan",
-        interpolation: "linear",
-        inputMin: -1,
-        inputMax: 1,
-        outputMin: 1,
-        outputMax: 0,
-      },
-    ],
-  },
-];
-
-export const generateParamsFromMappings = (
-  signals: InteractionSignals,
-  mappings: StreamMapping[] = DEFAULT_STREAM_MAPPINGS
 ): NoiseCraftParam[] => {
-  const params: NoiseCraftParam[] = [];
+  const selfId = state.selfId;
+  if (!selfId) return [];
+  const selfPlayer = state.players[selfId];
+  if (!selfPlayer) return [];
 
-  mappings.forEach((mapping) => {
-    if (!mapping.enabled) return;
-    const value = computeMappingValue(mapping, signals);
-    if (value === null || value === undefined) return;
-    params.push({
-      nodeId: mapping.nodeId,
-      paramName: mapping.paramName || "value",
-      value,
-    });
-  });
+  const { position: selfPos } = selfPlayer.cell;
+
+  const others = Object.values(state.players).filter(
+    (p) => p.id !== selfId
+  );
+  if (!others.length) {
+    return [];
+  }
+
+  const withDistances = others
+    .map((p) => {
+      const dx = p.cell.position.x - selfPos.x;
+      const dy = p.cell.position.y - selfPos.y;
+      const dist = Math.hypot(dx, dy);
+      return { player: p, dx, dy, dist };
+    })
+    .sort((a, b) => a.dist - b.dist);
+
+  const nearest = withDistances[0];
+  const second = withDistances[1];
+
+  // 거리 → "중력" 세기 (거리 제곱에 반비례, 하한 0.3)
+  const nearestNorm = mapDistanceToGravity(nearest.dist);
+  const secondNorm = second ? mapDistanceToGravity(second.dist) : 0;
+
+  // 방향: -π~π → 0~1
+  const nearestAngle = Math.atan2(nearest.dy, nearest.dx); // -π~π
+  const nearestDir = (nearestAngle / (2 * Math.PI)) + 0.5; // 0~1
+  const nearestDirClamped = clamp01(nearestDir);
+
+  let secondDirClamped = 0.5;
+  if (second) {
+    const angle2 = Math.atan2(second.dy, second.dx);
+    const dir2 = (angle2 / (2 * Math.PI)) + 0.5;
+    secondDirClamped = clamp01(dir2);
+  }
+
+  // 좌우 팬: 좌 0, 우 1, 중앙 0.5
+  let pan = 0.5;
+  if (nearest.dist >= MIN_PAN_DISTANCE) {
+    const safeDist = nearest.dist || 1;
+    const panDir = nearest.dx / safeDist; // -1 ~ 1
+    // -1~1 → 0.4~0.6 (좌 0.4, 우 0.6)
+    pan = 0.5 + panDir * 0.3;
+    pan = Math.max(0.8, Math.min(0.2, pan));
+  }
+
+  const params: NoiseCraftParam[] = [
+    {
+      nodeId: "220",
+      paramName: "value",
+      value: nearestNorm,
+    },
+    {
+      nodeId: "221",
+      paramName: "value",
+      value: secondNorm,
+    },
+    {
+      nodeId: "233",
+      paramName: "value",
+      value: nearestDirClamped,
+    },
+    {
+      nodeId: "240",
+      paramName: "value",
+      value: secondDirClamped,
+    },
+    {
+      nodeId: "222",
+      paramName: "value",
+      value: pan,
+    },
+  ];
 
   return params;
 };

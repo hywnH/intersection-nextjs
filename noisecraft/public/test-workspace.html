@@ -485,7 +485,7 @@
         <div id="noisecraft-container">
           <iframe
             id="noisecraft-iframe"
-            src="/public/embedded.html?src=/public/examples/indiv_audio_map.ncft"
+            src="/public/embedded.html?src=/public/examples/chord_spatial.ncft&editor=full"
           ></iframe>
         </div>
       </div>
@@ -842,6 +842,31 @@
       };
       
       const streamMapper = new StreamNodeMapper();
+
+      // Load default stream-to-node mappings from JSON (exported config)
+      async function loadInitialMappings() {
+        try {
+          const resp = await fetch(
+            "/public/examples/noisecraft-mappings-2025-12-07.json",
+            { cache: "no-store" }
+          );
+          if (!resp.ok) {
+            return;
+          }
+          const json = await resp.json();
+          if (!Array.isArray(json) || !json.length) {
+            return;
+          }
+          // Override in-memory mappings and persist to localStorage
+          streamMapper.mappings = json;
+          streamMapper.saveToStorage();
+          console.log(
+            `[StreamMapper] Loaded ${json.length} default mappings from noisecraft-mappings-2025-12-07.json`
+          );
+        } catch (e) {
+          console.warn("Failed to load default stream mappings:", e);
+        }
+      }
 
       // Node Browser - Load nodes from project file
       let availableNodes = [];
@@ -1201,6 +1226,11 @@
           attachMappingListeners(mappingDiv);
         });
       }
+
+      // Initialize mappings from JSON, then render UI
+      loadInitialMappings().then(() => {
+        renderMappings();
+      });
 
       document.getElementById("add-mapping-btn").addEventListener("click", () => {
         const mappingId = streamMapper.addMapping({
