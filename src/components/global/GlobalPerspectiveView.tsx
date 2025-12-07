@@ -419,12 +419,8 @@ const GlobalPerspectiveView = ({
     const first = top[0];
     const second = top[1];
 
-    const firstPresence = first
-      ? presenceMap.get(first.id)?.value ?? 0
-      : 0;
-    const secondPresence = second
-      ? presenceMap.get(second.id)?.value ?? 0
-      : 0;
+    const firstPresence = first ? presenceMap.get(first.id)?.value ?? 0 : 0;
+    const secondPresence = second ? presenceMap.get(second.id)?.value ?? 0 : 0;
 
     const toPan = (x: number | undefined | null, width: number) => {
       if (!Number.isFinite(x) || width <= 0) return 0.5;
@@ -479,8 +475,10 @@ const GlobalPerspectiveView = ({
     const smoothingMap = paramSmoothingRef.current;
     const smooth = (nodeId: string, paramName: string, value: number) => {
       const key = `${nodeId}:${paramName}`;
-      const existing =
-        smoothingMap.get(key) || { current: value, target: value };
+      const existing = smoothingMap.get(key) || {
+        current: value,
+        target: value,
+      };
       existing.target = value;
       const prev = existing.current;
       const diff = existing.target - prev;
@@ -923,16 +921,15 @@ const CollisionGlowEffect = ({
   const pureWhite = useMemo(() => new THREE.Color(1, 1, 1), []);
 
   useFrame(() => {
-    if (!lightRef.current || !glowOuterRef.current)
-      return;
+    if (!lightRef.current || !glowOuterRef.current) return;
     const now = performance.now();
-    
+
     // 부드러운 펄스 효과 (별이 깜빡이는 것처럼 - 더 자연스럽게)
     const pulse1 = 0.88 + 0.12 * Math.sin(now * 0.0018);
     const pulse2 = 0.92 + 0.08 * Math.cos(now * 0.0012);
     const pulse3 = 0.9 + 0.1 * Math.sin(now * 0.0025);
     const combinedPulse = (pulse1 + pulse2 + pulse3) / 3;
-    
+
     // 나이에 따라 매우 천천히 사라짐 (5분에 걸쳐)
     const life = 1 - mark.age;
     // 매우 부드러운 감쇠
@@ -944,24 +941,20 @@ const CollisionGlowEffect = ({
     lightRef.current.color = pureWhite;
     lightRef.current.distance = 100 + mark.radius * PLANE_SCALE * 6;
 
-  //   // 외부 글로우 구체 (별의 빛 확산 - 가운데는 비우고, 바깥만 살짝 밝게)
-  //   const glowOuterScale = 1 + 0.2 * Math.sin(now * 0.002);
-  //   if (glowOuterRef.current.scale.x !== glowOuterScale) {
-  //     glowOuterRef.current.scale.setScalar(glowOuterScale);
-  //   }
-  //   const glowOuterMaterial = glowOuterRef.current.material as THREE.MeshBasicMaterial;
-  //   if (glowOuterMaterial) {
-  //     glowOuterMaterial.opacity = 0.005 * fadeOut * combinedPulse;
-  //     glowOuterMaterial.color = pureWhite;
-  //   }
+    //   // 외부 글로우 구체 (별의 빛 확산 - 가운데는 비우고, 바깥만 살짝 밝게)
+    //   const glowOuterScale = 1 + 0.2 * Math.sin(now * 0.002);
+    //   if (glowOuterRef.current.scale.x !== glowOuterScale) {
+    //     glowOuterRef.current.scale.setScalar(glowOuterScale);
+    //   }
+    //   const glowOuterMaterial = glowOuterRef.current.material as THREE.MeshBasicMaterial;
+    //   if (glowOuterMaterial) {
+    //     glowOuterMaterial.opacity = 0.005 * fadeOut * combinedPulse;
+    //     glowOuterMaterial.color = pureWhite;
+    //   }
   });
 
   // 초기 위치
-  const position: [number, number, number] = [
-    mark.worldX,
-    mark.worldY,
-    0.3,
-  ];
+  const position: [number, number, number] = [mark.worldX, mark.worldY, 0.3];
 
   // 반짝이는 파티클 (별 주변의 작은 반짝임 - 흰색)
   const sparkleGeometry = useMemo(() => {
@@ -1011,7 +1004,7 @@ const CollisionGlowEffect = ({
         decay={1.2}
         color={pureWhite}
       />
-      
+
       {/* 외부 글로우 구체 - 별의 빛 확산 (가운데 구 없이, 바깥만 은은하게)
       <mesh ref={glowOuterRef}>
         <sphereGeometry args={[mark.radius * PLANE_SCALE * 1.4, 32, 32]} />
@@ -1053,9 +1046,7 @@ const CollisionParticleBurst = ({
   };
 }) => {
   const pointsRef = useRef<THREE.Points>(null);
-  const velocitiesRef = useRef<Array<{ x: number; y: number; z: number }>>(
-    []
-  );
+  const velocitiesRef = useRef<Array<{ x: number; y: number; z: number }>>([]);
   const startTimeRef = useRef<number>(performance.now());
 
   const { geometry, velocities } = useMemo(() => {
@@ -1195,9 +1186,7 @@ const CollisionObjectParticles = ({
   lookup: Map<string, { worldX: number; worldY: number; depth: number }>;
 }) => {
   const pointsRef = useRef<THREE.Points>(null);
-  const velocitiesRef = useRef<Array<{ x: number; y: number; z: number }>>(
-    []
-  );
+  const velocitiesRef = useRef<Array<{ x: number; y: number; z: number }>>([]);
   const startTimeRef = useRef<number>(performance.now());
 
   const { geometry, velocities } = useMemo(() => {
@@ -1219,11 +1208,12 @@ const CollisionObjectParticles = ({
 
       // 각 object에서 파티클 추출 (운석 파편처럼)
       const particleCount = 25; // object당 파티클 수
-      const playerColor = new THREE.Color(player.cell.color || "#ffffff");
+      const playerColor = new THREE.Color("#ffffff");
 
       for (let i = 0; i < particleCount; i += 1) {
         // object 중심에서 약간 떨어진 위치
-        const offsetRadius = player.cell.radius * PLANE_SCALE * (0.3 + Math.random() * 0.4);
+        const offsetRadius =
+          player.cell.radius * PLANE_SCALE * (0.3 + Math.random() * 0.4);
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.random() * Math.PI;
 

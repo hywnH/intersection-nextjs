@@ -38,6 +38,8 @@ interface Player {
   gravityDirX: number;
   gravityDirY: number;
   gravityDist: number;
+  // 소켓 없이 서버에서만 움직이는 봇인지 여부
+  isBot?: boolean;
 }
 
 interface ClusterInfo {
@@ -51,6 +53,8 @@ interface ClusterInfo {
 
 const players = new Map<string, Player>();
 const spectators = new Set<string>();
+// 봇의 간단한 상태 (움직이는 방향, 방향 전환 시점 등)
+const botState = new Map<string, { angle: number; nextTurnAt: number }>();
 const collisionLines = new Map<
   string,
   {
@@ -86,6 +90,13 @@ const LOG_GRAVITY_INTERVAL_MS = Number(
   process.env.LOG_GRAVITY_INTERVAL_MS || 1000
 );
 
+// 서버에서 자동으로 움직이는 봇 설정 (기본 0 = 비활성)
+const BOT_TARGET_COUNT = Number(process.env.BOT_COUNT || 0);
+const BOT_MIN_SPEED = 80;
+const BOT_MAX_SPEED = 200;
+const BOT_TURN_INTERVAL_MIN_MS = 4000;
+const BOT_TURN_INTERVAL_MAX_MS = 12000;
+
 const rand = (min: number, max: number) => Math.random() * (max - min) + min;
 
 const randomDepth = () => {
@@ -102,6 +113,101 @@ function spawnPoint(): Vec2 {
     x: rand(padding, GAME_WIDTH - padding),
     y: rand(padding, GAME_HEIGHT - padding),
   };
+}
+
+let botCounter = 0;
+
+function spawnBot() {
+  const pos = spawnPoint();
+  const id = `bot:${++botCounter}`;
+  const angle = rand(0, Math.PI * 2);
+  const speed = rand(BOT_MIN_SPEED, BOT_MAX_SPEED);
+  const colorHue = rand(0, 360);
+  const color = `hsl(${colorHue}, 70%, 70%)`;
+
+  const p: Player = {
+    id,
+    name: `bot-${botCounter}`,
+    x: pos.x,
+    y: pos.y,
+    z: randomDepth(),
+    desiredVx: Math.cos(angle) * speed,
+    desiredVy: Math.sin(angle) * speed,
+    radius: 20,
+    massTotal: PLAYER_BASE_MASS,
+    color,
+    screenWidth: GAME_WIDTH,
+    screenHeight: GAME_HEIGHT,
+    lastHeartbeat: Date.now(),
+    vx: 0,
+    vy: 0,
+    gravityDirX: 0,
+    gravityDirY: 0,
+    gravityDist: Number.POSITIVE_INFINITY,
+    isBot: true,
+  };
+
+  players.set(id, p);
+  const now = Date.now();
+  botState.set(id, {
+    angle,
+    nextTurnAt: now + rand(BOT_TURN_INTERVAL_MIN_MS, BOT_TURN_INTERVAL_MAX_MS),
+  });
+}
+
+function ensureBots() {
+  if (BOT_TARGET_COUNT <= 0) return;
+  let botCount = 0;
+  for (const p of players.values()) {
+    if (p.isBot) botCount += 1;
+  }
+  while (botCount < BOT_TARGET_COUNT) {
+    spawnBot();
+    botCount += 1;
+  }
+}
+
+function updateBotDesiredVelocity(p: Player, now: number) {
+  if (!p.isBot) return;
+  let state = botState.get(p.id);
+  if (!state) {
+    state = {
+      angle: rand(0, Math.PI * 2),
+      nextTurnAt:
+        now + rand(BOT_TURN_INTERVAL_MIN_MS, BOT_TURN_INTERVAL_MAX_MS),
+    };
+    botState.set(p.id, state);
+  }
+
+  // 방향 전환 시점이 되면 새로운 방향으로 회전
+  if (now >= state.nextTurnAt) {
+    state.angle = rand(0, Math.PI * 2);
+    state.nextTurnAt =
+      now + rand(BOT_TURN_INTERVAL_MIN_MS, BOT_TURN_INTERVAL_MAX_MS);
+  }
+
+  // 맵 가장자리 근처면 안쪽으로 살짝 방향 보정
+  const edgeMargin = 300;
+  let steerX = 0;
+  let steerY = 0;
+  if (p.x < edgeMargin) steerX += 1;
+  if (p.x > GAME_WIDTH - edgeMargin) steerX -= 1;
+  if (p.y < edgeMargin) steerY += 1;
+  if (p.y > GAME_HEIGHT - edgeMargin) steerY -= 1;
+  if (steerX !== 0 || steerY !== 0) {
+    const steerAngle = Math.atan2(steerY, steerX);
+    // 기존 각도와 보정 각도를 섞어서 부드럽게 회전
+    const mix = 0.4;
+    const a = state.angle;
+    const da = steerAngle - a;
+    state.angle = a + da * mix;
+  }
+
+  const speed = rand(BOT_MIN_SPEED, BOT_MAX_SPEED);
+  p.desiredVx = Math.cos(state.angle) * speed;
+  p.desiredVy = Math.sin(state.angle) * speed;
+  // 봇은 하트비트가 끊기지 않도록 항상 갱신
+  p.lastHeartbeat = now;
 }
 
 function moveTowards(p: Player, dt: number) {
@@ -201,10 +307,17 @@ function toServerPlayer(p: Player) {
 }
 
 function visiblePlayers(forId: string) {
-  // 간략히: 모든 플레이어를 보낸다. 필요 시 화면 기준 가시거리 필터 추가 가능
+  const viewer = players.get(forId);
+  const hideBotsForViewer = viewer && !viewer.isBot;
+
   const list = Array.from(players.values())
-    .filter((u) => u.id !== forId)
+    .filter((u) => {
+      if (u.id === forId) return false;
+      if (hideBotsForViewer && u.isBot) return false;
+      return true;
+    })
     .map(toServerPlayer);
+
   return list;
 }
 
@@ -488,6 +601,7 @@ const io = new Server(httpServer, {
 
 io.on("connection", (socket) => {
   const type = (socket.handshake.query?.type as string) || "player";
+  const isBotConnection = type === "bot";
   socket.emit("noiseSlots:init", noiseSlots);
 
   if (type === "spectator") {
@@ -523,6 +637,7 @@ io.on("connection", (socket) => {
         gravityDirX: 0,
         gravityDirY: 0,
         gravityDist: Number.POSITIVE_INFINITY,
+        isBot: isBotConnection,
       };
       players.set(socket.id, p);
       socket.emit("welcome", toServerPlayer(p), {
@@ -617,13 +732,20 @@ io.on("connection", (socket) => {
 
 // 게임 루프: 이동 계산
 setInterval(() => {
+  // 항상 원하는 수만큼 봇이 유지되도록 보정
+  ensureBots();
+
   const now = Date.now();
   const dt = 1 / TICK_HZ;
   const playerList = Array.from(players.values());
   for (const p of playerList) {
-    if (now - p.lastHeartbeat > MAX_HEARTBEAT_MS) {
+    // 봇은 하트비트 없이도 계속 움직이게 허용
+    if (!p.isBot && now - p.lastHeartbeat > MAX_HEARTBEAT_MS) {
       // 하트비트 타임아웃: 단순히 타겟 무시
       continue;
+    }
+    if (p.isBot) {
+      updateBotDesiredVelocity(p, now);
     }
     applyNearestGravity(p, playerList, dt);
     moveTowards(p, dt);
