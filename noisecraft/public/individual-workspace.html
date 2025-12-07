@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>NoiseCraft Virtual Signal Test Workspace</title>
+    <title>NoiseCraft Individual Audio Workspace</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/public/style.css" />
     <style>
@@ -472,20 +472,20 @@
 
         <div class="tab-content" id="mappings-tab">
           <div class="panel-section">
-            <h3>Stream → Node Mappings</h3>
-            <div id="mappings-container"></div>
-            <div style="display: flex; gap: 8px; margin-top: 8px;">
-              <button class="add-mapping-btn" id="add-mapping-btn">
-                + Add Mapping
-              </button>
-              <button class="add-mapping-btn" id="export-mappings-btn" style="flex: 1;">
-                Export Mappings
-              </button>
-              <button class="add-mapping-btn" id="import-mappings-btn" style="flex: 1;">
-                Import Mappings
-              </button>
-              <input type="file" id="import-file-input" accept=".json" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="margin: 0;">Stream → Node Mappings</h3>
+              <div style="display: flex; gap: 8px;">
+                <button id="export-mappings-btn" style="padding: 6px 12px; font-size: 11px;">📥 Export</button>
+                <label for="import-mappings-file" style="padding: 6px 12px; font-size: 11px; background: #333; color: #fff; border: 1px solid #444; border-radius: 6px; cursor: pointer; display: inline-block;">
+                  📤 Import
+                  <input type="file" id="import-mappings-file" accept=".json" style="display: none;" />
+                </label>
+              </div>
             </div>
+            <div id="mappings-container"></div>
+            <button class="add-mapping-btn" id="add-mapping-btn">
+              + Add Mapping
+            </button>
           </div>
         </div>
       </div>
@@ -494,7 +494,7 @@
         <div id="noisecraft-container">
           <iframe
             id="noisecraft-iframe"
-            src="/public/embedded.html?src=/public/examples/chord_spatial.ncft&editor=full"
+            src="/public/embedded.html?src=/examples/indiv_audio_map.ncft"
           ></iframe>
         </div>
       </div>
@@ -504,34 +504,16 @@
       // Import particle system module
       import { VirtualParticle, SignalGenerator, ParticleSystem } from '/public/particle-system.js';
       import { SequencerLogic, convertNotePatternToNoiseCraft, updateMonoSeqSequencer } from '/public/sequencer-logic.js';
-      import { processBackgroundAudio, calculateLocalization } from '/public/background-audio-post-processing.js';
-      import { SpatialAudioProcessor, createSpatialProcessor } from '/public/spatial-audio-processor.js';
       import { generateHarmoniousPattern, generateHarmonizingPattern, generateChordPatterns, SCALES, CHORD_TONES, getRandomScale } from '/public/music-theory.js';
+      
       // Import new modular components
-      import { createPatternAssignmentManager } from '/public/pattern-assignment.js';
-      import { createMappingStorage } from '/public/mapping-storage.js';
-      
-      console.log("[Init] ===== SCRIPT STARTING =====");
-      console.log("[Init] All imports loaded successfully");
-      
-      // Dummy storage fallback if mapping-storage.js is not available
-      function createDummyStorage() {
-        return {
-          loadMappings: () => [],
-          saveToLocalStorage: () => {},
-          loadFromLocalStorage: () => [],
-          exportAsJSON: () => {},
-          importFromJSON: () => Promise.resolve([]),
-          saveToProjectFile: (data, mappings) => data,
-          loadFromProjectFile: (data) => []
-        };
-      }
+      import { createPatternGenerator } from '/public/sequencer-pattern-generator.js';
+      import { createNcftFileManager } from '/public/ncft-file-manager.js';
+      import { createMappingPresetManager } from '/public/mapping-preset-manager.js';
       
       // Wrap main code in try-catch to catch initialization errors
       try {
-        console.log("[Init] Entering try block...");
 
-      console.log("[Init] Defining AVAILABLE_STREAMS...");
       // Available streams
       const AVAILABLE_STREAMS = [
         "attraction",
@@ -557,68 +539,31 @@
         { value: "average", label: "Average" },
       ];
 
-      console.log("[Init] Defining StreamNodeMapper class...");
-      // Stream-to-Node Mapping Manager (now uses MappingStorage module)
+      // Stream-to-Node Mapping Manager
       class StreamNodeMapper {
-        constructor(filename = 'indiv_audio_map.ncft') {
+        constructor(storageKey = "noisecraftStreamMappings") {
+          this.storageKey = storageKey;
           this.mappings = [];
-          this.filename = filename;
-          this.storage = createMappingStorage(filename);
-          this.loadMappings();
+          this.loadFromStorage();
         }
 
-        async loadMappings() {
-          try {
-            // Try loading from project file first, then localStorage
-            const response = await fetch(`/public/examples/${this.filename}`);
-            if (response.ok) {
-              const projectData = await response.json();
-              this.mappings = await this.storage.loadMappings(projectData);
-              if (this.mappings.length > 0) {
-                console.log(`[MappingStorage] Loaded ${this.mappings.length} mappings from project file`);
-              }
+        loadFromStorage() {
+          const stored = localStorage.getItem(this.storageKey);
+          if (stored) {
+            try {
+              this.mappings = JSON.parse(stored);
+            } catch (e) {
+              console.warn("Failed to load mappings from storage", e);
+              this.mappings = [];
             }
-            
-            // If no project mappings, fallback to localStorage
-            if (this.mappings.length === 0) {
-              this.mappings = this.storage.loadFromLocalStorage();
-              if (this.mappings.length > 0) {
-                console.log(`[MappingStorage] Loaded ${this.mappings.length} mappings from localStorage`);
-              }
-            }
-          } catch (e) {
-            console.warn("Failed to load mappings, using localStorage:", e);
-            this.mappings = this.storage.loadFromLocalStorage();
           }
         }
 
         saveToStorage() {
-          // Save to localStorage (always)
-          this.storage.saveToLocalStorage(this.mappings);
-        }
-        
-        async saveToProjectFile(projectData) {
-          // Save mappings to project file metadata
-          const updatedProject = this.storage.saveToProjectFile(projectData, this.mappings);
-          return updatedProject;
-        }
-        
-        exportMappings() {
-          const filename = `mappings-${this.filename.replace('.ncft', '')}-${new Date().toISOString().split('T')[0]}.json`;
-          this.storage.exportAsJSON(this.mappings, filename);
-        }
-        
-        async importMappings(file) {
-          try {
-            const imported = await this.storage.importFromJSON(file);
-            this.mappings = imported;
-            this.saveToStorage();
-            console.log(`[MappingStorage] Imported ${imported.length} mappings`);
-            return true;
-          } catch (e) {
-            console.error('Failed to import mappings:', e);
-            return false;
-          }
+          localStorage.setItem(
+            this.storageKey,
+            JSON.stringify(this.mappings)
+          );
         }
 
         addMapping(mapping) {
@@ -737,52 +682,33 @@
         }
       }
 
-      console.log("[Init] ===== STARTING PARTICLE INITIALIZATION =====");
       // Create particle system (standalone module)
       // Note: innerRadius/outerRadius are ONLY for signal generation (sound effects)
       // Gravity works at ALL distances regardless of these radii
-      console.log("[Particle Init] Step 1: Creating ParticleSystem...");
-      let particleSystem;
-      try {
-        particleSystem = new ParticleSystem({
-          innerRadius: 80,    // Distinct range: audio + visual feedback
-          outerRadius: 150,   // Outer range: audio cue only (orientation + distance)
-          G: 500,             // Realistic gravitational constant (reduced from 10000)
-          minDistance: 3,     // Minimum distance for numerical stability
-        });
-        console.log("[Particle Init] ✓ ParticleSystem created:", particleSystem);
-        console.log("[Particle Init]   signalGenerator:", particleSystem?.signalGenerator);
-        console.log("[Particle Init]   signalGenerator.particles:", particleSystem?.signalGenerator?.particles);
-      } catch (e) {
-        console.error("[Particle Init] ✗ Failed to create ParticleSystem:", e);
-        throw e;
-      }
+      const particleSystem = new ParticleSystem({
+        innerRadius: 80,    // Distinct range: audio + visual feedback
+        outerRadius: 150,   // Outer range: audio cue only (orientation + distance)
+        G: 500,             // Realistic gravitational constant (reduced from 10000)
+        minDistance: 3,     // Minimum distance for numerical stability
+      });
 
-      // Initialize modular pattern assignment manager
-      console.log("[Particle Init] Step 2: Creating pattern manager...");
-      let patternManager;
-      try {
-        patternManager = createPatternAssignmentManager({
-          mode: 'individual',
-          key: 'C',
-          scale: 'major'
-        });
-        console.log("[Particle Init] ✓ Pattern manager created");
-      } catch (e) {
-        console.error("[Particle Init] ✗ Failed to create pattern manager:", e);
-        // Continue without pattern manager - particles can still be created
-      }
-      
-      // Expose music theory functions globally for pattern manager fallback
-      window.generateHarmoniousPattern = generateHarmoniousPattern;
-      window.generateHarmonizingPattern = generateHarmonizingPattern;
-      
-      // Current scale for music theory
+      // Current scale for music theory - MUST be defined before use
+      // Randomize scale selection for more variety in starting patterns
       const availableScales = Object.keys(SCALES);
       const randomScaleIndex = Math.floor(Math.random() * availableScales.length);
       let currentScale = availableScales[randomScaleIndex];
       console.log(`[Music Theory] Using scale: ${currentScale} (randomized for variety)`);
       
+      // Expose music theory functions globally for particle system
+      window.generateHarmoniousPattern = generateHarmoniousPattern;
+      window.generateHarmonizingPattern = generateHarmonizingPattern;
+
+      // Initialize pattern generator FIRST (before using it)
+      const patternGenerator = createPatternGenerator({
+        numNotes: 12,
+        useMusicTheory: true
+      });
+
       // Create a stable 3-body system: One central particle with 2 orbiting moons
       // Using more realistic mass ratios so all particles stay visible
       const centerX = 575;
@@ -790,62 +716,49 @@
       
       // Central particle - reduced mass so it moves more visibly
       const centralMass = 100; // Reduced from 500 - allows visible interaction
+      const particle0 = particleSystem.addParticle(0, centerX, centerY, 0, centralMass);
       
-      console.log("[Particle Init] Step 3: Adding particles...");
-      
-      // Generate initial chord using modular pattern manager
+      // Generate initial harmonious triad chord
+      // Use C Major triad as default (most harmonious: C, E, G = notes 0, 4, 7)
+      // This creates a perfect major triad that sounds harmonious
       const defaultTriad = 'C Major'; // [0, 4, 7] = C, E, G
-      const chordTones = CHORD_TONES[defaultTriad];
+      const chordTones = CHORD_TONES[defaultTriad]; // [0, 4, 7]
+      
+      console.log('Generating initial triad:', defaultTriad, 'with tones:', chordTones);
+      
+      // Generate patterns directly for each chord tone to ensure proper triad
+      const createPatternFromNote = (noteIndex) => {
+        const pattern = new Array(12).fill(0);
+        pattern[noteIndex % 12] = 1;
+        return pattern;
+      };
+      
+      // Assign triad tones using pattern generator for unique patterns
+      // Get existing patterns to avoid duplicates
+      const existingPatterns = patternGenerator.getAllPatterns().map(p => p.pattern);
+      
+      particle0.sequencerPattern = patternGenerator.generateUniquePattern(
+        0, 
+        'C Major',
+        existingPatterns
+      ) || createPatternFromNote(chordTones[0]); // Fallback to C (root)
       
       // Two "moon" particles with similar mass to central for visible interaction
       const moonMass = 50; // Closer to central mass ratio
       const moonDistance = 100; // Increased distance for better visibility
+      const particle1 = particleSystem.addParticle(1, centerX + moonDistance, centerY, 4, moonMass);
+      particle1.sequencerPattern = patternGenerator.generateUniquePattern(
+        1,
+        'C Major',
+        patternGenerator.getAllPatterns().map(p => p.pattern)
+      ) || createPatternFromNote(chordTones[1]); // Fallback to E (third)
       
-      let particle0, particle1, particle2;
-      try {
-        console.log("[Particle Init]   Adding particle 0...");
-        particle0 = particleSystem.addParticle(0, centerX, centerY, 0, centralMass);
-        console.log("[Particle Init]   ✓ Particle 0 added:", particle0);
-        console.log("[Particle Init]   Current particles:", particleSystem.getParticles().length);
-        
-        const createPatternFromNote = (noteIndex) => {
-          const pattern = new Array(12).fill(0);
-          pattern[noteIndex % 12] = 1;
-          return pattern;
-        };
-        
-        // Assign triad tones directly: Root, Third, Fifth
-        particle0.sequencerPattern = createPatternFromNote(chordTones[0]); // C (root)
-        if (patternManager) {
-          patternManager.assignPattern(0, particle0.sequencerPattern);
-        }
-        
-        console.log("[Particle Init]   Adding particle 1...");
-        particle1 = particleSystem.addParticle(1, centerX + moonDistance, centerY, 4, moonMass);
-        console.log("[Particle Init]   ✓ Particle 1 added:", particle1);
-        console.log("[Particle Init]   Current particles:", particleSystem.getParticles().length);
-        
-        particle1.sequencerPattern = createPatternFromNote(chordTones[1]); // E (third)
-        if (patternManager) {
-          patternManager.assignPattern(1, particle1.sequencerPattern);
-        }
-        
-        console.log("[Particle Init]   Adding particle 2...");
-        particle2 = particleSystem.addParticle(2, centerX, centerY - moonDistance, 7, moonMass);
-        console.log("[Particle Init]   ✓ Particle 2 added:", particle2);
-        console.log("[Particle Init]   Current particles:", particleSystem.getParticles().length);
-        
-        particle2.sequencerPattern = createPatternFromNote(chordTones[2]); // G (fifth)
-        if (patternManager) {
-          patternManager.assignPattern(2, particle2.sequencerPattern);
-        }
-        
-        console.log("[Particle Init] ✓ All 3 particles added successfully");
-      } catch (e) {
-        console.error("[Particle Init] ✗ Failed to add particles:", e);
-        console.error("[Particle Init]   Error stack:", e.stack);
-        throw e;
-      }
+      const particle2 = particleSystem.addParticle(2, centerX, centerY - moonDistance, 7, moonMass);
+      particle2.sequencerPattern = patternGenerator.generateUniquePattern(
+        2,
+        'C Major',
+        patternGenerator.getAllPatterns().map(p => p.pattern)
+      ) || createPatternFromNote(chordTones[2]); // Fallback to G (fifth)
       
       // Verify the triad was assigned correctly
       const assignedNotes = {
@@ -855,6 +768,11 @@
       };
       console.log('✓ Initial triad assigned:', assignedNotes);
       console.log('  Expected:', chordTones);
+      console.log('  Match:', 
+        assignedNotes.particle0 === chordTones[0] && 
+        assignedNotes.particle1 === chordTones[1] && 
+        assignedNotes.particle2 === chordTones[2] ? 'YES ✓' : 'NO ✗'
+      );
 
       // Set velocities for stable orbital motion
       // Central particle starts with small velocity (will move due to lighter mass)
@@ -864,7 +782,7 @@
       // For circular orbit: v = sqrt(G*M_central/r)
       // Using 70% of circular velocity for stable elliptical orbits (all particles visible)
       const G = 500;
-      const centralMassForOrbit = centralMass; // centralMass is defined above (line ~791)
+      const centralMassForOrbit = centralMass;
       
       // Moon 1: Orbital velocity (counter-clockwise)
       const r1 = moonDistance;
@@ -882,6 +800,20 @@
       
       // Initialize sequencer logic
       const sequencerLogic = new SequencerLogic();
+      
+      // Pattern generator already initialized above
+      
+      // Initialize NCFT file manager for individual audio files
+      const fileManager = createNcftFileManager({
+        basePath: '/examples',
+        individualFile: 'indiv_audio_map.ncft',
+        globalFile: 'global_audio_map.ncft' // Not used in individual workspace
+      });
+      
+      // Initialize mapping preset manager for individual workspace only
+      const individualMappings = createMappingPresetManager({
+        storageKey: 'noisecraftIndividualMappings'
+      });
       
       // Sequencer node IDs from indiv_audio_map.ncft
       const SEQUENCER_NODES = {
@@ -913,378 +845,71 @@
       // Verify particle system is working
       if (particles.length === 0) {
         console.error("CRITICAL: No particles were created!");
-        console.error("  particleSystem:", particleSystem);
-        console.error("  signalGenerator:", particleSystem?.signalGenerator);
-        console.error("  signalGenerator.particles:", particleSystem?.signalGenerator?.particles);
-        console.error("  getParticles() returned:", particles);
-        
-        // Emergency reinitialize if needed
-        console.warn("⚠️ Attempting emergency particle reinitialization...");
-        try {
-          const emergency0 = particleSystem.addParticle(0, centerX, centerY, 0, centralMass);
-          const emergency1 = particleSystem.addParticle(1, centerX + moonDistance, centerY, 4, moonMass);
-          const emergency2 = particleSystem.addParticle(2, centerX, centerY - moonDistance, 7, moonMass);
-          const emergencyParticles = particleSystem.getParticles();
-          console.log(`Emergency reinit result: ${emergencyParticles.length} particles`);
-        } catch (e) {
-          console.error("Emergency reinit failed:", e);
-        }
       } else {
         console.log("✓ Particles initialized successfully, starting animation loop");
-        // Double-check particles are accessible
-        const verifyParticles = particleSystem.getParticles();
-        if (verifyParticles.length !== particles.length) {
-          console.warn(`⚠️ Particle count mismatch: initialized ${particles.length}, getParticles() returned ${verifyParticles.length}`);
-        }
       }
       
       // Expose particle system globally for integration
       window.particleSystem = particleSystem;
       window.sequencerLogic = sequencerLogic;
       
-      // Audio localization helper - DEPRECATED: Use background-audio-post-processing.js module instead
-      // Kept for backwards compatibility only
+      // Audio localization helper - calculates panning/gain values based on particle proximity
+      // These values can be mapped to NoiseCraft nodes via stream mapping UI
       window.audioLocalization = {
-        calculateLocalization: calculateLocalization
-      };
-      
-      // ===== SPATIAL AUDIO PROCESSOR (Web Audio API Post-Processing) =====
-      // Web Audio API를 사용한 정교한 spatialization 적용
-      // NoiseCraft 오디오 출력을 받아서 PannerNode로 공간 오디오 처리
-      
-      let spatialProcessor = null;
-      // NoiseCraft integration - declare iframe early for audio stream access
-      const iframe = document.getElementById("noisecraft-iframe");
-      
-      let spatialAudioContext = null;
-      let mediaStreamSource = null; // MediaStreamAudioSourceNode from NoiseCraft
-      let isSpatialAudioEnabled = false;
-      
-      // Initialize Spatial Audio Processor when audio stream is available
-      function initializeSpatialProcessor(mediaStream, sampleRate) {
-        try {
-          // Create or reuse AudioContext
-          if (!spatialAudioContext) {
-            spatialAudioContext = new AudioContext({
-              latencyHint: 'interactive',
-              sampleRate: sampleRate || 44100
-            });
-          }
+        calculateLocalization: (selfParticle, otherParticles, config) => {
+          const results = {};
           
-          // Resume context if suspended (browser autoplay policy)
-          if (spatialAudioContext.state === 'suspended') {
-            spatialAudioContext.resume();
-          }
-          
-          // Create MediaStreamAudioSourceNode from the stream
-          if (mediaStreamSource) {
-            mediaStreamSource.disconnect();
-          }
-          mediaStreamSource = spatialAudioContext.createMediaStreamSource(mediaStream);
-          
-          // Create spatial processor
-          const config = particleSystem.getConfig();
-          spatialProcessor = createSpatialProcessor(spatialAudioContext, {
-            innerRadius: config.innerRadius || 80,
-            outerRadius: config.outerRadius || 150
+          otherParticles.forEach(other => {
+            if (other.id === selfParticle.id) return;
+            
+            const dx = other.position.x - selfParticle.position.x;
+            const dy = other.position.y - selfParticle.position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            const isInDistinct = distance <= config.innerRadius;
+            const isInOuter = distance <= config.outerRadius && !isInDistinct;
+            
+            if (isInDistinct || isInOuter) {
+              // Panning: -1 (left) to +1 (right) based on relative X position
+              const normalizedX = dx / config.outerRadius;
+              const pan = Math.max(-1, Math.min(1, normalizedX * 1.5));
+              
+              // Gain: Distance-based attenuation
+              const normalizedDistance = distance / config.outerRadius;
+              const gain = Math.max(0.1, 1 - normalizedDistance * normalizedDistance);
+              
+              // Calculate closing speed (velocity component towards self)
+              const relVx = other.velocity.x - selfParticle.velocity.x;
+              const relVy = other.velocity.y - selfParticle.velocity.y;
+              const dirX = distance > 0 ? dx / distance : 0;
+              const dirY = distance > 0 ? dy / distance : 0;
+              const closingSpeed = Math.max(0, relVx * dirX + relVy * dirY);
+              
+              results[other.id] = {
+                pan,
+                gain: isInDistinct ? gain : gain * 0.5, // Lower gain in outer range
+                distance,
+                closingSpeed: Math.min(closingSpeed / 320, 1), // Normalized
+                isInDistinct: isInDistinct ? 1 : 0, // 1 or 0
+                isInOuter: isInOuter ? 1 : 0, // 1 or 0
+                isInOuter,
+              };
+            }
           });
           
-          // Immediately set up audio processing pipeline
-          // This ensures audio plays even when no particles are nearby (self audio)
-          window.stereoPanner = spatialAudioContext.createStereoPanner();
-          window.distanceGain = spatialAudioContext.createGain();
-          
-          // Create reverb effect for background audio (other users' sounds)
-          // Using delay-based reverb (ConvolverNode would require impulse response)
-          window.reverbGain = spatialAudioContext.createGain();
-          window.reverbDelay1 = spatialAudioContext.createDelay(0.1);
-          window.reverbDelay2 = spatialAudioContext.createDelay(0.08);
-          window.reverbDelay3 = spatialAudioContext.createDelay(0.06);
-          window.reverbFeedback1 = spatialAudioContext.createGain();
-          window.reverbFeedback2 = spatialAudioContext.createGain();
-          window.reverbFeedback3 = spatialAudioContext.createGain();
-          window.reverbMix = spatialAudioContext.createGain(); // Controls reverb wetness
-          
-          // Set up reverb feedback loop
-          window.reverbFeedback1.gain.value = 0.3;
-          window.reverbFeedback2.gain.value = 0.25;
-          window.reverbFeedback3.gain.value = 0.2;
-          window.reverbMix.gain.value = 0; // Start with no reverb (self audio)
-          
-          // Reverb routing: input -> delays -> feedback -> mix
-          window.reverbDelay1.delayTime.value = 0.05; // 50ms
-          window.reverbDelay2.delayTime.value = 0.035; // 35ms
-          window.reverbDelay3.delayTime.value = 0.025; // 25ms
-          
-          // Route: NoiseCraft MediaStream -> StereoPanner -> [Dry + Reverb] -> Gain -> Destination
-          // Dry path (self audio): StereoPanner -> Gain
-          // Wet path (background audio): StereoPanner -> Reverb -> Mix -> Gain
-          mediaStreamSource.connect(window.stereoPanner);
-          
-          // Dry signal (self audio - no reverb)
-          window.stereoPanner.connect(window.distanceGain);
-          
-          // Wet signal (background audio - with reverb)
-          // Create parallel reverb processing
-          const reverbInput = spatialAudioContext.createGain();
-          window.stereoPanner.connect(reverbInput);
-          reverbInput.connect(window.reverbDelay1);
-          reverbInput.connect(window.reverbDelay2);
-          reverbInput.connect(window.reverbDelay3);
-          
-          // Reverb feedback loops
-          window.reverbDelay1.connect(window.reverbFeedback1);
-          window.reverbDelay2.connect(window.reverbFeedback2);
-          window.reverbDelay3.connect(window.reverbFeedback3);
-          window.reverbFeedback1.connect(window.reverbDelay1);
-          window.reverbFeedback2.connect(window.reverbDelay2);
-          window.reverbFeedback3.connect(window.reverbDelay3);
-          
-          // Reverb output to mix
-          window.reverbDelay1.connect(window.reverbMix);
-          window.reverbDelay2.connect(window.reverbMix);
-          window.reverbDelay3.connect(window.reverbMix);
-          window.reverbMix.connect(window.distanceGain);
-          
-          // Final output
-          window.distanceGain.connect(spatialAudioContext.destination);
-          
-          // Store reverb input for dynamic control
-          window.reverbInputGain = reverbInput;
-          
-          // Initial settings: centered pan, full gain (self audio), no reverb
-          window.stereoPanner.pan.value = 0;
-          window.distanceGain.gain.value = 1.0; // Full volume for self audio
-          window.reverbInputGain.gain.value = 0; // No reverb initially (self audio)
-          
-          isSpatialAudioEnabled = true;
-          console.log('[SpatialAudio] Processor initialized with MediaStream');
-          console.log('[SpatialAudio] Audio pipeline connected - self audio playing');
-          console.log('[SpatialAudio] Using background-audio-post-processing.js + spatial-audio-processor.js');
-          
-          // Update listener position (self particle at origin)
-          if (spatialProcessor) {
-            spatialProcessor.updateListenerPosition({ x: 0, y: 0, z: 0 });
-          }
-          
-          // Note: Self audio is now playing through the spatial pipeline
-          // updateSpatialAudioPositions will adjust pan/gain based on particle positions
-        } catch (err) {
-          console.error('[SpatialAudio] Failed to initialize:', err);
-          isSpatialAudioEnabled = false;
+          return results;
         }
-      }
-      
-      // Update spatial audio positions (called from background audio processing)
-      // This applies modular post-processing using Web Audio API for actual spatialization
-      function updateSpatialAudioPositions(backgroundAudioState, selfParticle, particles) {
-        // Check if spatial audio is enabled and nodes are initialized
-        if (!isSpatialAudioEnabled || !window.stereoPanner || !window.distanceGain) {
-          return; // Not enabled yet or nodes not initialized
-        }
-        
-        // Update listener position (self particle at origin for relative positioning)
-        if (spatialProcessor && selfParticle) {
-          spatialProcessor.updateListenerPosition({
-            x: selfParticle.position.x,
-            y: selfParticle.position.y,
-            z: 0
-          });
-        }
-        
-        // Apply spatialization from modular post-processing system
-        // Use background-audio-post-processing.js calculated values
-        const candidates = backgroundAudioState.localization?.candidates || [];
-        
-        // IMPORTANT: When candidates are present, we're hearing background audio from other users
-        // This should have reverb to distinguish from self audio
-        if (candidates.length > 0) {
-          // Use the closest candidate's panning and gain to adjust the overall mix
-          const primaryCandidate = candidates[0]; // Already sorted by distance
-          
-          // Apply panning (from calculateLocalization in background-audio-post-processing.js)
-          // This pans the entire mix based on the closest particle's position
-          // Use more extreme panning for better directional perception (-1 to 1 full range)
-          let targetPan = primaryCandidate.pan || 0;
-          
-          // Make panning more extreme: amplify the pan value and clamp to -1 to 1
-          // This makes direction changes more noticeable and intuitive
-          targetPan = Math.max(-1, Math.min(1, targetPan * 1.5)); // Amplify panning
-          
-          const currentPan = window.stereoPanner.pan.value;
-          // Faster panning response for more intuitive direction perception
-          const panDiff = targetPan - currentPan;
-          const panSmoothing = 0.5; // Higher = faster response (was 0.15, now 0.5 for less lag)
-          window.stereoPanner.pan.value = currentPan + panDiff * panSmoothing;
-          
-          // Apply distance-based gain (from calculateLocalization)
-          // This adjusts overall volume based on distance to nearest particle
-          // Note: Self audio is always present, this just adjusts based on interaction
-          const targetGain = Math.min(1.0, 0.7 + (primaryCandidate.gain || 0) * 0.3); // 0.7-1.0 range
-          const currentGain = window.distanceGain.gain.value;
-          const gainDiff = targetGain - currentGain;
-          const gainSmoothing = 0.15; // Faster gain response (was 0.1)
-          window.distanceGain.gain.value = Math.max(0.5, Math.min(1.0, currentGain + gainDiff * gainSmoothing));
-          
-          // Enable reverb for background audio (other users' sounds)
-          // OPTIMIZED: Only update reverb every 5 frames to reduce lag
-          if (window._reverbUpdateCounter === undefined) window._reverbUpdateCounter = 0;
-          window._reverbUpdateCounter++;
-          
-          if (window._reverbUpdateCounter % 5 === 0 && window.reverbMix && window.reverbInputGain) {
-            const isOuter = primaryCandidate.isInOuter === 1 && primaryCandidate.isInDistinct === 0;
-            const isInner = primaryCandidate.isInDistinct === 1;
-            
-            // Outer particles: more reverb (wet, distant feel)
-            // Inner particles: moderate reverb (closer but still distinct)
-            let targetReverbWetness = isOuter ? 0.6 : (isInner ? 0.4 : 0.3);
-            
-            // Increase reverb based on distance (further = more reverb)
-            const distanceFactor = Math.min(1, primaryCandidate.distance / outerRadius);
-            targetReverbWetness = Math.min(0.8, targetReverbWetness + distanceFactor * 0.2);
-            
-            const currentReverb = window.reverbMix.gain.value;
-            const reverbDiff = targetReverbWetness - currentReverb;
-            const reverbSmoothing = 0.3; // Faster smoothing since we update less frequently
-            window.reverbMix.gain.value = Math.max(0, Math.min(0.8, currentReverb + reverbDiff * reverbSmoothing));
-            
-            // Also adjust reverb input gain (how much signal goes into reverb)
-            window.reverbInputGain.gain.value = targetReverbWetness * 0.7; // Scale down input to prevent feedback
-          }
-          
-          // Log for debugging (throttled)
-          if (window._lastSpatialLog === undefined) window._lastSpatialLog = 0;
-          const now = Date.now();
-          if (now - window._lastSpatialLog > 1000) { // Log once per second
-            const reverbLevel = window.reverbMix ? window.reverbMix.gain.value.toFixed(2) : 'N/A';
-            console.log(`[SpatialAudio] Pan: ${targetPan.toFixed(2)}, Gain: ${targetGain.toFixed(2)}, Reverb: ${reverbLevel}, Distance: ${primaryCandidate.distance.toFixed(1)}px`);
-            window._lastSpatialLog = now;
-          }
-        } else {
-          // No nearby particles: center pan, full gain (self audio only), no reverb
-          const targetPan = 0;
-          const targetGain = 1.0; // Full volume when alone (self audio)
-          const currentPan = window.stereoPanner.pan.value;
-          const currentGain = window.distanceGain.gain.value;
-          
-          window.stereoPanner.pan.value = currentPan + (targetPan - currentPan) * 0.5; // Faster return to center
-          window.distanceGain.gain.value = Math.max(0.5, currentGain + (targetGain - currentGain) * 0.15);
-          
-          // Disable reverb when alone (self audio is dry) - OPTIMIZED: Only update every 5 frames
-          if (window._reverbUpdateCounter !== undefined && window._reverbUpdateCounter % 5 === 0) {
-            if (window.reverbMix && window.reverbInputGain) {
-              const currentReverb = window.reverbMix.gain.value;
-              window.reverbMix.gain.value = Math.max(0, currentReverb - 0.2); // Faster fade out
-              window.reverbInputGain.gain.value = Math.max(0, (window.reverbInputGain.gain.value || 0) - 0.2);
-            }
-          }
-        }
-      }
-      
-      // Listen for audio stream from NoiseCraft iframe
-      window.addEventListener("message", (event) => {
-        if (event.data?.type === "noiseCraft:audioStreamReady") {
-          console.log("[Main] Received audio stream ready notification from NoiseCraft");
-          
-          // Access MediaStream directly from iframe window (MediaStream can't be transferred via postMessage)
-          if (iframe && iframe.contentWindow) {
-            try {
-              // Wait a bit for the stream to be set on the iframe window
-              setTimeout(() => {
-                const iframeStream = iframe.contentWindow.noiseCraftMediaStream;
-                const sampleRate = iframe.contentWindow.noiseCraftAudioContext?.sampleRate || event.data.audioContextSampleRate || 44100;
-                
-                if (iframeStream) {
-                  console.log("[Main] Successfully accessed MediaStream from iframe");
-                  initializeSpatialProcessor(iframeStream, sampleRate);
-                } else {
-                  console.warn("[Main] MediaStream not found on iframe window, retrying...");
-                  // Retry after a short delay
-                  setTimeout(() => {
-                    const retryStream = iframe.contentWindow.noiseCraftMediaStream;
-                    if (retryStream) {
-                      initializeSpatialProcessor(retryStream, sampleRate);
-                    } else {
-                      console.error("[Main] Failed to access MediaStream from iframe");
-                    }
-                  }, 500);
-                }
-              }, 100);
-            } catch (err) {
-              console.error("[Main] Error accessing iframe MediaStream:", err);
-            }
-          }
-        } else if (event.data?.type === "noiseCraft:audioStreamStopped") {
-          console.log("[Main] Audio stream stopped");
-          if (mediaStreamSource) {
-            try {
-              mediaStreamSource.disconnect();
-            } catch (e) {}
-            mediaStreamSource = null;
-          }
-          if (window.stereoPanner) {
-            try {
-              window.stereoPanner.disconnect();
-            } catch (e) {}
-            window.stereoPanner = null;
-          }
-          if (window.distanceGain) {
-            try {
-              window.distanceGain.disconnect();
-            } catch (e) {}
-            window.distanceGain = null;
-          }
-          isSpatialAudioEnabled = false;
-        }
-      });
-      
-      // Expose for debugging
-      window.spatialAudioProcessor = {
-        initialize: initializeSpatialProcessor,
-        update: updateSpatialAudioPositions,
-        enabled: () => isSpatialAudioEnabled && window.stereoPanner && window.distanceGain,
-        processor: () => spatialProcessor,
-        getState: () => ({
-          enabled: isSpatialAudioEnabled,
-          hasPanner: !!window.stereoPanner,
-          hasGain: !!window.distanceGain,
-          hasReverb: !!window.reverbMix
-        })
       };
       
-      const streamMapper = new StreamNodeMapper('indiv_audio_map.ncft');
+      // Use separate storage key for individual workspace
+      const streamMapper = new StreamNodeMapper('noisecraftIndividualStreamMappings');
 
-      // Load default stream-to-node mappings from JSON (exported config)
-      async function loadInitialMappings() {
-        try {
-          const resp = await fetch(
-            "/public/examples/noisecraft-mappings-2025-12-07.json",
-            { cache: "no-store" }
-          );
-          if (!resp.ok) {
-            return;
-          }
-          const json = await resp.json();
-          if (!Array.isArray(json) || !json.length) {
-            return;
-          }
-          // Override in-memory mappings and persist to localStorage
-          streamMapper.mappings = json;
-          streamMapper.saveToStorage();
-          console.log(
-            `[StreamMapper] Loaded ${json.length} default mappings from noisecraft-mappings-2025-12-07.json`
-          );
-        } catch (e) {
-          console.warn("Failed to load default stream mappings:", e);
-        }
-      }
-
-      // Node Browser - Load nodes from project file
+      // Node Browser - Load nodes from individual audio map file
       let availableNodes = [];
       async function loadProjectNodes() {
         try {
           const response = await fetch(
-            "/public/examples/falling_in_love_with_waterfalls (2).ncft"
+            "/examples/indiv_audio_map.ncft"
           );
           const projectData = await response.json();
           availableNodes = Object.entries(projectData.nodes || {}).map(
@@ -1638,11 +1263,6 @@
         });
       }
 
-      // Initialize mappings from JSON, then render UI
-      loadInitialMappings().then(() => {
-        renderMappings();
-      });
-
       document.getElementById("add-mapping-btn").addEventListener("click", () => {
         const mappingId = streamMapper.addMapping({
           nodeId: "",
@@ -1663,49 +1283,85 @@
         renderMappings();
       });
 
-      // Export mappings button
+      // Export mappings to JSON file
       document.getElementById("export-mappings-btn").addEventListener("click", () => {
-        streamMapper.exportMappings();
-        statusEl.textContent = `Exported ${streamMapper.mappings.length} mappings`;
-        setTimeout(() => {
-          if (statusEl.textContent.includes("Exported")) {
-            statusEl.textContent = "Ready. Click Start to begin.";
+        try {
+          const mappings = streamMapper.mappings;
+          if (mappings.length === 0) {
+            alert("저장된 매핑이 없습니다.");
+            return;
           }
-        }, 2000);
-      });
 
-      // Import mappings button
-      const importFileInput = document.getElementById("import-file-input");
-      document.getElementById("import-mappings-btn").addEventListener("click", () => {
-        importFileInput.click();
-      });
-      
-      importFileInput.addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const success = await streamMapper.importMappings(file);
-          if (success) {
-            renderMappings();
-            statusEl.textContent = `Imported ${streamMapper.mappings.length} mappings`;
-            setTimeout(() => {
-              if (statusEl.textContent.includes("Imported")) {
-                statusEl.textContent = "Ready. Click Start to begin.";
-              }
-            }, 2000);
-          } else {
-            statusEl.textContent = "Failed to import mappings";
-            setTimeout(() => {
-              if (statusEl.textContent.includes("Failed")) {
-                statusEl.textContent = "Ready. Click Start to begin.";
-              }
-            }, 3000);
-          }
+          const dataStr = JSON.stringify(mappings, null, 2);
+          const dataBlob = new Blob([dataStr], { type: "application/json" });
+          const url = URL.createObjectURL(dataBlob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `noisecraft-mappings-${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          console.log(`✓ Exported ${mappings.length} mappings to file`);
+          statusEl.textContent = `Exported ${mappings.length} mappings`;
+        } catch (e) {
+          console.error("Failed to export mappings:", e);
+          alert("매핑 내보내기 실패: " + e.message);
         }
-        // Reset file input
-        importFileInput.value = '';
       });
 
-      // NoiseCraft integration - ready flag (iframe already declared above)
+      // Import mappings from JSON file
+      document.getElementById("import-mappings-file").addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const importedMappings = JSON.parse(event.target.result);
+            
+            if (!Array.isArray(importedMappings)) {
+              throw new Error("Invalid file format: expected array of mappings");
+            }
+
+            // Validate mapping structure
+            const validMappings = importedMappings.filter(m => {
+              return m && typeof m === 'object' && m.nodeId !== undefined;
+            });
+
+            if (validMappings.length === 0) {
+              throw new Error("No valid mappings found in file");
+            }
+
+            // Replace current mappings with imported ones
+            streamMapper.mappings = validMappings;
+            streamMapper.saveToStorage();
+            renderMappings();
+
+            console.log(`✓ Imported ${validMappings.length} mappings from file`);
+            statusEl.textContent = `Imported ${validMappings.length} mappings`;
+            
+            // Reset file input
+            e.target.value = '';
+          } catch (error) {
+            console.error("Failed to import mappings:", error);
+            alert("매핑 가져오기 실패: " + error.message);
+            e.target.value = '';
+          }
+        };
+
+        reader.onerror = () => {
+          console.error("Failed to read file");
+          alert("파일 읽기 실패");
+          e.target.value = '';
+        };
+
+        reader.readAsText(file);
+      });
+
+      // NoiseCraft integration - declare iframe and ready flag early
+      const iframe = document.getElementById("noisecraft-iframe");
       let noisecraftReady = false;
       
       // Initialize animation variables early
@@ -1721,18 +1377,66 @@
       
       // Parameter smoothing to prevent clicks/pops from rapid changes
       const paramSmoothing = new Map(); // nodeId:paramName -> {current, target, smoothing}
-      const SMOOTHING_FACTOR = 0.1; // Lower = smoother but slower response (0.1 = ~90ms smoothing)
       
-      function smoothParameter(nodeId, paramName, targetValue, smoothingFactor = SMOOTHING_FACTOR) {
+      // Different smoothing factors for different parameters
+      // Volume parameters need VERY slow smoothing to prevent clicks during buffering
+      const VOLUME_SMOOTHING_FACTOR = 0.015; // Extremely slow for volume (prevents clicks during buffering)
+      const REVERB_SMOOTHING_FACTOR = 0.025; // Slow for reverb
+      const DEFAULT_SMOOTHING_FACTOR = 0.1; // Default for other parameters
+      
+      function smoothParameter(nodeId, paramName, targetValue) {
         const key = `${nodeId}:${paramName}`;
-        const current = paramSmoothing.get(key) || { current: targetValue, target: targetValue };
+        let current = paramSmoothing.get(key);
+        
+        // Initialize if not exists
+        if (!current) {
+          current = { 
+            current: targetValue, 
+            target: targetValue,
+            lastUpdate: Date.now()
+          };
+          paramSmoothing.set(key, current);
+          return targetValue; // Return immediately on first update
+        }
+        
+        // Determine smoothing factor based on parameter type
+        let smoothingFactor = DEFAULT_SMOOTHING_FACTOR;
+        if (nodeId === "183" && paramName === "value") {
+          // Volume knob needs extremely slow smoothing to prevent clicks
+          smoothingFactor = VOLUME_SMOOTHING_FACTOR;
+        } else if (nodeId === "163" && paramName === "value") {
+          // Reverb needs slow smoothing
+          smoothingFactor = REVERB_SMOOTHING_FACTOR;
+        }
         
         // Update target
         current.target = targetValue;
         
-        // Smooth towards target using exponential smoothing
-        const diff = current.target - current.current;
-        current.current += diff * smoothingFactor;
+        // Calculate time-based smoothing for volume to prevent clicks during buffering
+        if (nodeId === "183" && paramName === "value") {
+          const now = Date.now();
+          const dt = Math.min((now - (current.lastUpdate || now)) / 1000, 0.1); // Cap dt at 100ms
+          current.lastUpdate = now;
+          
+          // Use very slow exponential smoothing with time-based adjustment
+          const diff = current.target - current.current;
+          
+          // Maximum change rate per second for volume (prevents sudden jumps)
+          const maxChangePerSecond = 0.002; // Very slow change rate
+          const maxChangeThisFrame = maxChangePerSecond * dt;
+          
+          if (Math.abs(diff) > maxChangeThisFrame) {
+            // Clamp the change to prevent sudden jumps
+            current.current += diff > 0 ? maxChangeThisFrame : -maxChangeThisFrame;
+          } else {
+            // Use exponential smoothing for smaller changes
+            current.current += diff * smoothingFactor;
+          }
+        } else {
+          // Standard exponential smoothing for other parameters
+          const diff = current.target - current.current;
+          current.current += diff * smoothingFactor;
+        }
         
         paramSmoothing.set(key, current);
         return current.current;
@@ -1813,252 +1517,249 @@
 
       // Update animation loop - optimized with throttling
       function update(dt) {
-        try {
-          if (!particleSystem) {
-            console.error("Particle system not initialized!");
-            return;
+        if (!particleSystem) {
+          console.error("Particle system not initialized!");
+          return;
+        }
+        
+        // Update particle system (handles all physics) - always update for smooth physics
+        particleSystem.update(dt);
+        
+        // Get fresh particles reference
+        const particles = particleSystem.getParticles();
+        
+        if (!particles || particles.length === 0) {
+          console.warn("No particles found in system - particles:", particles);
+          // Draw empty canvas
+          const canvas = document.getElementById("particle-canvas");
+          if (canvas) {
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#0a0a0a";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#aaa";
+            ctx.font = "12px monospace";
+            ctx.fillText("No particles", 10, canvas.height / 2);
           }
-          
-          // Update particle system (handles all physics) - always update for smooth physics
-          particleSystem.update(dt);
-          
-          // Get fresh particles reference
-          const particles = particleSystem.getParticles();
-          
-          if (!particles || particles.length === 0) {
-            // Log detailed debug info when particles disappear
-            console.error("⚠️ No particles found in system!");
-            console.error("  particleSystem:", particleSystem);
-            console.error("  signalGenerator:", particleSystem?.signalGenerator);
-            console.error("  signalGenerator.particles:", particleSystem?.signalGenerator?.particles);
-            console.error("  getParticles() returned:", particles);
-            
-            // Try to reinitialize particles if they're missing
-            if (particleSystem && particleSystem.signalGenerator && 
-                (!particleSystem.signalGenerator.particles || particleSystem.signalGenerator.particles.length === 0)) {
-              console.warn("⚠️ Attempting to reinitialize particles...");
-              // Don't reinitialize here - let the user know there's a problem
-            }
-            
-            // Draw empty canvas
-            const canvas = document.getElementById("particle-canvas");
-            if (canvas) {
-              const ctx = canvas.getContext("2d");
-              ctx.fillStyle = "#0a0a0a";
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              ctx.fillStyle = "#f44";
-              ctx.font = "14px monospace";
-              ctx.fillText("No particles detected", 10, canvas.height / 2);
-              ctx.fillStyle = "#aaa";
-              ctx.font = "10px monospace";
-              ctx.fillText("Check console for details", 10, canvas.height / 2 + 20);
-            }
-            return;
-          }
+          return;
+        }
 
-          const now = Date.now();
+        const now = Date.now();
+        
+        // Throttle signal generation and UI updates (60fps max)
+        if (now - lastSignalUpdate >= SIGNAL_UPDATE_INTERVAL) {
+          lastSignalUpdate = now;
           
-          // Throttle signal generation and UI updates (60fps max)
-          if (now - lastSignalUpdate >= SIGNAL_UPDATE_INTERVAL) {
-            lastSignalUpdate = now;
-            
-            // Generate signals for all particles and update UI
-            particles.forEach((particle) => {
-              const signals = particleSystem.generateSignals(particle.id);
-              if (signals) {
-                const pid = particle.id;
-                
-                // Batch DOM updates
-                const attractionEl = document.getElementById(`signal-attraction-${pid}`);
-                const velocityEl = document.getElementById(`signal-velocity-${pid}`);
-                const distanceEl = document.getElementById(`signal-distance-${pid}`);
-                const closingEl = document.getElementById(`signal-closing-${pid}`);
-                const innerEl = document.getElementById(`signal-inner-${pid}`);
-                const outerEl = document.getElementById(`signal-outer-${pid}`);
-                
-                if (attractionEl) attractionEl.textContent = signals.attraction.toFixed(3);
-                if (velocityEl) velocityEl.textContent = signals.velocity.toFixed(3);
-                if (distanceEl) {
-                  distanceEl.textContent = signals.distance === Infinity
-                    ? "∞"
-                    : Math.round(signals.distance).toString();
-                }
-                if (closingEl) closingEl.textContent = signals.closingSpeed.toFixed(3);
-                if (innerEl) innerEl.textContent = signals.isInner.toString();
-                if (outerEl) outerEl.textContent = signals.isOuter.toString();
-
-                // Update scope data
-                scopeData[pid].attraction.push(signals.attraction);
-                scopeData[pid].velocity.push(signals.velocity);
-                
-                if (scopeData[pid].attraction.length > scopeData[pid].maxLength) {
-                  scopeData[pid].attraction.shift();
-                }
-                if (scopeData[pid].velocity.length > scopeData[pid].maxLength) {
-                  scopeData[pid].velocity.shift();
-                }
-                
-                // Draw scopes
-                drawScope(`scope-attraction-${pid}`, scopeData[pid].attraction, `Attraction: ${signals.attraction.toFixed(3)}`);
-                drawScope(`scope-velocity-${pid}`, scopeData[pid].velocity, `Velocity: ${signals.velocity.toFixed(3)}`);
+          // Generate signals for all particles and update UI
+          particles.forEach((particle) => {
+            const signals = particleSystem.generateSignals(particle.id);
+            if (signals) {
+              const pid = particle.id;
+              
+              // Batch DOM updates
+              const attractionEl = document.getElementById(`signal-attraction-${pid}`);
+              const velocityEl = document.getElementById(`signal-velocity-${pid}`);
+              const distanceEl = document.getElementById(`signal-distance-${pid}`);
+              const closingEl = document.getElementById(`signal-closing-${pid}`);
+              const innerEl = document.getElementById(`signal-inner-${pid}`);
+              const outerEl = document.getElementById(`signal-outer-${pid}`);
+              
+              if (attractionEl) attractionEl.textContent = signals.attraction.toFixed(3);
+              if (velocityEl) velocityEl.textContent = signals.velocity.toFixed(3);
+              if (distanceEl) {
+                distanceEl.textContent = signals.distance === Infinity
+                  ? "∞"
+                  : Math.round(signals.distance).toString();
               }
-            });
-          }
-          
-          // Draw particle visualizations (can run at full frame rate for smooth visuals)
-          drawParticles();
-          drawIndividualView();
+              if (closingEl) closingEl.textContent = signals.closingSpeed.toFixed(3);
+              if (innerEl) innerEl.textContent = signals.isInner.toString();
+              if (outerEl) outerEl.textContent = signals.isOuter.toString();
 
-          // Throttle parameter updates (30fps max - audio params don't need 60fps)
-          if (now - lastParamUpdate >= PARAM_UPDATE_INTERVAL) {
-            lastParamUpdate = now;
+              // Update scope data
+              scopeData[pid].attraction.push(signals.attraction);
+              scopeData[pid].velocity.push(signals.velocity);
+              
+              if (scopeData[pid].attraction.length > scopeData[pid].maxLength) {
+                scopeData[pid].attraction.shift();
+              }
+              if (scopeData[pid].velocity.length > scopeData[pid].maxLength) {
+                scopeData[pid].velocity.shift();
+              }
+              
+              // Draw scopes
+              drawScope(`scope-attraction-${pid}`, scopeData[pid].attraction, `Attraction: ${signals.attraction.toFixed(3)}`);
+              drawScope(`scope-velocity-${pid}`, scopeData[pid].velocity, `Velocity: ${signals.velocity.toFixed(3)}`);
+            }
+          });
+        }
+        
+        // Draw particle visualizations (can run at full frame rate for smooth visuals)
+        drawParticles();
+        drawIndividualView();
+
+        // Throttle parameter updates (30fps max - audio params don't need 60fps)
+        if (now - lastParamUpdate >= PARAM_UPDATE_INTERVAL) {
+          lastParamUpdate = now;
+          
+          // Generate parameters from mappings for all particles
+          // For now, use particle 0 for parameter mapping (individual audio control)
+          const signals0 = particleSystem.generateSignals(0);
+          if (signals0) {
+            const params = streamMapper.generateParams(signals0);
             
-            // Generate parameters from mappings for all particles
-            // For now, use particle 0 for parameter mapping (individual audio control)
-            const signals0 = particleSystem.generateSignals(0);
-            if (signals0) {
-              const params = streamMapper.generateParams(signals0);
+            // Distance-based volume control: fade out other particles as they get far
+            // When particles are beyond outerRadius, only self is audible
+            const config = particleSystem.getConfig();
+            const outerRadius = config.outerRadius || 150;
+            const innerRadius = config.innerRadius || 80;
             
-              // Distance-based volume control: fade out other particles as they get far
-              // When particles are beyond outerRadius, only self is audible
-              const config = particleSystem.getConfig();
-              const outerRadius = config.outerRadius || 150;
-              const innerRadius = config.innerRadius || 80;
-              
-              // ===== BACKGROUND AUDIO POST-PROCESSING =====
-              // Use the dedicated post-processing module (HTML-independent, reusable in backend)
-              const particles = particleSystem.getParticles();
-              const selfParticle = particles.find(p => p.id === 0);
-              
-              const backgroundAudio = processBackgroundAudio(
-                selfParticle,
-                particles,
-                {
-                  innerRadius,
-                  outerRadius,
-                  baseVolume: 0.0015
+            // Check if there are any particles within outer radius
+            const particles = particleSystem.getParticles();
+            const selfParticle = particles.find(p => p.id === 0);
+            let hasNearbyParticles = false;
+            let maxDistanceFactor = 0; // 0 = far away, 1 = close
+            
+            if (selfParticle) {
+              for (const otherParticle of particles) {
+                if (otherParticle.id === 0) continue; // Skip self
+                
+                const dx = otherParticle.position.x - selfParticle.position.x;
+                const dy = otherParticle.position.y - selfParticle.position.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance <= outerRadius) {
+                  hasNearbyParticles = true;
+                  // Calculate distance factor: 1 at inner radius, 0 at outer radius
+                  // Smooth fade-out beyond inner radius
+                  const distanceFactor = distance <= innerRadius 
+                    ? 1.0 
+                    : Math.max(0, 1 - ((distance - innerRadius) / (outerRadius - innerRadius)));
+                  maxDistanceFactor = Math.max(maxDistanceFactor, distanceFactor);
                 }
-              );
-              
-              // Merge background audio params with existing params
-              backgroundAudio.params.forEach(bgParam => {
-                const existingParam = params.find(p => 
-                  p.nodeId === bgParam.nodeId && p.paramName === bgParam.paramName
-                );
-                if (existingParam) {
-                  existingParam.value = bgParam.value;
-                } else {
-                  params.push(bgParam);
-                }
+              }
+            }
+            
+            // Node 183 = "Vol CHORDS" - volume of other oscillators (bass, baritone, tenor)
+            // Fade out completely when no particles nearby (beyond outerRadius)
+            const chordVolumeKnob = params.find(p => p.nodeId === "183");
+            const baseVolume = 0.0015; // Base volume when particles are close
+            const targetVolume = hasNearbyParticles 
+              ? baseVolume * maxDistanceFactor // Fade based on distance
+              : 0.0; // Complete silence when alone
+            
+            if (!chordVolumeKnob) {
+              params.push({
+                nodeId: "183",
+                paramName: "value",
+                value: targetVolume
               });
+            } else {
+              // Apply distance-based fade-out
+              chordVolumeKnob.value = Math.max(0, targetVolume);
+            }
+            
+            // Node 163 = "REVERB WET" - reverb for outer particles
+            // Also fade reverb as particles get further away
+            const reverbWet = params.find(p => p.nodeId === "163");
+            const baseReverb = 1.2; // Base reverb when particles are close
+            const targetReverb = hasNearbyParticles
+              ? baseReverb * maxDistanceFactor // Fade based on distance
+              : 0.0; // No reverb when alone
+            
+            if (!reverbWet) {
+              params.push({
+                nodeId: "163",
+                paramName: "value",
+                value: targetReverb
+              });
+            } else {
+              // Apply distance-based fade-out for reverb too
+              reverbWet.value = Math.max(0, Math.min(1.4, targetReverb));
+            }
+            
+            sendToNoiseCraft(params);
+          
+          // Store signals in global scope for sequencer logic access
+          if (!window.particleSignals) window.particleSignals = {};
+          window.particleSignals[0] = signals0;
+          
+          // Update sequencer patterns when inner particles change
+          const currentInnerParticleIds = new Set(
+            signals0.innerParticles ? signals0.innerParticles.map(p => p.id) : []
+          );
+          
+          // Check if inner particles changed
+          const innerParticlesChanged = 
+            currentInnerParticleIds.size !== previousInnerParticleIds.size ||
+            [...currentInnerParticleIds].some(id => !previousInnerParticleIds.has(id)) ||
+            [...previousInnerParticleIds].some(id => !currentInnerParticleIds.has(id));
+          
+          // ALWAYS update sequencer patterns, not just when innerParticles change
+          // This ensures baritone/tenor are cleared when particle becomes alone
+          if (iframe && iframe.contentWindow) {
+            const selfParticle = particles.find(p => p.id === 0);
+            if (selfParticle) {
+              // Convert innerParticles data to particle objects (may be empty array when alone)
+              const innerParticleObjects = signals0.innerParticles 
+                ? signals0.innerParticles.map(pData => 
+                    particles.find(p => p.id === pData.id)
+                  ).filter(p => p !== undefined)
+                : [];
               
-              // Store localization state for potential future use
-              if (!window.backgroundAudioState) window.backgroundAudioState = {};
-              window.backgroundAudioState = backgroundAudio.state;
-              
-              // ===== MODULAR AUDIO SYSTEM: Apply Web Audio API Spatialization =====
-              // Use the modular post-processing system instead of just NoiseCraft node parameters
-              // This provides actual spatial audio (panning, distance-based gain, reverb) using Web Audio API
-              if (window.spatialAudioProcessor && window.spatialAudioProcessor.enabled() && isSpatialAudioEnabled) {
-                window.spatialAudioProcessor.update(backgroundAudio.state, selfParticle, particles);
-              } else {
-                // Fallback: If Web Audio API spatialization is not available yet,
-                // still use NoiseCraft node parameters (but this is less effective)
-                // Only warn once to avoid spam
-                if (!window._spatialWarningShown) {
-                  console.warn('[Audio] Web Audio API spatialization not enabled, using NoiseCraft node parameters');
-                  window._spatialWarningShown = true;
-                }
-              }
-              
-              sendToNoiseCraft(params);
-              
-              // Store signals in global scope for sequencer logic access
-              if (!window.particleSignals) window.particleSignals = {};
-              window.particleSignals[0] = signals0;
-              
-              // Update sequencer patterns when inner particles change
-              const currentInnerParticleIds = new Set(
-                signals0.innerParticles ? signals0.innerParticles.map(p => p.id) : []
+              // Generate individual sequencer pattern
+              // When alone: only bass has note, baritone/tenor are all zeros
+              // When with inner particles: bass + baritone (+ tenor) have notes
+              const sequencerPattern = sequencerLogic.generateIndividualPattern(
+                selfParticle, 
+                innerParticleObjects
               );
               
-              // Check if inner particles changed
-              const innerParticlesChanged = 
-                currentInnerParticleIds.size !== previousInnerParticleIds.size ||
-                [...currentInnerParticleIds].some(id => !previousInnerParticleIds.has(id)) ||
-                [...previousInnerParticleIds].some(id => !currentInnerParticleIds.has(id));
+              // Check if pattern actually changed
+              const patternChanged = !previousSequencerPattern || 
+                JSON.stringify(sequencerPattern) !== JSON.stringify(previousSequencerPattern);
               
-              // ALWAYS update sequencer patterns, not just when innerParticles change
-              // This ensures baritone/tenor are cleared when particle becomes alone
-              if (iframe && iframe.contentWindow) {
-                const selfParticle = particles.find(p => p.id === 0);
-                if (selfParticle) {
-                  // Convert innerParticles data to particle objects (may be empty array when alone)
-                  const innerParticleObjects = signals0.innerParticles 
-                    ? signals0.innerParticles.map(pData => 
-                        particles.find(p => p.id === pData.id)
-                      ).filter(p => p !== undefined)
-                    : [];
-                  
-                  // Generate individual sequencer pattern
-                  // When alone: only bass has note, baritone/tenor are all zeros
-                  // When with inner particles: bass + baritone (+ tenor) have notes
-                  const sequencerPattern = sequencerLogic.generateIndividualPattern(
-                    selfParticle, 
-                    innerParticleObjects
+              // Always update when pattern changes OR when inner particles change
+              // This ensures we clear baritone/tenor when particle becomes alone
+              if (patternChanged || innerParticlesChanged) {
+                const isAlone = innerParticleObjects.length === 0;
+                console.log(`[Sequencer] Updating patterns - ${isAlone ? 'ALONE (single tone)' : `CHORD (${innerParticleObjects.length + 1} notes)`}:`, sequencerPattern);
+                
+                // Update each sequencer (bass, baritone, tenor) - optimized with requestAnimationFrame
+                // Use 4-step sequencers for faster cycling and more continuous sound
+                // IMPORTANT: Even if baritone/tenor are empty (all zeros), we must update them
+                // to ensure old notes are cleared when particle becomes alone
+                requestAnimationFrame(() => {
+                  updateMonoSeqSequencer(
+                    iframe.contentWindow,
+                    SEQUENCER_NODES.individual.bass,
+                    0, // pattern index
+                    sequencerPattern.bass,
+                    4  // numSteps: 4 steps for faster cycling
                   );
                   
-                  // Check if pattern actually changed
-                  const patternChanged = !previousSequencerPattern || 
-                    JSON.stringify(sequencerPattern) !== JSON.stringify(previousSequencerPattern);
+                  updateMonoSeqSequencer(
+                    iframe.contentWindow,
+                    SEQUENCER_NODES.individual.baritone,
+                    0,
+                    sequencerPattern.baritone, // Will be all zeros when alone
+                    4  // numSteps: 4 steps
+                  );
                   
-                  // Always update when pattern changes OR when inner particles change
-                  // This ensures we clear baritone/tenor when particle becomes alone
-                  if (patternChanged || innerParticlesChanged) {
-                    const isAlone = innerParticleObjects.length === 0;
-                    console.log(`[Sequencer] Updating patterns - ${isAlone ? 'ALONE (single tone)' : `CHORD (${innerParticleObjects.length + 1} notes)`}:`, sequencerPattern);
-                    
-                    // Update each sequencer (bass, baritone, tenor) - optimized with requestAnimationFrame
-                    // Use 12-step arpeggiator patterns
-                    requestAnimationFrame(() => {
-                      // Update sequencers with arpeggiator patterns (12 steps x 12 rows)
-                      // Each voice uses all available notes, creating independent arpeggiator patterns
-                      updateMonoSeqSequencer(
-                        iframe.contentWindow,
-                        SEQUENCER_NODES.individual.bass,
-                        0, // pattern index
-                        sequencerPattern.bass, // Arpeggiator pattern: [step0[row0...row11], step1[...], ...]
-                        12  // numSteps: 12 steps for arpeggiator
-                      );
-                      
-                      updateMonoSeqSequencer(
-                        iframe.contentWindow,
-                        SEQUENCER_NODES.individual.baritone,
-                        0,
-                        sequencerPattern.baritone, // Arpeggiator pattern
-                        12  // numSteps: 12 steps
-                      );
-                      
-                      updateMonoSeqSequencer(
-                        iframe.contentWindow,
-                        SEQUENCER_NODES.individual.tenor,
-                        0,
-                        sequencerPattern.tenor, // Arpeggiator pattern
-                        12  // numSteps: 12 steps
-                      );
-                    });
-                    
-                    previousSequencerPattern = JSON.parse(JSON.stringify(sequencerPattern));
-                  }
-                }
+                  updateMonoSeqSequencer(
+                    iframe.contentWindow,
+                    SEQUENCER_NODES.individual.tenor,
+                    0,
+                    sequencerPattern.tenor, // Will be all zeros when alone
+                    4  // numSteps: 4 steps
+                  );
+                });
                 
-                previousInnerParticleIds = new Set(currentInnerParticleIds);
+                previousSequencerPattern = JSON.parse(JSON.stringify(sequencerPattern));
               }
             }
+            
+            previousInnerParticleIds = new Set(currentInnerParticleIds);
           }
-        } catch (updateError) {
-          console.error("Update loop error:", updateError);
-          console.error("Stack:", updateError.stack);
+          }
         }
       }
       
@@ -2417,20 +2118,11 @@
       }
 
       function animate() {
-        try {
-          const now = Date.now();
-          const dt = Math.min((now - lastTime) / 1000, 0.1);
-          lastTime = now;
-          update(dt);
-          animationFrame = requestAnimationFrame(animate);
-        } catch (error) {
-          console.error("Animation loop error:", error);
-          console.error("Stack:", error.stack);
-          // Restart animation loop after error
-          setTimeout(() => {
-            animationFrame = requestAnimationFrame(animate);
-          }, 100);
-        }
+        const now = Date.now();
+        const dt = Math.min((now - lastTime) / 1000, 0.1);
+        lastTime = now;
+        update(dt);
+        animationFrame = requestAnimationFrame(animate);
       }
       
       // NoiseCraft iframe setup (iframe already declared above)
@@ -2439,9 +2131,6 @@
           statusEl.textContent = "Ready. Click Start to begin.";
           noisecraftReady = true;
           await loadProjectNodes();
-          
-          // Load mappings from project file (if embedded) or localStorage
-          await streamMapper.loadMappings();
           renderMappings();
           
           // Enable auto-save for indiv_audio_map.ncft when iframe is ready
@@ -2476,29 +2165,10 @@
           // Handle save status updates from iframe
           if (event.data.status === "saved") {
             console.log(`✓ Auto-saved ${event.data.filename}`);
-            // When project is saved, we should embed mappings into it
-            // Note: Mappings are loaded from project file on load, so they persist
-            // Save mappings to localStorage as backup
-            streamMapper.saveToStorage();
+            // Optionally update UI to show save status
           } else if (event.data.status === "error") {
             const errorMsg = event.data.error || "Unknown error";
             console.warn(`✗ Failed to save ${event.data.filename}:`, errorMsg);
-          }
-        } else if (event.data?.type === "noiseCraft:requestMappings") {
-          // Send current mappings to iframe for embedding in project
-          iframe.contentWindow.postMessage({
-            type: "noiseCraft:mappings",
-            mappings: streamMapper.mappings
-          }, "*");
-        } else if (event.data?.type === "noiseCraft:projectLoaded") {
-          // Project loaded, try to load mappings from it
-          if (event.data.projectData) {
-            const projectMappings = streamMapper.storage.loadFromProjectFile(event.data.projectData);
-            if (projectMappings && projectMappings.length > 0) {
-              streamMapper.mappings = projectMappings;
-              renderMappings();
-              console.log(`Loaded ${projectMappings.length} mappings from project file`);
-            }
           }
         } else if (event.data?.type === "noiseCraft:nodeSelection") {
           // Handle node selection from NoiseCraft editor
@@ -2653,18 +2323,6 @@
       
       // Start animation loop (variables already initialized above)
       console.log("Starting animation loop...");
-      
-      // Verify particle system before starting animation
-      const initialParticles = particleSystem.getParticles();
-      if (!initialParticles || initialParticles.length === 0) {
-        console.error("CRITICAL: Particle system is empty before animation start!");
-        console.error("Particle system:", particleSystem);
-        console.error("Signal generator:", particleSystem.signalGenerator);
-        console.error("Signal generator particles:", particleSystem.signalGenerator?.particles);
-      } else {
-        console.log(`✓ Animation starting with ${initialParticles.length} particles`);
-      }
-      
       animate();
       
       } catch (error) {
