@@ -1,113 +1,9 @@
-import type { AudioState, NoiseSlot } from "@/types/game";
-
-export interface NoiseCraftParam {
-  nodeId: string;
-  paramName?: string;
-  value: number;
-}
-
-const SLOT_FALLBACKS: Record<number, { nodes: string[]; label: string }> = {
-  // 기본 매핑: 1번 슬롯 → 노드 206, 2번 슬롯 → 노드 183
-  0: { nodes: ["206"], label: "fact" },
-  1: { nodes: ["183"], label: "Vol CHORDS" },
-};
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-const format = (value: number, precision = 3) =>
-  Number(value.toFixed(precision));
-
-const computeSelfFreq = (approachValue: number) => {
-  // Slot 1 (index 0): 0.01 ~ 0.05, 접근 속도에 따라 선형 스케일
-  const min = 0.01;
-  const max = 0.05;
-  const level = clamp(approachValue, 0, 1);
-  const value = min + (max - min) * level;
-  return format(value);
-};
-
-const computeSelfGain = (approachValue: number) => {
-  // Slot 2 (index 1): 0.15 ~ 0.8, 접근 속도에 따라 선형 스케일
-  const min = 0.15;
-  const max = 0.8;
-  const level = clamp(approachValue, 0, 1);
-  const value = min + (max - min) * level;
-  return format(value);
-};
-
-const resolveSlotNodes = (
-  slots: NoiseSlot[],
-  slotIndex: number,
-  fallback: string[]
-) => {
-  const entry = slots.find((slot) => slot.slot === slotIndex);
-  if (entry && entry.nodeIds.length) {
-    return entry.nodeIds;
-  }
-  return fallback;
-};
-
-const appendSlotParams = (
-  params: NoiseCraftParam[],
-  slotIndex: number,
-  valueList: number[],
-  slots: NoiseSlot[],
-  fallbackNodes: string[]
-) => {
-  if (!valueList.length) return;
-  const nodeIds = resolveSlotNodes(slots, slotIndex, fallbackNodes);
-  nodeIds.forEach((nodeId, index) => {
-    const value =
-      valueList[index] ?? valueList[valueList.length - 1] ?? valueList[0];
-    params.push({
-      nodeId,
-      paramName: "value",
-      value,
-    });
-  });
-};
-
-export const buildNoiseCraftParams = (
-  audio: AudioState,
-  slots: NoiseSlot[] = [],
-  mode: "personal" | "global",
-  approachValue = 0
-): NoiseCraftParam[] => {
-  const params: NoiseCraftParam[] = [];
-  if (mode === "personal") {
-    appendSlotParams(
-      params,
-      0,
-      [computeSelfFreq(approachValue)],
-      slots,
-      SLOT_FALLBACKS[0].nodes
-    );
-    appendSlotParams(
-      params,
-      1,
-      [computeSelfGain(approachValue)],
-      slots,
-      SLOT_FALLBACKS[1].nodes
-    );
-  } else {
-    appendSlotParams(params, 0, [220], slots, SLOT_FALLBACKS[0].nodes);
-    appendSlotParams(params, 1, [0], slots, SLOT_FALLBACKS[1].nodes);
-  }
-
-  if (mode === "personal") {
-    const clampedApproach = format(clamp(approachValue, 0, 1));
-    ["5", "35", "107"].forEach((nodeId) =>
-      params.push({
-        nodeId,
-        paramName: "value",
-        value: clampedApproach,
-      })
-    );
-  }
-
-  return params;
-};
+import type { NoiseCraftParam } from "@/lib/audio/noiseCraftCore";
+export type {
+  NoiseCraftParam,
+  PersonalAudioMetrics,
+} from "@/lib/audio/noiseCraftCore";
+export { buildNoiseCraftParams } from "@/lib/audio/noiseCraftCore";
 
 export const postNoiseCraftParams = (
   iframe: HTMLIFrameElement | null,
@@ -144,7 +40,9 @@ export const resolveNoiseCraftEmbed = () => {
         const protocol = pageUrl.protocol;
         const port = url.port || defaultPort;
         const path = url.pathname || "/";
-        const hostPart = port ? `${pageUrl.hostname}:${port}` : pageUrl.hostname;
+        const hostPart = port
+          ? `${pageUrl.hostname}:${port}`
+          : pageUrl.hostname;
         return `${protocol}//${hostPart}${path}`;
       }
       return url.toString();
@@ -187,6 +85,13 @@ export const resolveNoiseCraftEmbed = () => {
     embedSearch.set("project", patchProjectId);
   } else {
     embedSearch.set("src", `${normalizedNcBase}/current-project`);
+  }
+  // /mobile 과 /mobile/debug 에서 iframe 모드를 구분하기 위한 view 쿼리
+  const path = window.location.pathname || "";
+  if (path.startsWith("/mobile/debug")) {
+    embedSearch.set("view", "mobile-debug");
+  } else if (path.startsWith("/mobile")) {
+    embedSearch.set("view", "mobile");
   }
   const src = `${normalizedNcBase}/public/embedded.html?${embedSearch.toString()}`;
   const embedOrigin = new URL(src, pageOrigin).origin;

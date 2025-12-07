@@ -23,17 +23,17 @@ const StartScreen = () => {
           Intersection
         </p>
         <h1 className="text-4xl font-semibold leading-tight sm:text-5xl">
-          Agar.io 기반 인터랙션을 Next.js App Router로 재구성합니다.
+          Intersection
         </h1>
         <p className="max-w-2xl text-lg text-white/70">
-          개인(모바일) 참여자와 글로벌(대형 스크린) 관전자 뷰를 분리하여 이후에 Canvas,
-          Socket, Tone.js 로직을 이식할 준비를 마쳤습니다.
+          Intersection is a collaborative music experience. Join a global
+          audience or create your own personal space.
         </p>
       </div>
 
       <div className="space-y-2">
         <label className="text-sm text-white/60" htmlFor="displayName">
-          표시 이름 (선택)
+          Your Name (optional)
         </label>
         <input
           id="displayName"
@@ -49,13 +49,13 @@ const StartScreen = () => {
           className="rounded-full bg-white px-8 py-4 text-center text-black transition hover:bg-white/90"
           onClick={() => handleEnter("personal")}
         >
-          개인 뷰 입장
+          Personal Space
         </button>
         <button
           className="rounded-full border border-white/30 px-8 py-4 text-center transition hover:border-white hover:bg-white/10"
           onClick={() => handleEnter("global")}
         >
-          글로벌 뷰 입장
+          Global Space
         </button>
       </div>
     </div>

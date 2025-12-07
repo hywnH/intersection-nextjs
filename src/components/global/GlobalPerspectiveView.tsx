@@ -158,10 +158,7 @@ const PlayerParticleSphere = ({
     const maxVisualGravityDist = 900;
     const distFactor =
       hasGravityDist && gravityDist! < maxVisualGravityDist
-        ? Math.max(
-            0,
-            1 - Math.min(gravityDist! / maxVisualGravityDist, 1)
-          )
+        ? Math.max(0, 1 - Math.min(gravityDist! / maxVisualGravityDist, 1))
         : 0;
 
     // 중력 방향 정규화 (XY 평면 기준)
@@ -209,9 +206,7 @@ const PlayerParticleSphere = ({
       // 기본 밝기: 어두운(희미한) 점을 더 많이
       const baseBrightness = 0.25 + 0.75 * Math.pow(Math.random(), 2.0);
       const gravityHighlight =
-        hasGravity && align > 0
-          ? 0.9 * distFactor * Math.pow(align, 1.4)
-          : 0;
+        hasGravity && align > 0 ? 0.9 * distFactor * Math.pow(align, 1.4) : 0;
       const brightness = Math.min(1, baseBrightness + gravityHighlight);
 
       colors[i * 3] = baseColor.r * brightness;
@@ -397,20 +392,11 @@ const GlobalSpace = ({
   const orbitDistance = computeRequiredDistance(ORBIT_ZOOM);
   const cameraHeight = Math.max(12, planeHeight * CAMERA_HEIGHT_FACTOR);
   const frontPosition = useMemo(
-    () =>
-      new THREE.Vector3(
-        0,
-        cameraHeight * 0.08,
-        frontDistance
-      ),
+    () => new THREE.Vector3(0, cameraHeight * 0.08, frontDistance),
     [frontDistance, cameraHeight]
   );
   const orbitPosition = useMemo(() => {
-    return new THREE.Vector3(
-      orbitDistance,
-      cameraHeight * 0.9,
-      0
-    );
+    return new THREE.Vector3(orbitDistance, cameraHeight * 0.9, 0);
   }, [orbitDistance, cameraHeight]);
 
   useEffect(() => {
@@ -464,9 +450,9 @@ const GlobalSpace = ({
   return (
     <div className="absolute inset-0 flex items-center justify-center">
       {players.length === 0 ? (
-        <EmptyState message="연결 대기 중..." />
+        <EmptyState message="아무도 없습니다" />
       ) : (
-        <Suspense fallback={<EmptyState message="3D 뷰 로딩 중..." />}>
+        <Suspense fallback={<EmptyState message="..." />}>
           <Canvas
             className="w-full h-full"
             style={{

@@ -34,7 +34,7 @@ interface Player {
   lastHeartbeat: number;
   vx: number;
   vy: number;
-   // 서버가 계산한 중력 방향/거리(가장 가까운 플레이어 기준)
+  // 서버가 계산한 중력 방향/거리(가장 가까운 플레이어 기준)
   gravityDirX: number;
   gravityDirY: number;
   gravityDist: number;

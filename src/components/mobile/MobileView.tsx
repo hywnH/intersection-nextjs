@@ -14,6 +14,12 @@ import {
   postNoiseCraftParams,
   resolveNoiseCraftEmbed,
 } from "@/lib/audio/noiseCraft";
+import { computePersonalAudioMetrics } from "@/lib/audio/personalMetrics";
+import {
+  generateIndividualPattern,
+  hashToneIndex,
+  type IndividualPattern,
+} from "@/lib/audio/individualSequencer";
 import type { GameState, PlayerSnapshot } from "@/types/game";
 import Hud from "./Hud";
 import StatusBanner from "./StatusBanner";
@@ -27,7 +33,6 @@ const DISABLE_INTERPOLATION =
   process.env.NEXT_PUBLIC_DISABLE_INTERP === "true";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const MAX_CLOSING_SPEED = 100; // twice the server max speed to cover head-on approaches
 type AudioStatus =
   | "idle"
   | "ready"
@@ -35,36 +40,6 @@ type AudioStatus =
   | "playing"
   | "blocked"
   | "stopped";
-
-const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
-
-const computeApproachIntensity = (state: GameState) => {
-  const selfId = state.selfId;
-  if (!selfId) return 0;
-  const selfPlayer = state.players[selfId];
-  if (!selfPlayer) return 0;
-  const { position: selfPos, velocity: selfVel } = selfPlayer.cell;
-  let minDist = Number.POSITIVE_INFINITY;
-  let nearestPlayer: PlayerSnapshot | null = null;
-  for (const player of Object.values(state.players)) {
-    if (player.id === selfId) continue;
-    const dx = player.cell.position.x - selfPos.x;
-    const dy = player.cell.position.y - selfPos.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < minDist) {
-      minDist = dist;
-      nearestPlayer = player;
-    }
-  }
-  if (!nearestPlayer || !isFinite(minDist)) return 0;
-  const safeDist = Math.max(minDist, 1e-3);
-  const dirX = (nearestPlayer.cell.position.x - selfPos.x) / safeDist;
-  const dirY = (nearestPlayer.cell.position.y - selfPos.y) / safeDist;
-  const relVelX = selfVel.x - nearestPlayer.cell.velocity.x;
-  const relVelY = selfVel.y - nearestPlayer.cell.velocity.y;
-  const closingSpeed = Math.max(relVelX * dirX + relVelY * dirY, 0);
-  return clamp01(closingSpeed / MAX_CLOSING_SPEED);
-};
 
 const buildInterpolatedState = (state: GameState): GameState => {
   if (
@@ -111,10 +86,8 @@ const buildInterpolatedState = (state: GameState): GameState => {
   const interpolatedPlayers: Record<string, PlayerSnapshot> = {};
 
   playerIds.forEach((id) => {
-    const from =
-      older.players[id] ?? newer.players[id] ?? state.players[id];
-    const to =
-      newer.players[id] ?? older.players[id] ?? state.players[id];
+    const from = older.players[id] ?? newer.players[id] ?? state.players[id];
+    const to = newer.players[id] ?? older.players[id] ?? state.players[id];
     if (!from && !to) return;
     if (!from || !to) {
       const single = (from ?? to)!;
@@ -173,6 +146,7 @@ const MobileView = () => {
   const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
   const [isProjectReady, setIsProjectReady] = useState(false);
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
+  const lastSeqPatternRef = useRef<IndividualPattern | null>(null);
 
   useEffect(() => {
     latestState.current = state;
@@ -189,14 +163,95 @@ const MobileView = () => {
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
-    const approachValue = computeApproachIntensity(state);
+    const metrics = computePersonalAudioMetrics(state);
     const params = buildNoiseCraftParams(
       state.audio,
       state.noiseSlots,
       "personal",
-      approachValue
+      metrics
     );
     postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
+
+    // MonoSeq 패턴 기반 화음 업데이트 (indiv_audio_map과 동일한 구조)
+    if (!audioIframeRef.current) return;
+    const selfId = state.selfId;
+    const selfPlayer = selfId ? state.players[selfId] : null;
+
+    // self / neighbor 톤 결정 (ID 해시 기반 12톤)
+    let selfTone: number | null = null;
+    const neighborTones: number[] = [];
+
+    if (selfId) {
+      selfTone = hashToneIndex(selfId);
+    }
+
+    if (selfPlayer && selfId) {
+      const { position: selfPos } = selfPlayer.cell;
+      const entries = Object.entries(state.players).filter(
+        ([id]) => id !== selfId
+      );
+      const neighbors = entries
+        .map(([id, p]) => {
+          const dx = p.cell.position.x - selfPos.x;
+          const dy = p.cell.position.y - selfPos.y;
+          const dist = Math.hypot(dx, dy);
+          return { id, dist };
+        })
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 2);
+
+      neighbors.forEach(({ id }) => {
+        neighborTones.push(hashToneIndex(id));
+      });
+    }
+
+    const pattern = generateIndividualPattern(selfTone, neighborTones, {
+      cluster: state.audio.cluster ?? null,
+      isInCluster:
+        !!state.audio.cluster &&
+        !!state.audio.self?.clusterId &&
+        state.audio.cluster.clusterId === state.audio.self.clusterId &&
+        (state.audio.cluster.memberCount ?? 0) >= 3,
+    });
+
+    const last = lastSeqPatternRef.current;
+    if (
+      last &&
+      last.bassRow === pattern.bassRow &&
+      last.baritoneRow === pattern.baritoneRow &&
+      last.tenorRow === pattern.tenorRow
+    ) {
+      return;
+    }
+    lastSeqPatternRef.current = pattern;
+
+    const win = audioIframeRef.current.contentWindow;
+    const targetOrigin =
+      process.env.NODE_ENV === "development" ? "*" : noiseCraftOrigin || "*";
+
+    const sendVoice = (nodeId: string, row: number | null) => {
+      const rowIdx = row ?? 0;
+      const value = row === null ? 0 : 1;
+      const NUM_STEPS = 8;
+      for (let stepIdx = 0; stepIdx < NUM_STEPS; stepIdx += 1) {
+        win?.postMessage(
+          {
+            type: "noiseCraft:toggleCell",
+            nodeId,
+            patIdx: 0,
+            stepIdx,
+            rowIdx,
+            value,
+          },
+          targetOrigin
+        );
+      }
+    };
+
+    // indiv_audio_map 기준 MonoSeq 노드 ID
+    sendVoice("172", pattern.bassRow);
+    sendVoice("176", pattern.baritoneRow);
+    sendVoice("177", pattern.tenorRow);
   }, [
     state.audio,
     state.noiseSlots,
@@ -371,6 +426,8 @@ const MobileView = () => {
     };
   }, [socket]);
 
+  const shouldShowIframe = isProjectReady && audioStatus !== "playing";
+
   // NoiseCraft 파라미터 브리지: 실제 플레이어 속도 → 주파수 매핑
   useEffect(() => {
     if (!socket) return;
@@ -417,50 +474,42 @@ const MobileView = () => {
     );
   };
 
-  const showStartAudioPrompt = isProjectReady && audioStatus !== "playing";
-  const audioStatusMessage =
-    audioStatus === "blocked"
-      ? "브라우저가 자동재생을 막았습니다. Start Audio를 눌러주세요."
-      : audioStatus === "pending"
-      ? "오디오를 활성화하는 중입니다…"
-      : "프로젝트가 로드되었습니다. Start Audio를 눌러주세요.";
-
   return (
     <div className="relative min-h-screen w-full bg-black">
       <CanvasSurface ref={canvasRef} />
       {/* <Hud state={state} /> */}
       {/* <StatusBanner state={state} /> */}
       {/* <Controls /> */}
-      <div className="pointer-events-none absolute h-0 w-0 overflow-hidden sm:pointer-events-auto sm:bottom-4 sm:left-4 sm:flex sm:h-auto sm:w-60 sm:flex-col sm:gap-2 sm:rounded-xl sm:bg-black/70 sm:p-3 sm:text-xs sm:text-white">
+      <div className="pointer-events-auto absolute bottom-4 left-4 flex h-auto w-60 flex-col gap-2 rounded-xl bg-black/70 p-3 text-xs text-white">
         {/* <p className="text-white/70">Personal Audio (NoiseCraft)</p> */}
         <iframe
           ref={audioIframeRef}
           src={noiseCraftSrc}
           width="220"
-          height="120"
+          height="56"
           allow="autoplay"
           title="NoiseCraft Personal"
-          className="h-0 w-0 opacity-0 sm:h-[120px] sm:w-[220px] sm:opacity-100"
+          className={
+            shouldShowIframe
+              ? "h-[56px] w-[220px] opacity-100"
+              : "h-0 w-[220px] opacity-0 pointer-events-none"
+          }
           style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
         />
+        {/* <button
+          type="button"
+          onClick={handleStartAudio}
+          disabled={audioStatus === "pending" || audioStatus === "playing"}
+          className="mt-2 w-full rounded-lg bg-white/90 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/60"
+        >
+          {audioStatus === "pending"
+            ? "시작 중…"
+            : audioStatus === "playing"
+            ? "재생 중"
+            : "Start Audio"}
+        </button> */}
         {/* <p className="text-white/50">Tap “Start Audio” inside panel.</p> */}
       </div>
-      {showStartAudioPrompt && (
-        <div className="pointer-events-none fixed inset-x-3 bottom-4 z-20 flex justify-center sm:inset-auto sm:bottom-6 sm:left-6 sm:right-auto sm:justify-start">
-          <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-white/10 bg-black/85 p-4 text-white shadow-lg backdrop-blur">
-            <p className="text-sm font-medium">개인 오디오</p>
-            <p className="mt-1 text-xs text-white/70">{audioStatusMessage}</p>
-            <button
-              type="button"
-              onClick={handleStartAudio}
-              disabled={audioStatus === "pending"}
-              className="mt-3 w-full rounded-xl bg-white/90 px-4 py-2 text-sm font-semibold text-black transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/60"
-            >
-              {audioStatus === "pending" ? "시작 중…" : "Start Audio"}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
