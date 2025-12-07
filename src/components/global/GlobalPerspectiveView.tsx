@@ -17,6 +17,11 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { useGameClient } from "@/lib/game/hooks";
 import type { GameState, PlayerSnapshot } from "@/types/game";
 import { analyzeClusters, type AnnotatedCluster } from "@/lib/game/clusters";
+import {
+  postNoiseCraftParams,
+  resolveNoiseCraftEmbed,
+} from "@/lib/audio/noiseCraft";
+import type { NoiseCraftParam } from "@/lib/audio/noiseCraftCore";
 
 const PLANE_SCALE = 0.03;
 const FRONT_DEPTH_SCALE = 0.03;
@@ -30,14 +35,16 @@ const FRONT_ZOOM = 6;
 const ORBIT_ZOOM = 3;
 const CAMERA_TRANSITION_MS = 1100;
 const SPRING_SEGMENTS = 26;
-const SPRING_WAVES = 4;
-const SPRING_DAMPING = 0.8;
-const SPRING_PHASE_SPEED = 0.012;
-const SPRING_IDLE_BASE = 0.5;
+const SPRING_WAVES = 1;
+const SPRING_DAMPING = 0.2;
+const SPRING_PHASE_SPEED = 0.003;
+const SPRING_IDLE_BASE = 0.3;
 const SPRING_DECAY_MS = 1600;
-const SPRING_MAX_PX = 8;
-const SPRING_GLOW_RADIUS = 0.08;
+const SPRING_MAX_PX = 10;
+const SPRING_GLOW_RADIUS = 0.8;
 const SPRING_LINE_OPACITY = 0.1;
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
 type ViewMode = "front" | "perspective";
 type PlayerEntry = GameState["players"][string];
@@ -146,8 +153,8 @@ const PlayerParticleSphere = ({
   const pointsRef = useRef<THREE.Points>(null);
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
-    // 파티클 수를 줄여서 퍼포먼스와 시인성을 조절
-    const count = 100;
+    // 반지름 주변 껍질에만 배치될 파티클 수
+    const count = 110;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const baseColor = new THREE.Color(color);
@@ -175,7 +182,7 @@ const PlayerParticleSphere = ({
     const hasGravity = distFactor > 0 && (gx !== 0 || gy !== 0);
 
     for (let i = 0; i < count; i += 1) {
-      // 균일한 구 표면 분포
+      // 균일한 구 표면 분포 (반지름 주변의 얇은 껍질에만 분포)
       const u = Math.random();
       const v = Math.random();
       const theta = 2 * Math.PI * u;
@@ -191,10 +198,11 @@ const PlayerParticleSphere = ({
         align = Math.max(0, dot);
       }
       const alignBoost = Math.pow(align, 1.6);
-
-      // 중력 방향 쪽에서만 약간 더 바깥으로 밀어내기
-      const radialBoost = 0.22 * distFactor * alignBoost;
-      const r = radius * (1 + radialBoost * 1);
+      // 반지름 주변의 얇은 띠에만 위치시키되, 중력 방향 쪽에서만 살짝 더 부풀리기
+      const shellThickness = radius * 0.08;
+      const radialOffset = (Math.random() - 0.5) * shellThickness;
+      const radialBoost = 0.14 * distFactor * alignBoost;
+      const r = radius + radialOffset + radialBoost * radius;
 
       const x = r * dirX;
       const y = r * dirY;
@@ -216,7 +224,7 @@ const PlayerParticleSphere = ({
     g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     return g;
-  }, [radius]);
+  }, [radius, color, gravityDir, gravityDist]);
 
   useFrame((_, delta) => {
     if (!pointsRef.current) return;
@@ -225,17 +233,30 @@ const PlayerParticleSphere = ({
   });
 
   return (
-    <points ref={pointsRef} position={position} geometry={geometry}>
-      <pointsMaterial
-        vertexColors
-        // 공 반지름은 유지하면서 개별 파티클 크기는 조금 줄임
-        size={radius * 0.01}
-        sizeAttenuation
-        transparent
-        // 전체 opacity는 낮게, self일 때만 조금 더 진하게
-        opacity={isSelf ? 0.85 : 0.55}
-      />
-    </points>
+    <group position={position}>
+      {/* 중앙 solid 구 (항상 하얗고 살짝 빛나게) */}
+      <mesh>
+        <sphereGeometry args={[radius * 0.55, 28, 28]} />
+        <meshStandardMaterial
+          color="#ffffff"
+          emissive="#ffffff"
+          emissiveIntensity={isSelf ? 2.0 : 1.2}
+          metalness={0.15}
+          roughness={0.25}
+        />
+      </mesh>
+      {/* 반지름 주변의 파티클 껍질 */}
+      <points ref={pointsRef} geometry={geometry}>
+        <pointsMaterial
+          vertexColors
+          size={radius * 0.013}
+          sizeAttenuation
+          transparent
+          opacity={isSelf ? 0.9 : 0.6}
+          depthWrite={false}
+        />
+      </points>
+    </group>
   );
 };
 
@@ -249,7 +270,7 @@ const PlayerPlane = ({
   worldY,
 }: PlayerPlaneProps) => {
   // 글로벌 3D 뷰에서는 공을 조금 더 크게 표시
-  const radius = Math.max(player.cell.radius * PLANE_SCALE * 3.2, 0.36);
+  const radius = 100 * PLANE_SCALE;
   return (
     <group position={[0, 0, depth]}>
       <PlayerParticleSphere
@@ -314,6 +335,16 @@ const GlobalPerspectiveView = ({
   showModeToggle = true,
 }: GlobalPerspectiveViewProps) => {
   const { state, players } = useGameClient("global");
+  const audioIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [noiseCraftOrigin, setNoiseCraftOrigin] = useState<string | null>(null);
+  const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
+  const lastParamUpdateRef = useRef(0);
+  const clusterPresenceRef = useRef<
+    Map<string, { value: number; lastSeen: number }>
+  >(new Map());
+  const paramSmoothingRef = useRef<
+    Map<string, { current: number; target: number }>
+  >(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>("front");
   const { clusters, assignments } = useMemo(
     () => analyzeClusters(players),
@@ -323,6 +354,162 @@ const GlobalPerspectiveView = ({
     () => clusters.filter((cluster) => cluster.isMulti),
     [clusters]
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const { src, origin } = resolveNoiseCraftEmbed();
+    setNoiseCraftSrc(src);
+    setNoiseCraftOrigin(origin);
+    if (audioIframeRef.current) {
+      audioIframeRef.current.src = src;
+    }
+  }, []);
+
+  // 글로벌 퍼스펙티브 뷰용 오디오 파라미터:
+  // - node 220: 가장 큰 클러스터의 "지속 강도" (0~1)
+  // - node 221: 두 번째 클러스터의 "지속 강도"
+  // - node 233: 가장 큰 클러스터의 위치 기반 패닝 (0~1)
+  // - node 240: 두 번째 클러스터의 위치 기반 패닝
+  useEffect(() => {
+    if (!noiseCraftOrigin) return;
+    if (!audioIframeRef.current) return;
+
+    const now = Date.now();
+    const INTERVAL_MS = 500;
+    const last = lastParamUpdateRef.current;
+    if (last && now - last < INTERVAL_MS) {
+      return;
+    }
+    const dtSeconds = last ? (now - last) / 1000 : INTERVAL_MS / 1000;
+    lastParamUpdateRef.current = now;
+
+    if (!clusters.length) {
+      return;
+    }
+
+    // 사람 수가 많은 순으로 상위 2개 클러스터만 사용
+    const sorted = [...clusters].sort((a, b) => a.rank - b.rank);
+    const top = sorted.filter((c) => c.isMulti).slice(0, 2);
+    if (!top.length) {
+      return;
+    }
+
+    const presenceMap = clusterPresenceRef.current;
+    const activeIds = new Set(top.map((c) => c.id));
+
+    // 존재하는 클러스터는 서서히 1로, 사라진 클러스터는 서서히 0으로
+    const GROW_SECONDS = 8;
+    const DECAY_SECONDS = 16;
+    presenceMap.forEach((entry, id) => {
+      const isActive = activeIds.has(id);
+      const rate = isActive ? 1 / GROW_SECONDS : -1 / DECAY_SECONDS;
+      entry.value = clamp01(entry.value + rate * dtSeconds);
+      entry.lastSeen = now;
+      if (!isActive && entry.value <= 0.0001) {
+        presenceMap.delete(id);
+      }
+    });
+
+    top.forEach((cluster) => {
+      if (!presenceMap.has(cluster.id)) {
+        presenceMap.set(cluster.id, { value: 0, lastSeen: now });
+      }
+    });
+
+    const first = top[0];
+    const second = top[1];
+
+    const firstPresence = first
+      ? presenceMap.get(first.id)?.value ?? 0
+      : 0;
+    const secondPresence = second
+      ? presenceMap.get(second.id)?.value ?? 0
+      : 0;
+
+    const toPan = (x: number | undefined | null, width: number) => {
+      if (!Number.isFinite(x) || width <= 0) return 0.5;
+      const n = clamp01((x as number) / width);
+      // 양 끝을 살짝 줄여 0.1~0.9 안에서만 움직이게
+      return 0.1 + n * 0.8;
+    };
+
+    const firstPan = first
+      ? toPan(first.centroid.x, state.gameSize.width)
+      : 0.5;
+    const secondPan = second
+      ? toPan(second.centroid.x, state.gameSize.width)
+      : 0.5;
+
+    const rawParams: NoiseCraftParam[] = [];
+    if (first) {
+      rawParams.push(
+        {
+          nodeId: "220",
+          paramName: "value",
+          value: firstPresence,
+        },
+        {
+          nodeId: "233",
+          paramName: "value",
+          value: firstPan,
+        }
+      );
+    }
+    if (second) {
+      rawParams.push(
+        {
+          nodeId: "221",
+          paramName: "value",
+          value: secondPresence,
+        },
+        {
+          nodeId: "240",
+          paramName: "value",
+          value: secondPan,
+        }
+      );
+    }
+
+    if (!rawParams.length) {
+      return;
+    }
+
+    // 파라미터 스무딩으로 팝/틱 노이즈 방지
+    const SMOOTHING = 0.04;
+    const smoothingMap = paramSmoothingRef.current;
+    const smooth = (nodeId: string, paramName: string, value: number) => {
+      const key = `${nodeId}:${paramName}`;
+      const existing =
+        smoothingMap.get(key) || { current: value, target: value };
+      existing.target = value;
+      const prev = existing.current;
+      const diff = existing.target - prev;
+      const next = prev + diff * SMOOTHING;
+      existing.current = next;
+      smoothingMap.set(key, existing);
+      const changed = Math.abs(next - prev) > 1e-4;
+      return { value: next, changed };
+    };
+
+    const params: NoiseCraftParam[] = rawParams
+      .map((p): NoiseCraftParam | null => {
+        const nodeId = String(p.nodeId);
+        const paramName = p.paramName || "value";
+        const { value, changed } = smooth(nodeId, paramName, p.value);
+        if (!changed) return null;
+        return {
+          ...p,
+          nodeId,
+          paramName,
+          value,
+        };
+      })
+      .filter((p): p is NoiseCraftParam => p !== null);
+
+    if (!params.length) return;
+
+    postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
+  }, [clusters, state.gameSize.width, noiseCraftOrigin]);
 
   return (
     <div
@@ -336,6 +523,23 @@ const GlobalPerspectiveView = ({
       }}
     >
       <GlobalSpace state={state} players={players} viewMode={viewMode} />
+      {/* NoiseCraft Embedded (글로벌 퍼스펙티브용 오디오) */}
+      <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white">
+        <div className="mb-1 text-white/70">NoiseCraft · Global</div>
+        <iframe
+          ref={audioIframeRef}
+          src={noiseCraftSrc}
+          width={260}
+          height={64}
+          allow="autoplay"
+          title="NoiseCraft Global Perspective"
+          className="h-[64px] w-[260px]"
+          style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
+        />
+        <p className="mt-1 text-[11px] text-white/50">
+          패널 안에서 Start Audio 클릭
+        </p>
+      </div>
       {showModeToggle && (
         <ModeToggle viewMode={viewMode} onChange={setViewMode} />
       )}
@@ -461,7 +665,8 @@ const GlobalSpace = ({
             }}
             linear
             gl={{ alpha: true, antialias: true }}
-            dpr={1}
+            // dpr를 올려 글로벌 뷰 픽셀을 더 선명하게
+            dpr={[1, 2]}
             camera={{
               position: [
                 0,
@@ -710,19 +915,16 @@ const CollisionGlowEffect = ({
   };
 }) => {
   const lightRef = useRef<THREE.PointLight>(null);
-  const glowInnerRef = useRef<THREE.Mesh>(null);
   const glowOuterRef = useRef<THREE.Mesh>(null);
-  const coreRef = useRef<THREE.Mesh>(null);
   const sparkleRef = useRef<THREE.Points>(null);
-  const crossFilterRef1 = useRef<THREE.Mesh>(null);
-  const crossFilterRef2 = useRef<THREE.Mesh>(null);
 
   // 흰색 별빛 (약간의 따뜻함이 가미된 순수한 흰색)
   const starColor = useMemo(() => new THREE.Color(1.0, 0.98, 0.95), []); // 약간 따뜻한 흰색
   const pureWhite = useMemo(() => new THREE.Color(1, 1, 1), []);
 
   useFrame(() => {
-    if (!lightRef.current || !glowInnerRef.current || !glowOuterRef.current || !coreRef.current) return;
+    if (!lightRef.current || !glowOuterRef.current)
+      return;
     const now = performance.now();
     
     // 부드러운 펄스 효과 (별이 깜빡이는 것처럼 - 더 자연스럽게)
@@ -742,55 +944,16 @@ const CollisionGlowEffect = ({
     lightRef.current.color = pureWhite;
     lightRef.current.distance = 100 + mark.radius * PLANE_SCALE * 6;
 
-    // 코어 (별의 핵심 - 매우 작고 밝게, 입체감 있게)
-    const coreScale = 0.3 + 0.08 * Math.sin(now * 0.0035);
-    if (coreRef.current.scale.x !== coreScale) {
-      coreRef.current.scale.setScalar(coreScale);
-    }
-    const coreMaterial = coreRef.current.material as THREE.MeshBasicMaterial;
-    if (coreMaterial) {
-      const coreBrightness = 1.0 + 0.3 * combinedPulse;
-      coreMaterial.opacity = 1.0 * fadeOut;
-      coreMaterial.color = pureWhite.clone().multiplyScalar(coreBrightness);
-    }
-
-    // 내부 글로우 구체 (별의 밝은 핵심 주변 - 중간 밝기)
-    const glowInnerScale = 0.7 + 0.15 * Math.sin(now * 0.0025);
-    if (glowInnerRef.current.scale.x !== glowInnerScale) {
-      glowInnerRef.current.scale.setScalar(glowInnerScale);
-    }
-    const glowInnerMaterial = glowInnerRef.current.material as THREE.MeshBasicMaterial;
-    if (glowInnerMaterial) {
-      glowInnerMaterial.opacity = 0.6 * fadeOut * combinedPulse;
-      glowInnerMaterial.color = pureWhite;
-    }
-
-    // 외부 글로우 구체 (별의 빛 확산 - 부드럽고 넓게, 입체감)
-    const glowOuterScale = 1.2 + 0.25 * Math.sin(now * 0.002);
-    if (glowOuterRef.current.scale.x !== glowOuterScale) {
-      glowOuterRef.current.scale.setScalar(glowOuterScale);
-    }
-    const glowOuterMaterial = glowOuterRef.current.material as THREE.MeshBasicMaterial;
-    if (glowOuterMaterial) {
-      glowOuterMaterial.opacity = 0.25 * fadeOut * combinedPulse;
-      glowOuterMaterial.color = pureWhite;
-    }
-
-    // 크로스 필터 효과 (별이 빛을 사방으로 퍼뜨리는 느낌)
-    if (crossFilterRef1.current) {
-      crossFilterRef1.current.rotation.z = now * 0.0003;
-      const crossMaterial1 = crossFilterRef1.current.material as THREE.MeshBasicMaterial;
-      if (crossMaterial1) {
-        crossMaterial1.opacity = 0.15 * fadeOut * combinedPulse;
-      }
-    }
-    if (crossFilterRef2.current) {
-      crossFilterRef2.current.rotation.z = Math.PI / 2 + now * -0.00025;
-      const crossMaterial2 = crossFilterRef2.current.material as THREE.MeshBasicMaterial;
-      if (crossMaterial2) {
-        crossMaterial2.opacity = 0.15 * fadeOut * combinedPulse;
-      }
-    }
+  //   // 외부 글로우 구체 (별의 빛 확산 - 가운데는 비우고, 바깥만 살짝 밝게)
+  //   const glowOuterScale = 1 + 0.2 * Math.sin(now * 0.002);
+  //   if (glowOuterRef.current.scale.x !== glowOuterScale) {
+  //     glowOuterRef.current.scale.setScalar(glowOuterScale);
+  //   }
+  //   const glowOuterMaterial = glowOuterRef.current.material as THREE.MeshBasicMaterial;
+  //   if (glowOuterMaterial) {
+  //     glowOuterMaterial.opacity = 0.005 * fadeOut * combinedPulse;
+  //     glowOuterMaterial.color = pureWhite;
+  //   }
   });
 
   // 초기 위치
@@ -849,60 +1012,16 @@ const CollisionGlowEffect = ({
         color={pureWhite}
       />
       
-      {/* 외부 글로우 구체 - 별의 빛 확산 (가장 넓고 부드럽게) */}
+      {/* 외부 글로우 구체 - 별의 빛 확산 (가운데 구 없이, 바깥만 은은하게)
       <mesh ref={glowOuterRef}>
-        <sphereGeometry args={[mark.radius * PLANE_SCALE * 1.2, 32, 32]} />
+        <sphereGeometry args={[mark.radius * PLANE_SCALE * 1.4, 32, 32]} />
         <meshBasicMaterial
           color={pureWhite}
           transparent
-          opacity={0.25}
+          opacity={0.16}
           toneMapped={false}
         />
-      </mesh>
-
-      {/* 내부 글로우 구체 - 별의 밝은 핵심 주변 */}
-      <mesh ref={glowInnerRef}>
-        <sphereGeometry args={[mark.radius * PLANE_SCALE * 0.7, 32, 32]} />
-        <meshBasicMaterial
-          color={pureWhite}
-          transparent
-          opacity={0.6}
-          toneMapped={false}
-        />
-      </mesh>
-      
-      {/* 코어 - 별의 핵심 (매우 작고 밝게, 입체감) */}
-      <mesh ref={coreRef}>
-        <sphereGeometry args={[mark.radius * PLANE_SCALE * 0.12, 20, 20]} />
-        <meshBasicMaterial
-          color={pureWhite}
-          transparent
-          opacity={1.0}
-          toneMapped={false}
-        />
-      </mesh>
-
-      {/* 크로스 필터 효과 1 - 별이 빛을 사방으로 퍼뜨리는 느낌 */}
-      <mesh ref={crossFilterRef1} rotation={[0, 0, 0]}>
-        <boxGeometry args={[mark.radius * PLANE_SCALE * 2.5, mark.radius * PLANE_SCALE * 0.08, 0.01]} />
-        <meshBasicMaterial
-          color={pureWhite}
-          transparent
-          opacity={0.15}
-          toneMapped={false}
-        />
-      </mesh>
-
-      {/* 크로스 필터 효과 2 (수직) */}
-      <mesh ref={crossFilterRef2} rotation={[0, 0, Math.PI / 2]}>
-        <boxGeometry args={[mark.radius * PLANE_SCALE * 2.5, mark.radius * PLANE_SCALE * 0.08, 0.01]} />
-        <meshBasicMaterial
-          color={pureWhite}
-          transparent
-          opacity={0.15}
-          toneMapped={false}
-        />
-      </mesh>
+      </mesh> */}
 
       {/* 반짝이는 파티클 (별 주변의 작은 반짝임) */}
       {mark.age < 0.99 && (

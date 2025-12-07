@@ -338,10 +338,22 @@ const renderPlayers = ({
 
     // 개인 뷰에서 자기 공에 파티클 효과 적용
     if (isPersonal && isSelf) {
-      // 연결선이 공 내부에서 보이지 않도록, 먼저 공 뒤에 작은 검은 원을 깔아준다
+      // 연결선이 공 내부에서 보이지 않도록, 공 뒤에 넓은 검은 그라데이션 배경을 깔아준다
+      const bgRadius = radius * 5;
+      const bgGradient = ctx.createRadialGradient(
+        screenPos.x,
+        screenPos.y,
+        0,
+        screenPos.x,
+        screenPos.y,
+        bgRadius
+      );
+      bgGradient.addColorStop(0, "rgba(0,0,0,0.95)");
+      bgGradient.addColorStop(0.55, "rgba(0,0,0,0.7)");
+      bgGradient.addColorStop(1, "rgba(0,0,0,0)");
       ctx.beginPath();
-      ctx.arc(screenPos.x, screenPos.y, radius * 0.95, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0,0,0,1)";
+      ctx.arc(screenPos.x, screenPos.y, bgRadius, 0, Math.PI * 2);
+      ctx.fillStyle = bgGradient;
       ctx.fill();
 
       renderParticleBall(
@@ -481,12 +493,14 @@ const renderCollisionConnections = ({
       ? performance.now() * 0.012
       : Date.now() * 0.012;
   const wallNow = Date.now();
-  // 개인 뷰에서는 연결 선을 더 가늘고 희미하게
-  ctx.lineWidth = state.mode === "personal" ? 0.9 : 2.2;
+  // 기본 선 스타일
+  ctx.lineWidth = state.mode === "personal" ? 1.2 : 2.2;
   ctx.strokeStyle =
     state.mode === "personal"
-      ? "rgba(255,255,255,0.25)"
+      ? "rgba(255,255,255,0.4)"
       : "rgba(255,255,255,0.5)";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
   // 그림자 효과 제거
   ctx.shadowColor = "rgba(0,0,0,0)";
   ctx.shadowBlur = 0;
@@ -515,21 +529,88 @@ const renderCollisionConnections = ({
       x: planeB.x * (1 - blend) + lineBx * blend,
       y: planeB.y * (1 - blend) + laneBy * blend,
     };
-    const amplitude = computeSpringAmplitude({
-      startedAt: pair.startedAt,
-      lastEvent: pair.lastEvent,
-      now: wallNow,
-    });
-    drawSpringLine(ctx, posA, posB, {
-      phase,
-      amplitude,
-      segments: 20,
-      damping: 2.1,
-      waves: 4,
-    });
+    if (state.mode === "personal") {
+      // 개인 뷰: 스프링 대신 일직선 빛 기둥 느낌으로
+      const dx = posB.x - posA.x;
+      const dy = posB.y - posA.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+
+      // self / 상대 방향 판정
+      const isSelfA = selfId && a.id === selfId;
+      const selfPos = isSelfA ? posA : posB;
+      const otherPos = isSelfA ? posB : posA;
+
+      // 부드러운 외곽 글로우 (단색 흰색 계열, 중앙 코어 라인 없이)
+      const steps = 6;
+      for (let i = 0; i < steps; i += 1) {
+        const t = i / (steps - 1);
+        const alpha = 0.18 * (1 - t);
+        const width = 10 + 18 * t;
+        const glowGrad = ctx.createLinearGradient(
+          otherPos.x,
+          otherPos.y,
+          selfPos.x,
+          selfPos.y
+        );
+        glowGrad.addColorStop(0, `rgba(255,255,255,${alpha})`);
+        glowGrad.addColorStop(1, "rgba(255,255,255,0.0)");
+        ctx.strokeStyle = glowGrad;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        // 양 끝에서 약간 안쪽으로 들어와서 끝부분이 더 부드럽게
+        const inset = 8 + 16 * t;
+        const startX = otherPos.x - ux * inset;
+        const startY = otherPos.y - uy * inset;
+        const endX = selfPos.x + ux * inset;
+        const endY = selfPos.y + uy * inset;
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+    } else if (state.mode === "global") {
+      // 글로벌 뷰: 모바일과 유사한 직선 빛줄기 표현 (양방향 대칭)
+      const dx = posB.x - posA.x;
+      const dy = posB.y - posA.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+
+      const steps = 5;
+      for (let i = 0; i < steps; i += 1) {
+        const t = i / (steps - 1);
+        const alpha = 0.16 * (1 - t);
+        const width = 6 + 14 * t;
+        ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        const inset = 6 + 14 * t;
+        const startX = posA.x + ux * inset;
+        const startY = posA.y + uy * inset;
+        const endX = posB.x - ux * inset;
+        const endY = posB.y - uy * inset;
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+    } else {
+      const amplitude = computeSpringAmplitude({
+        startedAt: pair.startedAt,
+        lastEvent: pair.lastEvent,
+        now: wallNow,
+      });
+      drawSpringLine(ctx, posA, posB, {
+        phase,
+        amplitude,
+        segments: 20,
+        damping: 2.1,
+        waves: 4,
+      });
+    }
 
     // 글로벌/기타 뷰에서만 연결선 끄트머리 작은 점을 그려서 강조
-    if (state.mode !== "personal") {
+    if (state.mode !== "personal" && state.mode !== "global") {
       ctx.fillStyle = "rgba(255,255,255,0.9)";
       const dotRadius = blend > 0.7 ? 4.5 : 6;
       ctx.beginPath();
@@ -560,7 +641,7 @@ const renderCollisionMarks = ({
 }) => {
   ctx.save();
   const now = Date.now();
-  const DURATION = 300000; // 5분(300초) 동안 빛의 흔적 유지
+  const DURATION = 100000; // 5분(300초) 동안 빛의 흔적 유지
   state.collisionMarks.forEach((mark) => {
     const age = (now - mark.timestamp) / DURATION;
     if (age >= 1) return;
@@ -607,19 +688,32 @@ const renderSelfTrail = ({
   if (!state.selfId) return;
   const trail = state.cellTrails[state.selfId];
   if (!trail || trail.points.length < 2) return;
+  const selfPlayer = state.players[state.selfId];
+  if (!selfPlayer) return;
+
+  // 움직임 크기에 따라 트레일 강도 조절 (느리면 거의/완전히 사라지게)
+  const speed = Math.hypot(
+    selfPlayer.cell.velocity.x,
+    selfPlayer.cell.velocity.y
+  );
+  const MIN_SPEED = 40; // 이보다 느리면 트레일 없음
+  const FULL_SPEED = 200; // 이 이상이면 최대 강도
+  const speedFactor = clamp01((speed - MIN_SPEED) / (FULL_SPEED - MIN_SPEED));
+  if (speedFactor <= 0) {
+    return;
+  }
+
   const now = Date.now();
-  const MAX_AGE = 5000; // ms
+  const MAX_AGE = 7000; // ms (조금 더 오래 남도록)
   ctx.save();
-  // 작은 파티클 점으로만 자기 궤적을 표현
-  trail.points.forEach((point, idx) => {
+  // 최근 포인트를 모아 메인 곡선을 만든 뒤,
+  // 그 곡선을 기준으로 여러 가닥을 좌우로 퍼뜨려서 "갈라지는 트레일" 표현
+  const recent: { x: number; y: number; life: number }[] = [];
+  trail.points.forEach((point) => {
     const age = now - point.t;
     if (age > MAX_AGE) return;
-    // 오래된 점일수록 더 투명하고 더 작게
     const life = 1 - age / MAX_AGE;
-    const baseAlpha = 0.7;
-    const alpha = baseAlpha * life;
-    if (alpha <= 0.02) return;
-
+    if (life <= 0) return;
     const pos = project(
       state,
       width,
@@ -627,15 +721,73 @@ const renderSelfTrail = ({
       { x: point.x, y: point.y },
       overrides
     );
-
-    const baseSize = 0.4;
-    const size = baseSize * (0.4 + 0.6 * life);
-
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-    ctx.fill();
+    recent.push({ x: pos.x, y: pos.y, life });
   });
+
+  if (recent.length >= 2) {
+    // 각 포인트에서의 법선(normal) 계산
+    const normals: { x: number; y: number }[] = [];
+    for (let i = 0; i < recent.length; i += 1) {
+      const a = recent[Math.max(0, i - 1)];
+      const b = recent[Math.min(recent.length - 1, i + 1)];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      normals.push({ x: nx, y: ny });
+    }
+
+    // 여러 줄로 퍼지는 곡선: 중앙선 포함 좌우 라인 (3가닥만 사용)
+    const strandOffsets = [-0.6, 0, 0.6];
+    const baseSpread = Math.min(4, 30 * speedFactor);
+    // 각 가닥마다 유효한 길이(최근 위치에서 얼마나 멀리까지 이어질지)를 다르게 설정
+    const strandCutoffs = strandOffsets.map((offset, idx) => {
+      // 중앙선은 가장 길게, 양 옆은 조금 더 짧게
+      const t = Math.abs(offset) / Math.max(0.0001, Math.max(...strandOffsets.map(Math.abs)));
+      return 0.02 + 0.18 * t; // 0.02 ~ 0.2
+    });
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    strandOffsets.forEach((offsetScale, idx) => {
+      ctx.beginPath();
+      for (let i = 0; i < recent.length; i += 1) {
+        const p = recent[i];
+        const n = normals[i];
+        const t = i / (recent.length - 1);
+        const cutoff = strandCutoffs[idx];
+        // 꼬리 쪽(오래된 포인트)은 더 많이 벌어지고, 현재 위치 쪽은 모이게
+        const diverge = (1 - p.life) * baseSpread * offsetScale;
+        // 약간의 울렁거리는 느낌을 위해, 시간/라인/인덱스 기반 노이즈로 진동량을 섞어준다
+        const noise = simpleNoise(
+          i * 0.35 + idx * 1.1,
+          idx * 0.6,
+          now * 0.001
+        );
+        const wobble =
+          (4 + 10 * noise) * (1 - t) * speedFactor; // 라인마다/구간마다 다른 크기의 흔들림
+        const x = p.x + n.x * (diverge + wobble);
+        const y = p.y + n.y * (diverge + wobble);
+        // 이 가닥의 "보이는 구간" 내에서 0~1로 다시 정규화된 life
+        const normLife = clamp01(
+          (p.life - cutoff) / Math.max(0.0001, 1 - cutoff)
+        );
+        // 꼬리로 갈수록 normLife가 점점 0에 수렴하면서 알파도 자연스럽게 0까지 페이드아웃
+        const alpha = 0.1 * t * normLife * speedFactor;
+        const widthScale = 0.7 * normLife;
+        ctx.lineWidth = (0.4 + 1.0 * t) * (0.4 + 0.6 * speedFactor) * widthScale;
+        ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    });
+  }
   ctx.restore();
 };
 
