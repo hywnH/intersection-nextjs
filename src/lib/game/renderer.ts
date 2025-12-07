@@ -560,7 +560,7 @@ const renderCollisionMarks = ({
 }) => {
   ctx.save();
   const now = Date.now();
-  const DURATION = 6000;
+  const DURATION = 300000; // 5분(300초) 동안 빛의 흔적 유지
   state.collisionMarks.forEach((mark) => {
     const age = (now - mark.timestamp) / DURATION;
     if (age >= 1) return;

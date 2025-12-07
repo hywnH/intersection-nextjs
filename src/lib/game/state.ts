@@ -163,8 +163,9 @@ export const gameReducer = (
       };
     case "PUSH_COLLISION_EVENTS": {
       const now = Date.now();
+      // 5분(300000ms) 동안 빛의 흔적 유지
       const merged = [...state.collisionMarks, ...action.marks].filter(
-        (mark) => now - mark.timestamp < 8000
+        (mark) => now - mark.timestamp < 300000
       );
       const highlight = action.highlight
         ? Math.max(state.selfHighlightUntil, now + 1200)
