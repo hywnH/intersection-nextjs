@@ -1,4 +1,7 @@
 intersection-nextjs.site, www.intersection-nextjs.site {
+  @socket path /socket*
+  reverse_proxy @socket game:3001
+
   reverse_proxy web:3000
 }
 
