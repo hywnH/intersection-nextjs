@@ -10,8 +10,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "prod:build": "yarn ws:build && yarn build",
+    "prod:start": "sh -c 'yarn workspace realtime start & next start'",
+    "prod": "yarn prod:build && yarn prod:start",
     "lint": "eslint",
-    "ws:build": "yarn workspaces foreach -p -A run build || true",
+    "ws:build": "yarn workspaces run build || true",
     "ws:dev": "echo 'Use docker compose for dev (web+realtime). Noisecraft dev: yarn workspace noisecraft dev'"
   },
   "dependencies": {

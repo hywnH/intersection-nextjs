@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   basePath: "",
   // trailing slash 비활성화
   trailingSlash: false,
+
+  env: {
+    NEXT_PUBLIC_ENABLE_PROFILER_IN_DEV: "false",
+  },
 };
 
 export default nextConfig;

@@ -500,7 +500,7 @@ const emitAudioGlobal = (socketId: string) => {
 
 const pairKey = (a: string, b: string) => (a < b ? `${a}:${b}` : `${b}:${a}`);
 
-const EVENT_COOLDOWN_MS = 600;
+const EVENT_COOLDOWN_MS = 1200;
 
 function detectCollisions() {
   const arr = Array.from(players.values());

@@ -190,8 +190,10 @@ const MobileView = () => {
     const smoothingMap = paramSmoothingRef.current;
     const smooth = (nodeId: string, paramName: string, value: number) => {
       const key = `${nodeId}:${paramName}`;
-      const existing =
-        smoothingMap.get(key) || { current: value, target: value };
+      const existing = smoothingMap.get(key) || {
+        current: value,
+        target: value,
+      };
       existing.target = value;
       const prev = existing.current;
       const diff = existing.target - prev;
@@ -307,7 +309,14 @@ const MobileView = () => {
     sendVoice("172", pattern.bassRow);
     sendVoice("176", pattern.baritoneRow);
     sendVoice("177", pattern.tenorRow);
-  }, [state.audio, state.noiseSlots, state.players, state.selfId, noiseCraftOrigin, isDebugView]);
+  }, [
+    state.audio,
+    state.noiseSlots,
+    state.players,
+    state.selfId,
+    noiseCraftOrigin,
+    isDebugView,
+  ]);
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
@@ -365,17 +374,17 @@ const MobileView = () => {
       const dt = time - lastTime;
       if (dt >= FRAME_INTERVAL_MS) {
         lastTime = time;
-      const baseState = latestState.current;
-      const renderState =
-        baseState.mode === "personal"
-          ? buildInterpolatedState(baseState)
-          : baseState;
-      renderScene({
-        ctx,
-        state: renderState,
-        width: logicalWidth,
-        height: logicalHeight,
-      });
+        const baseState = latestState.current;
+        const renderState =
+          baseState.mode === "personal"
+            ? buildInterpolatedState(baseState)
+            : baseState;
+        renderScene({
+          ctx,
+          state: renderState,
+          width: logicalWidth,
+          height: logicalHeight,
+        });
       }
       animationRef.current = requestAnimationFrame(loop);
     };

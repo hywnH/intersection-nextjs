@@ -26,6 +26,9 @@ export const metadata: Metadata = {
   description:
     "인터섹션(agar.io 기반 실험)의 Next.js 마이그레이션 베이스. 개인/글로벌 뷰 라우팅만 우선 구성했습니다.",
   applicationName: "Intersection",
+  icons: {
+    icon: "/globe.svg",
+  },
 };
 
 export default function RootLayout({
