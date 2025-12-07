@@ -56,9 +56,9 @@ services:
 
   noisecraft:
     image: node:24-alpine
-    cpus: 1
-    mem_limit: 1g
-    memswap_limit: 1g
+    cpus: 4
+    mem_limit: 4g
+    memswap_limit: 4g
     working_dir: /srv
     ports:
       - "4000:4000"
