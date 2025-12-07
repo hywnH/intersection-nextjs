@@ -452,6 +452,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "http://127.0.0.1:7773",
   "https://intersection-web.onrender.com",
   "https://intersection-audio.onrender.com",
+  "https://intersection-nextjs.site",
+  "https://www.intersection-nextjs.site",
 ];
 
 const parseOrigins = (raw?: string) =>
