@@ -14,6 +14,7 @@ import {
   postNoiseCraftParams,
   resolveNoiseCraftEmbed,
 } from "@/lib/audio/noiseCraft";
+import type { NoiseCraftParam } from "@/lib/audio/noiseCraftCore";
 import { generateDistancePanParams } from "@/lib/audio/streamMapping";
 import {
   generateIndividualPattern,
@@ -174,8 +175,7 @@ const MobileView = () => {
 
     // test-workspace와 유사하게 파라미터 업데이트를 스로틀링
     const now = Date.now();
-    // 약 3회/초 업데이트
-    const PARAM_UPDATE_INTERVAL_MS = 333;
+    const PARAM_UPDATE_INTERVAL_MS = 500;
     if (now - lastParamUpdateRef.current < PARAM_UPDATE_INTERVAL_MS) {
       return;
     }
@@ -186,7 +186,7 @@ const MobileView = () => {
 
     // 파라미터 스무딩(클릭/팝 노이즈 방지)
     // 더 강한 스무딩: 천천히 따라가도록 작은 값 사용
-    const SMOOTHING_FACTOR = 0.05;
+    const SMOOTHING_FACTOR = 0.02;
     const smoothingMap = paramSmoothingRef.current;
     const smooth = (nodeId: string, paramName: string, value: number) => {
       const key = `${nodeId}:${paramName}`;
@@ -202,20 +202,20 @@ const MobileView = () => {
       return { value: next, changed };
     };
 
-    const combined = mappedParams
-      .map((p) => {
-      const nodeId = String(p.nodeId);
-      const paramName = p.paramName || "value";
-      const { value, changed } = smooth(nodeId, paramName, p.value);
-      if (!changed) return null;
-      return {
-        ...p,
-        nodeId,
-        paramName,
-        value,
-      };
-    })
-      .filter((p): p is (typeof mappedParams)[number] => p !== null);
+    const combined: NoiseCraftParam[] = mappedParams
+      .map((p): NoiseCraftParam | null => {
+        const nodeId = String(p.nodeId);
+        const paramName = p.paramName || "value";
+        const { value, changed } = smooth(nodeId, paramName, p.value);
+        if (!changed) return null;
+        return {
+          ...p,
+          nodeId,
+          paramName,
+          value,
+        };
+      })
+      .filter((p): p is NoiseCraftParam => p !== null);
 
     if (!combined.length) {
       return;
