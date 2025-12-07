@@ -556,6 +556,12 @@ const GlobalSpace = ({
               fadeStrength={1.2}
             />
             <CollisionSprings3D state={state} lookup={playerWorldLookup} />
+            <CollisionMarks3D
+              state={state}
+              planeWidth={planeWidth}
+              planeHeight={planeHeight}
+              lookup={playerWorldLookup}
+            />
             <PostProcessing />
             {planeData.map(({ player, depth, worldX, worldY }) => (
               <PlayerPlane
@@ -628,6 +634,598 @@ const CollisionSprings3D = ({
         <CollisionSpring3D key={spring.id} {...spring} />
       ))}
     </>
+  );
+};
+
+// 충돌 마크를 위한 빛나는 효과와 파티클 시스템
+const CollisionMarks3D = ({
+  state,
+  planeWidth,
+  planeHeight,
+  lookup,
+}: {
+  state: GameState;
+  planeWidth: number;
+  planeHeight: number;
+  lookup: Map<string, { worldX: number; worldY: number; depth: number }>;
+}) => {
+  const marks = useMemo(() => {
+    const now = Date.now();
+    const DURATION = 300000; // 5분(300초) 동안 유지
+    return state.collisionMarks
+      .map((mark) => {
+        const age = (now - mark.timestamp) / DURATION;
+        if (age >= 1) return null;
+        const worldX = toWorldX(mark.position.x, state.gameSize.width);
+        const worldY = toWorldY(mark.position.y, state.gameSize.height);
+        const players = mark.players
+          ? mark.players
+              .map((id) => state.players[id])
+              .filter((p) => p !== undefined)
+          : [];
+        return {
+          ...mark,
+          worldX,
+          worldY,
+          age,
+          players,
+        };
+      })
+      .filter((mark): mark is NonNullable<typeof mark> => mark !== null);
+  }, [state.collisionMarks, state.gameSize, state.players]);
+
+  if (!marks.length) return null;
+
+  return (
+    <>
+      {marks.map((mark) => (
+        <CollisionGlowEffect key={mark.id} mark={mark} />
+      ))}
+      {marks.map((mark) => (
+        <CollisionParticleBurst key={`particles-${mark.id}`} mark={mark} />
+      ))}
+      {marks.map((mark) => (
+        <CollisionObjectParticles
+          key={`object-particles-${mark.id}`}
+          mark={mark}
+          state={state}
+          lookup={lookup}
+        />
+      ))}
+    </>
+  );
+};
+
+// 충돌 위치의 빛나는 효과 (우주에서 빛나는 별처럼)
+const CollisionGlowEffect = ({
+  mark,
+}: {
+  mark: {
+    id: string;
+    worldX: number;
+    worldY: number;
+    age: number;
+    radius: number;
+    players: PlayerSnapshot[];
+  };
+}) => {
+  const lightRef = useRef<THREE.PointLight>(null);
+  const glowInnerRef = useRef<THREE.Mesh>(null);
+  const glowOuterRef = useRef<THREE.Mesh>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
+  const sparkleRef = useRef<THREE.Points>(null);
+  const crossFilterRef1 = useRef<THREE.Mesh>(null);
+  const crossFilterRef2 = useRef<THREE.Mesh>(null);
+
+  // 흰색 별빛 (약간의 따뜻함이 가미된 순수한 흰색)
+  const starColor = useMemo(() => new THREE.Color(1.0, 0.98, 0.95), []); // 약간 따뜻한 흰색
+  const pureWhite = useMemo(() => new THREE.Color(1, 1, 1), []);
+
+  useFrame(() => {
+    if (!lightRef.current || !glowInnerRef.current || !glowOuterRef.current || !coreRef.current) return;
+    const now = performance.now();
+    
+    // 부드러운 펄스 효과 (별이 깜빡이는 것처럼 - 더 자연스럽게)
+    const pulse1 = 0.88 + 0.12 * Math.sin(now * 0.0018);
+    const pulse2 = 0.92 + 0.08 * Math.cos(now * 0.0012);
+    const pulse3 = 0.9 + 0.1 * Math.sin(now * 0.0025);
+    const combinedPulse = (pulse1 + pulse2 + pulse3) / 3;
+    
+    // 나이에 따라 매우 천천히 사라짐 (5분에 걸쳐)
+    const life = 1 - mark.age;
+    // 매우 부드러운 감쇠
+    const fadeOut = Math.pow(life, 0.3);
+
+    // 빛의 강도 (별처럼 강렬하지만 부드럽게)
+    const intensity = 30 * combinedPulse * fadeOut;
+    lightRef.current.intensity = intensity;
+    lightRef.current.color = pureWhite;
+    lightRef.current.distance = 100 + mark.radius * PLANE_SCALE * 6;
+
+    // 코어 (별의 핵심 - 매우 작고 밝게, 입체감 있게)
+    const coreScale = 0.3 + 0.08 * Math.sin(now * 0.0035);
+    if (coreRef.current.scale.x !== coreScale) {
+      coreRef.current.scale.setScalar(coreScale);
+    }
+    const coreMaterial = coreRef.current.material as THREE.MeshBasicMaterial;
+    if (coreMaterial) {
+      const coreBrightness = 1.0 + 0.3 * combinedPulse;
+      coreMaterial.opacity = 1.0 * fadeOut;
+      coreMaterial.color = pureWhite.clone().multiplyScalar(coreBrightness);
+    }
+
+    // 내부 글로우 구체 (별의 밝은 핵심 주변 - 중간 밝기)
+    const glowInnerScale = 0.7 + 0.15 * Math.sin(now * 0.0025);
+    if (glowInnerRef.current.scale.x !== glowInnerScale) {
+      glowInnerRef.current.scale.setScalar(glowInnerScale);
+    }
+    const glowInnerMaterial = glowInnerRef.current.material as THREE.MeshBasicMaterial;
+    if (glowInnerMaterial) {
+      glowInnerMaterial.opacity = 0.6 * fadeOut * combinedPulse;
+      glowInnerMaterial.color = pureWhite;
+    }
+
+    // 외부 글로우 구체 (별의 빛 확산 - 부드럽고 넓게, 입체감)
+    const glowOuterScale = 1.2 + 0.25 * Math.sin(now * 0.002);
+    if (glowOuterRef.current.scale.x !== glowOuterScale) {
+      glowOuterRef.current.scale.setScalar(glowOuterScale);
+    }
+    const glowOuterMaterial = glowOuterRef.current.material as THREE.MeshBasicMaterial;
+    if (glowOuterMaterial) {
+      glowOuterMaterial.opacity = 0.25 * fadeOut * combinedPulse;
+      glowOuterMaterial.color = pureWhite;
+    }
+
+    // 크로스 필터 효과 (별이 빛을 사방으로 퍼뜨리는 느낌)
+    if (crossFilterRef1.current) {
+      crossFilterRef1.current.rotation.z = now * 0.0003;
+      const crossMaterial1 = crossFilterRef1.current.material as THREE.MeshBasicMaterial;
+      if (crossMaterial1) {
+        crossMaterial1.opacity = 0.15 * fadeOut * combinedPulse;
+      }
+    }
+    if (crossFilterRef2.current) {
+      crossFilterRef2.current.rotation.z = Math.PI / 2 + now * -0.00025;
+      const crossMaterial2 = crossFilterRef2.current.material as THREE.MeshBasicMaterial;
+      if (crossMaterial2) {
+        crossMaterial2.opacity = 0.15 * fadeOut * combinedPulse;
+      }
+    }
+  });
+
+  // 초기 위치
+  const position: [number, number, number] = [
+    mark.worldX,
+    mark.worldY,
+    0.3,
+  ];
+
+  // 반짝이는 파티클 (별 주변의 작은 반짝임 - 흰색)
+  const sparkleGeometry = useMemo(() => {
+    const count = 40;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i += 1) {
+      const radius = mark.radius * PLANE_SCALE * (1.8 + Math.random() * 1.2);
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+
+      positions[i * 3] = Math.sin(phi) * Math.cos(theta) * radius;
+      positions[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * radius;
+      positions[i * 3 + 2] = Math.cos(phi) * radius;
+
+      // 흰색 계열 (약간의 밝기 변화)
+      const brightness = 0.9 + Math.random() * 0.1;
+      colors[i * 3] = brightness;
+      colors[i * 3 + 1] = brightness * 0.98;
+      colors[i * 3 + 2] = brightness * 0.95;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return geometry;
+  }, [mark.id, mark.radius]);
+
+  useFrame(() => {
+    if (sparkleRef.current && mark.age < 0.99) {
+      const life = 1 - mark.age;
+      const material = sparkleRef.current.material as THREE.PointsMaterial;
+      if (material) {
+        material.opacity = 0.6 * life;
+      }
+    }
+  });
+
+  return (
+    <group position={position}>
+      {/* 동적 PointLight - 별의 빛 */}
+      <pointLight
+        ref={lightRef}
+        intensity={30}
+        distance={100}
+        decay={1.2}
+        color={pureWhite}
+      />
+      
+      {/* 외부 글로우 구체 - 별의 빛 확산 (가장 넓고 부드럽게) */}
+      <mesh ref={glowOuterRef}>
+        <sphereGeometry args={[mark.radius * PLANE_SCALE * 1.2, 32, 32]} />
+        <meshBasicMaterial
+          color={pureWhite}
+          transparent
+          opacity={0.25}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {/* 내부 글로우 구체 - 별의 밝은 핵심 주변 */}
+      <mesh ref={glowInnerRef}>
+        <sphereGeometry args={[mark.radius * PLANE_SCALE * 0.7, 32, 32]} />
+        <meshBasicMaterial
+          color={pureWhite}
+          transparent
+          opacity={0.6}
+          toneMapped={false}
+        />
+      </mesh>
+      
+      {/* 코어 - 별의 핵심 (매우 작고 밝게, 입체감) */}
+      <mesh ref={coreRef}>
+        <sphereGeometry args={[mark.radius * PLANE_SCALE * 0.12, 20, 20]} />
+        <meshBasicMaterial
+          color={pureWhite}
+          transparent
+          opacity={1.0}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {/* 크로스 필터 효과 1 - 별이 빛을 사방으로 퍼뜨리는 느낌 */}
+      <mesh ref={crossFilterRef1} rotation={[0, 0, 0]}>
+        <boxGeometry args={[mark.radius * PLANE_SCALE * 2.5, mark.radius * PLANE_SCALE * 0.08, 0.01]} />
+        <meshBasicMaterial
+          color={pureWhite}
+          transparent
+          opacity={0.15}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {/* 크로스 필터 효과 2 (수직) */}
+      <mesh ref={crossFilterRef2} rotation={[0, 0, Math.PI / 2]}>
+        <boxGeometry args={[mark.radius * PLANE_SCALE * 2.5, mark.radius * PLANE_SCALE * 0.08, 0.01]} />
+        <meshBasicMaterial
+          color={pureWhite}
+          transparent
+          opacity={0.15}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {/* 반짝이는 파티클 (별 주변의 작은 반짝임) */}
+      {mark.age < 0.99 && (
+        <points ref={sparkleRef} geometry={sparkleGeometry}>
+          <pointsMaterial
+            vertexColors
+            size={mark.radius * PLANE_SCALE * 0.05}
+            sizeAttenuation
+            transparent
+            opacity={0.7}
+          />
+        </points>
+      )}
+    </group>
+  );
+};
+
+// 충돌 시 파티클이 흩뿌려지는 효과 (운석 충돌 느낌)
+const CollisionParticleBurst = ({
+  mark,
+}: {
+  mark: {
+    id: string;
+    worldX: number;
+    worldY: number;
+    age: number;
+    radius: number;
+    players: PlayerSnapshot[];
+  };
+}) => {
+  const pointsRef = useRef<THREE.Points>(null);
+  const velocitiesRef = useRef<Array<{ x: number; y: number; z: number }>>(
+    []
+  );
+  const startTimeRef = useRef<number>(performance.now());
+
+  const { geometry, velocities } = useMemo(() => {
+    const particleCount = 120; // 더 많은 파티클
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const velocities: Array<{ x: number; y: number; z: number }> = [];
+
+    // 플레이어 색상 가져오기
+    const playerColors =
+      mark.players.length > 0
+        ? mark.players.map((p) => new THREE.Color(p.cell.color || "#ffffff"))
+        : [new THREE.Color("#ffffff")];
+
+    for (let i = 0; i < particleCount; i += 1) {
+      // 구면에서 랜덤하게 방출 (운석 파편처럼)
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      // 초기 속도가 더 빠르게 (운석 충돌 느낌)
+      const speed = 1.2 + Math.random() * 1.5;
+
+      const dirX = Math.sin(phi) * Math.cos(theta);
+      const dirY = Math.sin(phi) * Math.sin(theta);
+      const dirZ = Math.cos(phi);
+
+      // 초기 위치는 충돌 지점 (원점)
+      positions[i * 3] = 0;
+      positions[i * 3 + 1] = 0;
+      positions[i * 3 + 2] = 0;
+
+      velocities.push({
+        x: dirX * speed,
+        y: dirY * speed,
+        z: dirZ * speed,
+      });
+
+      // 플레이어 색상 중 랜덤 선택
+      const color =
+        playerColors[Math.floor(Math.random() * playerColors.length)];
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+    return { geometry, velocities };
+  }, [mark.id, mark.players]);
+
+  useEffect(() => {
+    velocitiesRef.current = velocities;
+    startTimeRef.current = performance.now();
+  }, [velocities]);
+
+  useFrame((_, delta) => {
+    if (!pointsRef.current || !velocitiesRef.current) return;
+
+    const elapsed = (performance.now() - startTimeRef.current) * 0.001; // 초
+    // 파티클이 더 오래 살아있도록 (5분에 맞춰 천천히 사라짐)
+    const maxLife = 300; // 5분 동안 살아있음
+    const life = Math.max(0, 1 - elapsed / maxLife);
+
+    if (life <= 0) return;
+
+    const geometry = pointsRef.current.geometry;
+    const positionAttr = geometry.attributes.position as THREE.BufferAttribute;
+    if (!positionAttr) return;
+
+    // 중력 효과 (아래로 떨어짐) - 매우 약하게
+    const gravity = -0.05;
+    // 저항 (공기 저항) - 매우 천천히 정지
+    const drag = 0.998;
+
+    const positions = positionAttr.array as Float32Array;
+    for (let i = 0; i < velocitiesRef.current.length; i += 1) {
+      const vel = velocitiesRef.current[i];
+      if (!vel) continue;
+
+      // 속도 업데이트 (중력 + 저항) - 매우 천천히
+      vel.x *= drag;
+      vel.y *= drag;
+      vel.z = (vel.z + gravity * delta) * drag;
+
+      // 위치 업데이트
+      positions[i * 3] += vel.x * delta * 0.3;
+      positions[i * 3 + 1] += vel.y * delta * 0.3;
+      positions[i * 3 + 2] += vel.z * delta * 0.3;
+    }
+
+    positionAttr.needsUpdate = true;
+
+    // 나이에 따라 매우 천천히 투명해짐
+    const material = pointsRef.current.material as THREE.PointsMaterial;
+    if (material) {
+      // 5분에 걸쳐 천천히 사라짐
+      material.opacity = Math.pow(life, 0.5) * 0.8;
+    }
+  });
+
+  // 5분 동안 렌더링
+  if (mark.age > 0.99) return null;
+
+  return (
+    <points
+      ref={pointsRef}
+      position={[mark.worldX, mark.worldY, 0.3]}
+      geometry={geometry}
+    >
+      <pointsMaterial
+        vertexColors
+        size={mark.radius * PLANE_SCALE * 0.06}
+        sizeAttenuation
+        transparent
+        opacity={0.8}
+      />
+    </points>
+  );
+};
+
+// 충돌한 object들의 파티클이 주변에 흩뿌려지는 효과 (운석 충돌 느낌)
+const CollisionObjectParticles = ({
+  mark,
+  state,
+  lookup,
+}: {
+  mark: {
+    id: string;
+    worldX: number;
+    worldY: number;
+    age: number;
+    radius: number;
+    players: PlayerSnapshot[];
+  };
+  state: GameState;
+  lookup: Map<string, { worldX: number; worldY: number; depth: number }>;
+}) => {
+  const pointsRef = useRef<THREE.Points>(null);
+  const velocitiesRef = useRef<Array<{ x: number; y: number; z: number }>>(
+    []
+  );
+  const startTimeRef = useRef<number>(performance.now());
+
+  const { geometry, velocities } = useMemo(() => {
+    if (!mark.players || mark.players.length === 0) {
+      return { geometry: null, velocities: [] };
+    }
+
+    // 충돌한 object들의 파티클을 수집
+    const allParticles: Array<{
+      x: number;
+      y: number;
+      z: number;
+      color: THREE.Color;
+    }> = [];
+
+    mark.players.forEach((player) => {
+      const playerWorld = lookup.get(player.id);
+      if (!playerWorld) return;
+
+      // 각 object에서 파티클 추출 (운석 파편처럼)
+      const particleCount = 25; // object당 파티클 수
+      const playerColor = new THREE.Color(player.cell.color || "#ffffff");
+
+      for (let i = 0; i < particleCount; i += 1) {
+        // object 중심에서 약간 떨어진 위치
+        const offsetRadius = player.cell.radius * PLANE_SCALE * (0.3 + Math.random() * 0.4);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+
+        const offsetX = Math.sin(phi) * Math.cos(theta) * offsetRadius;
+        const offsetY = Math.sin(phi) * Math.sin(theta) * offsetRadius;
+        const offsetZ = Math.cos(phi) * offsetRadius;
+
+        allParticles.push({
+          x: playerWorld.worldX - mark.worldX + offsetX,
+          y: playerWorld.worldY - mark.worldY + offsetY,
+          z: playerWorld.depth + offsetZ,
+          color: playerColor.clone(),
+        });
+      }
+    });
+
+    if (allParticles.length === 0) {
+      return { geometry: null, velocities: [] };
+    }
+
+    const particleCount = allParticles.length;
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const velocities: Array<{ x: number; y: number; z: number }> = [];
+
+    allParticles.forEach((particle, i) => {
+      positions[i * 3] = particle.x;
+      positions[i * 3 + 1] = particle.y;
+      positions[i * 3 + 2] = particle.z;
+
+      colors[i * 3] = particle.color.r;
+      colors[i * 3 + 1] = particle.color.g;
+      colors[i * 3 + 2] = particle.color.b;
+
+      // 충돌 지점에서 멀어지는 방향으로 초기 속도
+      const dist = Math.hypot(particle.x, particle.y, particle.z);
+      if (dist > 0.001) {
+        const speed = 0.3 + Math.random() * 0.4; // 천천히 퍼짐
+        velocities.push({
+          x: (particle.x / dist) * speed,
+          y: (particle.y / dist) * speed,
+          z: (particle.z / dist) * speed * 0.5, // z축은 더 천천히
+        });
+      } else {
+        velocities.push({ x: 0, y: 0, z: 0 });
+      }
+    });
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+    return { geometry, velocities };
+  }, [mark.id, mark.players, lookup, state.players]);
+
+  useEffect(() => {
+    velocitiesRef.current = velocities;
+    startTimeRef.current = performance.now();
+  }, [velocities]);
+
+  useFrame((_, delta) => {
+    if (!pointsRef.current || !geometry || !velocitiesRef.current) return;
+
+    const elapsed = (performance.now() - startTimeRef.current) * 0.001; // 초
+    // 파티클이 오래 살아있도록 (5분에 맞춰 천천히 사라짐)
+    const maxLife = 300; // 5분 동안 살아있음
+    const life = Math.max(0, 1 - elapsed / maxLife);
+
+    if (life <= 0) return;
+
+    const positionAttr = pointsRef.current.geometry.attributes
+      .position as THREE.BufferAttribute;
+    if (!positionAttr) return;
+
+    // 중력 효과 (아래로 떨어짐) - 매우 약하게
+    const gravity = -0.02;
+    // 저항 (공기 저항) - 매우 천천히 정지
+    const drag = 0.999;
+
+    const positions = positionAttr.array as Float32Array;
+    for (let i = 0; i < velocitiesRef.current.length; i += 1) {
+      const vel = velocitiesRef.current[i];
+      if (!vel) continue;
+
+      // 속도 업데이트 (중력 + 저항) - 매우 천천히
+      vel.x *= drag;
+      vel.y *= drag;
+      vel.z = (vel.z + gravity * delta) * drag;
+
+      // 위치 업데이트
+      positions[i * 3] += vel.x * delta * 0.2;
+      positions[i * 3 + 1] += vel.y * delta * 0.2;
+      positions[i * 3 + 2] += vel.z * delta * 0.2;
+    }
+
+    positionAttr.needsUpdate = true;
+
+    // 나이에 따라 매우 천천히 투명해짐
+    const material = pointsRef.current.material as THREE.PointsMaterial;
+    if (material) {
+      // 5분에 걸쳐 천천히 사라짐
+      material.opacity = Math.pow(life, 0.4) * 0.7;
+    }
+  });
+
+  if (!geometry || mark.age > 0.99) return null;
+
+  return (
+    <points
+      ref={pointsRef}
+      position={[mark.worldX, mark.worldY, 0.3]}
+      geometry={geometry}
+    >
+      <pointsMaterial
+        vertexColors
+        size={mark.radius * PLANE_SCALE * 0.05}
+        sizeAttenuation
+        transparent
+        opacity={0.7}
+      />
+    </points>
   );
 };
 
