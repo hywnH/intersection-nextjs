@@ -43,6 +43,8 @@ ENV WEB_PORT=3000 \
     WEB_HOST=0.0.0.0 \
     REALTIME_PORT=3001 \
     REALTIME_HOST=0.0.0.0 \
-    NEXT_PUBLIC_WS_URL=http://localhost:3001/socket
+    NEXT_PUBLIC_WS_URL=http://localhost:3001/socket \
+    NEXT_PUBLIC_NOISECRAFT_WS_URL=http://localhost:4000 \
+    NEXT_PUBLIC_NOISECRAFT_PATCH_SRC=/public/examples/chord_spatial.ncft
 
 CMD ["node", "/app/scripts/start-all.mjs"]

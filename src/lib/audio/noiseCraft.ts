@@ -90,6 +90,8 @@ export const resolveNoiseCraftEmbed = () => {
   const path = window.location.pathname || "";
   if (path.startsWith("/mobile/debug")) {
     embedSearch.set("view", "mobile-debug");
+    // /mobile/debug에서는 NoiseCraft 전체 패널을 보이도록 강제
+    embedSearch.set("editor", "full");
   } else if (path.startsWith("/mobile")) {
     embedSearch.set("view", "mobile");
   }

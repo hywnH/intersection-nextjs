@@ -277,6 +277,16 @@ const renderPlayers = ({
   ctx.save();
   const time = performance.now() * 0.001; // 초 단위 시간 (파티클 애니메이션용)
   const isGlobal = state.mode === "global";
+  const isPersonal = state.mode === "personal";
+
+  // 개인 뷰: 최근 충돌 + 근접(중력 거리)까지 포함해서 "만남" 판정을 조금 더 관대하게
+  const recentCollisionSelf =
+    isPersonal &&
+    state.selfId &&
+    state.collisionMarks.some((mark) => {
+      const age = Date.now() - mark.timestamp;
+      return age < 800 && mark.players?.includes(state.selfId as string);
+    });
 
   // 글로벌 뷰에서는 plane용 가이드 라인 숨김
   if (blend > 0.01 && !isGlobal) {
@@ -289,8 +299,6 @@ const renderPlayers = ({
       ctx.stroke();
     }
   }
-
-  const isPersonal = state.mode === "personal";
 
   state.playerOrder.forEach((playerId, index) => {
     const player = state.players[playerId];
@@ -311,9 +319,31 @@ const renderPlayers = ({
       x: planePos.x * (1 - blend) + lineX * blend,
       y: planePos.y * (1 - blend) + laneY * blend,
     };
-    const radius = cell.radius * state.camera.zoom * (1 - blend) + 8 * blend;
+    let radius = cell.radius * state.camera.zoom * (1 - blend) + 8 * blend;
+
+    const isSelf = player.isSelf;
+    let isMeetingSelf = false;
+    if (isPersonal && isSelf) {
+      const gravityClose =
+        typeof player.gravityDist === "number" &&
+        Number.isFinite(player.gravityDist) &&
+        player.gravityDist < 100;
+      isMeetingSelf = recentCollisionSelf || gravityClose;
+      if (isMeetingSelf) {
+        // 반경은 살짝만 펄스, 대신 밝기/글로우를 더 강조
+        const pulse = 1 + 0.06 * (1 + Math.sin(time * 7));
+        radius *= pulse;
+      }
+    }
+
     // 개인 뷰에서 자기 공에 파티클 효과 적용
-    if (isPersonal && player.isSelf) {
+    if (isPersonal && isSelf) {
+      // 연결선이 공 내부에서 보이지 않도록, 먼저 공 뒤에 작은 검은 원을 깔아준다
+      ctx.beginPath();
+      ctx.arc(screenPos.x, screenPos.y, radius * 0.95, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,1)";
+      ctx.fill();
+
       renderParticleBall(
         ctx, 
         screenPos.x, 
@@ -348,7 +378,8 @@ const renderPlayers = ({
     }
 
     // 깊이감 보조(옵션): z에 비례한 알파나 외곽선
-    if (typeof depth === "number" && blend < 0.8) {
+    // 개인 뷰에서는 흰 원형 라인(외곽선)을 없애기 위해 depth 외곽선 스킵
+    if (!isPersonal && typeof depth === "number" && blend < 0.8) {
       ctx.strokeStyle = `rgba(255,255,255,${Math.max(
         0.1,
         1 - Math.abs(depth) / 1000
@@ -356,7 +387,8 @@ const renderPlayers = ({
       ctx.stroke();
     }
 
-    if (player.isSelf && state.selfHighlightUntil > Date.now()) {
+    // 개인 뷰에서는 자기 공 주변의 흰 링을 제거
+    if (!isPersonal && player.isSelf && state.selfHighlightUntil > Date.now()) {
       const glow = (state.selfHighlightUntil - Date.now()) / 1200;
       ctx.beginPath();
       ctx.arc(screenPos.x, screenPos.y, radius + 20 * glow, 0, Math.PI * 2);
@@ -449,9 +481,12 @@ const renderCollisionConnections = ({
       ? performance.now() * 0.012
       : Date.now() * 0.012;
   const wallNow = Date.now();
-  // 개인 뷰에서는 연결 선을 더 가늘게
-  ctx.lineWidth = state.mode === "personal" ? 1.2 : 2.5;
-  ctx.strokeStyle = "rgba(255,255,255,0.65)";
+  // 개인 뷰에서는 연결 선을 더 가늘고 희미하게
+  ctx.lineWidth = state.mode === "personal" ? 0.9 : 2.2;
+  ctx.strokeStyle =
+    state.mode === "personal"
+      ? "rgba(255,255,255,0.25)"
+      : "rgba(255,255,255,0.5)";
   // 그림자 효과 제거
   ctx.shadowColor = "rgba(0,0,0,0)";
   ctx.shadowBlur = 0;
@@ -493,16 +528,17 @@ const renderCollisionConnections = ({
       waves: 4,
     });
 
-    // Render endpoints without blending to maintain visibility in personal mode
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    // 점에도 그림자 사용하지 않음
-    const dotRadius = blend > 0.7 ? 4.5 : 6;
-    ctx.beginPath();
-    ctx.arc(posA.x, posA.y, dotRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(posB.x, posB.y, dotRadius, 0, Math.PI * 2);
-    ctx.fill();
+    // 글로벌/기타 뷰에서만 연결선 끄트머리 작은 점을 그려서 강조
+    if (state.mode !== "personal") {
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      const dotRadius = blend > 0.7 ? 4.5 : 6;
+      ctx.beginPath();
+      ctx.arc(posA.x, posA.y, dotRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(posB.x, posB.y, dotRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
   });
   ctx.restore();
 };
@@ -629,9 +665,22 @@ export const renderScene = (params: RenderParams) => {
   clearScene(params.ctx, params.width, params.height);
   if (params.state.playing) {
     if (params.state.mode === "personal") {
+      // 개인 뷰: 자기 궤적 + 자기 공 + 자기와 관련된 연결선만 표시
+      // (충돌 마크의 큰 흰 원은 숨기고, 연결선 끄트머리 점도 숨김)
+      renderCollisionConnections({
+        ...params,
+        blend,
+        laneGap,
+        orderIndex,
+      });
       renderSelfTrail(params);
-    }
-    if (params.state.mode === "global") {
+      renderPlayers({
+        ...params,
+        blend,
+        laneGap,
+        orderIndex,
+      });
+    } else if (params.state.mode === "global") {
       const zoom = Math.min(
         (params.width - overlayWidth) / params.state.gameSize.width,
         params.height / params.state.gameSize.height

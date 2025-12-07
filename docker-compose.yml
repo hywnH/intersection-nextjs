@@ -21,13 +21,12 @@ services:
       # 프록시 없이 직접 포트 접근
       - NEXT_PUBLIC_WS_URL=http://localhost:3001/socket
       - NEXT_PUBLIC_NOISECRAFT_WS_URL=http://localhost:4000
+      - NEXT_PUBLIC_NOISECRAFT_PATCH_SRC=/public/examples/chord_spatial.ncft
       # 호스트 URL
       - NEXT_PUBLIC_HOST_URL=http://localhost:3000
       # 내부 통신용 주소 (컨테이너 간)
       - REALTIME_INTERNAL_URL=http://game:3001
       - NEXT_PUBLIC_PERSONAL_AUDIO_MODE=both
-      - NEXT_PUBLIC_NOISECRAFT_PERSONAL_PATCH_SRC=/examples/indiv_audio_map.ncft
-      - NEXT_PUBLIC_NOISECRAFT_GLOBAL_PATCH_SRC=/examples/indiv_audio_map.ncft
     depends_on:
       - game
       - noisecraft

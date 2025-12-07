@@ -14,7 +14,7 @@ import {
   postNoiseCraftParams,
   resolveNoiseCraftEmbed,
 } from "@/lib/audio/noiseCraft";
-import { computePersonalAudioMetrics } from "@/lib/audio/personalMetrics";
+import { generateDistancePanParams } from "@/lib/audio/streamMapping";
 import {
   generateIndividualPattern,
   hashToneIndex,
@@ -146,7 +146,12 @@ const MobileView = () => {
   const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
   const [isProjectReady, setIsProjectReady] = useState(false);
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
+  const [isDebugView, setIsDebugView] = useState(false);
   const lastSeqPatternRef = useRef<IndividualPattern | null>(null);
+  const lastParamUpdateRef = useRef(0);
+  const paramSmoothingRef = useRef<
+    Map<string, { current: number; target: number }>
+  >(new Map());
 
   useEffect(() => {
     latestState.current = state;
@@ -157,22 +162,72 @@ const MobileView = () => {
     const { src, origin } = resolveNoiseCraftEmbed();
     setNoiseCraftSrc(src);
     setNoiseCraftOrigin(origin);
+    const path = window.location.pathname || "";
+    setIsDebugView(path.startsWith("/mobile/debug"));
     setIsProjectReady(false);
     setAudioStatus("idle");
   }, []);
 
+  // NoiseCraft 매핑 파라미터 전송 (모바일/디버그 공통)
   useEffect(() => {
     if (!noiseCraftOrigin) return;
-    const metrics = computePersonalAudioMetrics(state);
-    const params = buildNoiseCraftParams(
-      state.audio,
-      state.noiseSlots,
-      "personal",
-      metrics
-    );
-    postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
 
-    // MonoSeq 패턴 기반 화음 업데이트 (indiv_audio_map과 동일한 구조)
+    // test-workspace와 유사하게 파라미터 업데이트를 스로틀링
+    const now = Date.now();
+    // 약 3회/초 업데이트
+    const PARAM_UPDATE_INTERVAL_MS = 333;
+    if (now - lastParamUpdateRef.current < PARAM_UPDATE_INTERVAL_MS) {
+      return;
+    }
+    lastParamUpdateRef.current = now;
+
+    // 개인 뷰용 거리/팬 → 3개 파라미터로 매핑
+    const mappedParams = generateDistancePanParams(state);
+
+    // 파라미터 스무딩(클릭/팝 노이즈 방지)
+    // 더 강한 스무딩: 천천히 따라가도록 작은 값 사용
+    const SMOOTHING_FACTOR = 0.05;
+    const smoothingMap = paramSmoothingRef.current;
+    const smooth = (nodeId: string, paramName: string, value: number) => {
+      const key = `${nodeId}:${paramName}`;
+      const existing =
+        smoothingMap.get(key) || { current: value, target: value };
+      existing.target = value;
+      const prev = existing.current;
+      const diff = existing.target - prev;
+      const next = prev + diff * SMOOTHING_FACTOR;
+      existing.current = next;
+      smoothingMap.set(key, existing);
+      const changed = Math.abs(next - prev) > 1e-4;
+      return { value: next, changed };
+    };
+
+    const combined = mappedParams
+      .map((p) => {
+      const nodeId = String(p.nodeId);
+      const paramName = p.paramName || "value";
+      const { value, changed } = smooth(nodeId, paramName, p.value);
+      if (!changed) return null;
+      return {
+        ...p,
+        nodeId,
+        paramName,
+        value,
+      };
+    })
+      .filter((p): p is (typeof mappedParams)[number] => p !== null);
+
+    if (!combined.length) {
+      return;
+    }
+
+    postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, combined);
+  }, [state, noiseCraftOrigin]);
+
+  // MonoSeq 패턴 기반 화음 업데이트 (indiv_audio_map과 동일한 구조, 디버그 뷰 전용)
+  useEffect(() => {
+    if (!isDebugView) return;
+    if (!noiseCraftOrigin) return;
     if (!audioIframeRef.current) return;
     const selfId = state.selfId;
     const selfPlayer = selfId ? state.players[selfId] : null;
@@ -252,13 +307,7 @@ const MobileView = () => {
     sendVoice("172", pattern.bassRow);
     sendVoice("176", pattern.baritoneRow);
     sendVoice("177", pattern.tenorRow);
-  }, [
-    state.audio,
-    state.noiseSlots,
-    state.players,
-    state.selfId,
-    noiseCraftOrigin,
-  ]);
+  }, [state.audio, state.noiseSlots, state.players, state.selfId, noiseCraftOrigin, isDebugView]);
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;
@@ -306,7 +355,16 @@ const MobileView = () => {
     resize();
     window.addEventListener("resize", resize);
 
-    const loop = () => {
+    const FRAME_INTERVAL_MS = 33; // ~30fps로 제한
+    let lastTime = 0;
+
+    const loop = (time: number) => {
+      if (!lastTime) {
+        lastTime = time;
+      }
+      const dt = time - lastTime;
+      if (dt >= FRAME_INTERVAL_MS) {
+        lastTime = time;
       const baseState = latestState.current;
       const renderState =
         baseState.mode === "personal"
@@ -318,10 +376,11 @@ const MobileView = () => {
         width: logicalWidth,
         height: logicalHeight,
       });
+      }
       animationRef.current = requestAnimationFrame(loop);
     };
 
-    loop();
+    animationRef.current = requestAnimationFrame(loop);
 
     return () => {
       window.removeEventListener("resize", resize);
@@ -426,11 +485,12 @@ const MobileView = () => {
     };
   }, [socket]);
 
-  const shouldShowIframe = isProjectReady && audioStatus !== "playing";
+  const shouldShowIframe = isDebugView ? true : isProjectReady;
 
   // NoiseCraft 파라미터 브리지: 실제 플레이어 속도 → 주파수 매핑
   useEffect(() => {
     if (!socket) return;
+    if (!isDebugView) return;
 
     const MIN = 100; // Hz
     const MAX = 2000; // Hz
@@ -463,7 +523,7 @@ const MobileView = () => {
     return () => {
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [socket]);
+  }, [socket, isDebugView]);
 
   const handleStartAudio = () => {
     if (!audioIframeRef.current) return;
@@ -480,19 +540,20 @@ const MobileView = () => {
       {/* <Hud state={state} /> */}
       {/* <StatusBanner state={state} /> */}
       {/* <Controls /> */}
-      <div className="pointer-events-auto absolute bottom-4 left-4 flex h-auto w-60 flex-col gap-2 rounded-xl bg-black/70 p-3 text-xs text-white">
-        {/* <p className="text-white/70">Personal Audio (NoiseCraft)</p> */}
+      <div className="pointer-events-auto absolute bottom-4 left-4 flex h-auto w-[340px] flex-col gap-2 rounded-xl bg-black/80 p-3 text-xs text-white">
         <iframe
           ref={audioIframeRef}
           src={noiseCraftSrc}
-          width="220"
-          height="56"
+          width={isDebugView ? 1800 : 220}
+          height={isDebugView ? 500 : 56}
           allow="autoplay"
           title="NoiseCraft Personal"
           className={
             shouldShowIframe
-              ? "h-[56px] w-[220px] opacity-100"
-              : "h-0 w-[220px] opacity-0 pointer-events-none"
+              ? isDebugView
+                ? "h-[500px] w-[1800px] opacity-100"
+                : "h-[56px] w-[220px] opacity-100"
+              : "h-0 w-0 opacity-0 pointer-events-none"
           }
           style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
         />
