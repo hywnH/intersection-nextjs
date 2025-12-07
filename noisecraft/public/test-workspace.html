@@ -472,7 +472,16 @@
 
         <div class="tab-content" id="mappings-tab">
           <div class="panel-section">
-            <h3>Stream → Node Mappings</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="margin: 0;">Stream → Node Mappings</h3>
+              <div style="display: flex; gap: 8px;">
+                <button id="export-mappings-btn" style="padding: 6px 12px; font-size: 11px;">📥 Export</button>
+                <label for="import-mappings-file" style="padding: 6px 12px; font-size: 11px; background: #333; color: #fff; border: 1px solid #444; border-radius: 6px; cursor: pointer; display: inline-block;">
+                  📤 Import
+                  <input type="file" id="import-mappings-file" accept=".json" style="display: none;" />
+                </label>
+              </div>
+            </div>
             <div id="mappings-container"></div>
             <button class="add-mapping-btn" id="add-mapping-btn">
               + Add Mapping
@@ -495,7 +504,12 @@
       // Import particle system module
       import { VirtualParticle, SignalGenerator, ParticleSystem } from '/public/particle-system.js';
       import { SequencerLogic, convertNotePatternToNoiseCraft, updateMonoSeqSequencer } from '/public/sequencer-logic.js';
-            import { generateHarmoniousPattern, generateHarmonizingPattern, generateChordPatterns, SCALES, CHORD_TONES, getRandomScale } from '/public/music-theory.js';
+      import { generateHarmoniousPattern, generateHarmonizingPattern, generateChordPatterns, SCALES, CHORD_TONES, getRandomScale } from '/public/music-theory.js';
+      
+      // Import new modular components
+      import { createPatternGenerator } from '/public/sequencer-pattern-generator.js';
+      import { createNcftFileManager } from '/public/ncft-file-manager.js';
+      import { createMappingPresetManager } from '/public/mapping-preset-manager.js';
       
       // Wrap main code in try-catch to catch initialization errors
       try {
@@ -697,36 +711,61 @@
       const centralMass = 100; // Reduced from 500 - allows visible interaction
       const particle0 = particleSystem.addParticle(0, centerX, centerY, 0, centralMass);
       
-      // Generate initial chord to avoid dissonance - use chord tones
-      // Pick a random chord from the scale context
-      const chordNames = Object.keys(CHORD_TONES);
-      const scaleChords = chordNames.filter(name => {
-        // Check if chord notes are mostly in the current scale
-        const chordTones = CHORD_TONES[name].map(note => note % 12);
-        const scaleNotes = (SCALES[currentScale] || SCALES['C Pentatonic Major']).map(note => note % 12);
-        const matchingTones = chordTones.filter(tone => scaleNotes.includes(tone));
-        return matchingTones.length >= 2; // At least 2 notes of chord should be in scale
-      });
+      // Generate initial harmonious triad chord
+      // Use C Major triad as default (most harmonious: C, E, G = notes 0, 4, 7)
+      // This creates a perfect major triad that sounds harmonious
+      const defaultTriad = 'C Major'; // [0, 4, 7] = C, E, G
+      const chordTones = CHORD_TONES[defaultTriad]; // [0, 4, 7]
       
-      // If no good chords found, use C Major as default
-      const selectedChord = scaleChords.length > 0 
-        ? scaleChords[Math.floor(Math.random() * scaleChords.length)]
-        : 'C Major';
+      console.log('Generating initial triad:', defaultTriad, 'with tones:', chordTones);
       
-      // Generate chord patterns - this ensures harmonious initial chord
-      const chordPatterns = generateChordPatterns(selectedChord, 3);
-      particle0.sequencerPattern = chordPatterns[0]; // Root
+      // Generate patterns directly for each chord tone to ensure proper triad
+      const createPatternFromNote = (noteIndex) => {
+        const pattern = new Array(12).fill(0);
+        pattern[noteIndex % 12] = 1;
+        return pattern;
+      };
+      
+      // Assign triad tones using pattern generator for unique patterns
+      // Get existing patterns to avoid duplicates
+      const existingPatterns = patternGenerator.getAllPatterns().map(p => p.pattern);
+      
+      particle0.sequencerPattern = patternGenerator.generateUniquePattern(
+        0, 
+        'C Major',
+        existingPatterns
+      ) || createPatternFromNote(chordTones[0]); // Fallback to C (root)
       
       // Two "moon" particles with similar mass to central for visible interaction
       const moonMass = 50; // Closer to central mass ratio
       const moonDistance = 100; // Increased distance for better visibility
       const particle1 = particleSystem.addParticle(1, centerX + moonDistance, centerY, 4, moonMass);
-      // Use chord tones for harmonious initial setup
-      particle1.sequencerPattern = chordPatterns[1] || generateHarmonizingPattern([particle0.sequencerPattern], currentScale);
+      particle1.sequencerPattern = patternGenerator.generateUniquePattern(
+        1,
+        'C Major',
+        patternGenerator.getAllPatterns().map(p => p.pattern)
+      ) || createPatternFromNote(chordTones[1]); // Fallback to E (third)
       
       const particle2 = particleSystem.addParticle(2, centerX, centerY - moonDistance, 7, moonMass);
-      // Complete the triad if available, otherwise harmonize
-      particle2.sequencerPattern = chordPatterns[2] || generateHarmonizingPattern([particle0.sequencerPattern, particle1.sequencerPattern], currentScale);
+      particle2.sequencerPattern = patternGenerator.generateUniquePattern(
+        2,
+        'C Major',
+        patternGenerator.getAllPatterns().map(p => p.pattern)
+      ) || createPatternFromNote(chordTones[2]); // Fallback to G (fifth)
+      
+      // Verify the triad was assigned correctly
+      const assignedNotes = {
+        particle0: particle0.sequencerPattern.findIndex(v => v === 1),
+        particle1: particle1.sequencerPattern.findIndex(v => v === 1),
+        particle2: particle2.sequencerPattern.findIndex(v => v === 1),
+      };
+      console.log('✓ Initial triad assigned:', assignedNotes);
+      console.log('  Expected:', chordTones);
+      console.log('  Match:', 
+        assignedNotes.particle0 === chordTones[0] && 
+        assignedNotes.particle1 === chordTones[1] && 
+        assignedNotes.particle2 === chordTones[2] ? 'YES ✓' : 'NO ✗'
+      );
 
       // Set velocities for stable orbital motion
       // Central particle starts with small velocity (will move due to lighter mass)
@@ -754,6 +793,27 @@
       
       // Initialize sequencer logic
       const sequencerLogic = new SequencerLogic();
+      
+      // Initialize pattern generator for unique sequencer patterns per particle
+      const patternGenerator = createPatternGenerator({
+        numNotes: 12,
+        useMusicTheory: true
+      });
+      
+      // Initialize NCFT file manager for individual/global audio files
+      const fileManager = createNcftFileManager({
+        basePath: '/public/examples',
+        individualFile: 'indiv_audio_map.ncft',
+        globalFile: 'global_audio_map.ncft'
+      });
+      
+      // Initialize mapping preset managers (separate for individual/global)
+      const individualMappings = createMappingPresetManager({
+        storageKey: 'noisecraftIndividualMappings'
+      });
+      const globalMappings = createMappingPresetManager({
+        storageKey: 'noisecraftGlobalMappings'
+      });
       
       // Sequencer node IDs from indiv_audio_map.ncft
       const SEQUENCER_NODES = {
@@ -1222,6 +1282,83 @@
         renderMappings();
       });
 
+      // Export mappings to JSON file
+      document.getElementById("export-mappings-btn").addEventListener("click", () => {
+        try {
+          const mappings = streamMapper.mappings;
+          if (mappings.length === 0) {
+            alert("저장된 매핑이 없습니다.");
+            return;
+          }
+
+          const dataStr = JSON.stringify(mappings, null, 2);
+          const dataBlob = new Blob([dataStr], { type: "application/json" });
+          const url = URL.createObjectURL(dataBlob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `noisecraft-mappings-${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          console.log(`✓ Exported ${mappings.length} mappings to file`);
+          statusEl.textContent = `Exported ${mappings.length} mappings`;
+        } catch (e) {
+          console.error("Failed to export mappings:", e);
+          alert("매핑 내보내기 실패: " + e.message);
+        }
+      });
+
+      // Import mappings from JSON file
+      document.getElementById("import-mappings-file").addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const importedMappings = JSON.parse(event.target.result);
+            
+            if (!Array.isArray(importedMappings)) {
+              throw new Error("Invalid file format: expected array of mappings");
+            }
+
+            // Validate mapping structure
+            const validMappings = importedMappings.filter(m => {
+              return m && typeof m === 'object' && m.nodeId !== undefined;
+            });
+
+            if (validMappings.length === 0) {
+              throw new Error("No valid mappings found in file");
+            }
+
+            // Replace current mappings with imported ones
+            streamMapper.mappings = validMappings;
+            streamMapper.saveToStorage();
+            renderMappings();
+
+            console.log(`✓ Imported ${validMappings.length} mappings from file`);
+            statusEl.textContent = `Imported ${validMappings.length} mappings`;
+            
+            // Reset file input
+            e.target.value = '';
+          } catch (error) {
+            console.error("Failed to import mappings:", error);
+            alert("매핑 가져오기 실패: " + error.message);
+            e.target.value = '';
+          }
+        };
+
+        reader.onerror = () => {
+          console.error("Failed to read file");
+          alert("파일 읽기 실패");
+          e.target.value = '';
+        };
+
+        reader.readAsText(file);
+      });
+
       // NoiseCraft integration - declare iframe and ready flag early
       const iframe = document.getElementById("noisecraft-iframe");
       let noisecraftReady = false;
@@ -1239,18 +1376,66 @@
       
       // Parameter smoothing to prevent clicks/pops from rapid changes
       const paramSmoothing = new Map(); // nodeId:paramName -> {current, target, smoothing}
-      const SMOOTHING_FACTOR = 0.1; // Lower = smoother but slower response (0.1 = ~90ms smoothing)
       
-      function smoothParameter(nodeId, paramName, targetValue, smoothingFactor = SMOOTHING_FACTOR) {
+      // Different smoothing factors for different parameters
+      // Volume parameters need VERY slow smoothing to prevent clicks during buffering
+      const VOLUME_SMOOTHING_FACTOR = 0.015; // Extremely slow for volume (prevents clicks during buffering)
+      const REVERB_SMOOTHING_FACTOR = 0.025; // Slow for reverb
+      const DEFAULT_SMOOTHING_FACTOR = 0.1; // Default for other parameters
+      
+      function smoothParameter(nodeId, paramName, targetValue) {
         const key = `${nodeId}:${paramName}`;
-        const current = paramSmoothing.get(key) || { current: targetValue, target: targetValue };
+        let current = paramSmoothing.get(key);
+        
+        // Initialize if not exists
+        if (!current) {
+          current = { 
+            current: targetValue, 
+            target: targetValue,
+            lastUpdate: Date.now()
+          };
+          paramSmoothing.set(key, current);
+          return targetValue; // Return immediately on first update
+        }
+        
+        // Determine smoothing factor based on parameter type
+        let smoothingFactor = DEFAULT_SMOOTHING_FACTOR;
+        if (nodeId === "183" && paramName === "value") {
+          // Volume knob needs extremely slow smoothing to prevent clicks
+          smoothingFactor = VOLUME_SMOOTHING_FACTOR;
+        } else if (nodeId === "163" && paramName === "value") {
+          // Reverb needs slow smoothing
+          smoothingFactor = REVERB_SMOOTHING_FACTOR;
+        }
         
         // Update target
         current.target = targetValue;
         
-        // Smooth towards target using exponential smoothing
-        const diff = current.target - current.current;
-        current.current += diff * smoothingFactor;
+        // Calculate time-based smoothing for volume to prevent clicks during buffering
+        if (nodeId === "183" && paramName === "value") {
+          const now = Date.now();
+          const dt = Math.min((now - (current.lastUpdate || now)) / 1000, 0.1); // Cap dt at 100ms
+          current.lastUpdate = now;
+          
+          // Use very slow exponential smoothing with time-based adjustment
+          const diff = current.target - current.current;
+          
+          // Maximum change rate per second for volume (prevents sudden jumps)
+          const maxChangePerSecond = 0.002; // Very slow change rate
+          const maxChangeThisFrame = maxChangePerSecond * dt;
+          
+          if (Math.abs(diff) > maxChangeThisFrame) {
+            // Clamp the change to prevent sudden jumps
+            current.current += diff > 0 ? maxChangeThisFrame : -maxChangeThisFrame;
+          } else {
+            // Use exponential smoothing for smaller changes
+            current.current += diff * smoothingFactor;
+          }
+        } else {
+          // Standard exponential smoothing for other parameters
+          const diff = current.target - current.current;
+          current.current += diff * smoothingFactor;
+        }
         
         paramSmoothing.set(key, current);
         return current.current;
