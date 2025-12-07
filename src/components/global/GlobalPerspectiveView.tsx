@@ -1068,7 +1068,8 @@ const CollisionParticleBurst = ({
     worldX: number;
     worldY: number;
     depth: number;
-    age: number;
+    coreAge: number;
+    particleAge: number;
     radius: number;
     players: PlayerSnapshot[];
   };
@@ -1207,7 +1208,8 @@ const CollisionObjectParticles = ({
     worldX: number;
     worldY: number;
     depth: number;
-    age: number;
+    coreAge: number;
+    particleAge: number;
     radius: number;
     players: PlayerSnapshot[];
   };
