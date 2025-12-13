@@ -186,7 +186,7 @@ const renderParticleBall = (
     }
   }
   // 단일 레이어, 고정된 작은 점들로만 구 형태를 표현
-  const adjustedRadius = baseRadius * 1.55;
+  const adjustedRadius = baseRadius * 2.8;
   const particleCount = 260;
   const hasGravDir = gravityInfluence > 0 && (gravityDirX !== 0 || gravityDirY !== 0);
   const gravAngle = hasGravDir ? Math.atan2(gravityDirY, gravityDirX) : 0;
@@ -238,7 +238,7 @@ const renderParticleBall = (
     const y = centerY + Math.sin(finalAngle) * finalRadius + driftY;
 
     // 기본 밝기에 시간에 따른 잔잔한 반짝임 + 중력 방향 강조
-    const baseAlpha = 0.55;
+    const baseAlpha = 1.0;
     const flicker =
       0.6 *
       simpleNoise(i * 0.7, 0.0, time * 0.1 * i); // -0.18 ~ 0.18
@@ -250,7 +250,7 @@ const renderParticleBall = (
 
     // 더 작고 선명한 점 (최소 크기와 스케일을 낮춰서 모바일에서도 작게 보이도록)
     const size =
-      Math.max(0.2, Math.min(0.5, baseRadius * 0.014)) * particleScale;
+      Math.max(0.5, Math.min(1.2, baseRadius * 0.035)) * particleScale;
 
     ctx.beginPath();
     ctx.arc(x, y, size, 0, Math.PI * 2);
