@@ -40,8 +40,23 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     if (typeof window === "undefined") return;
     if (!envWsUrl) return;
 
+    const page = window.location;
+
+    // 1) 경로만 주어진 경우(/socket): 항상 현재 origin 기준으로만 해석
+    //    - https://localhost/visual → https://localhost/socket
+    //    - 프로덕션에서도 동일 도메인 + /socket 형태로 동작
+    if (envWsUrl.startsWith("/")) {
+      try {
+        const absoluteUrl = new URL(envWsUrl, page.origin);
+        setServerUrl(absoluteUrl.toString());
+      } catch {
+        setServerUrl(envWsUrl);
+      }
+      return;
+    }
+
+    // 2) 절대 URL이 주어진 경우: 기존 localhost 재작성 로직 유지
     try {
-      const page = window.location;
       const absoluteUrl = new URL(envWsUrl, page.origin);
 
       // 개발용 localhost/127.0.0.1이 설정된 경우,

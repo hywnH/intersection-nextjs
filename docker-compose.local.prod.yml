@@ -13,17 +13,16 @@ services:
     command: >
       sh -c "corepack enable &&
              corepack prepare yarn@1.22.22 --activate &&
-             yarn install &&
-             yarn dev -p 3000 -H 0.0.0.0"
+             YARN_PRODUCTION=false yarn install &&
+             yarn build &&
+             yarn start -p 3000 -H 0.0.0.0"
     environment:
-      - NODE_ENV=development
-      # 로컬 HTTPS 개발용: Caddy를 통해 한 호스트(https://localhost)로 접근
-      # - 웹: https://localhost (Caddy -> web:3000)
-      # - 실시간 WS: https://localhost/socket (Caddy -> game:3001)
-      # - NoiseCraft: https://localhost/audiocraft (Caddy -> noisecraft:4000)
+      - NODE_ENV=production
+      # HTTPS는 Caddy에서 종료(terminate)하므로, 앱은 상대 경로 기반으로 사용
       - NEXT_PUBLIC_WS_URL=/socket
       - NEXT_PUBLIC_NOISECRAFT_WS_URL=/audiocraft
       - NEXT_PUBLIC_HOST_URL=https://localhost
+      # 내부 통신용 주소 (컨테이너 간)
       - REALTIME_INTERNAL_URL=http://game:3001
       - NEXT_PUBLIC_PERSONAL_AUDIO_MODE=both
       - NEXT_PUBLIC_NOISECRAFT_PERSONAL_PATCH_SRC=/examples/indiv_audio_map.ncft
@@ -46,13 +45,16 @@ services:
     command: >
       sh -c "corepack enable &&
              corepack prepare yarn@1.22.22 --activate &&
-             yarn install &&
-             yarn dev"
+             YARN_PRODUCTION=false yarn install &&
+             yarn build &&
+             yarn start"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - PORT=3001
       - HOST=0.0.0.0
       - SOCKET_PATH=/socket
+      # 로컬 "prod 모드"에서 IP(예: https://192.168.x.x) 접속도 허용
+      - CORS_ALLOW_IP_ORIGINS=true
     restart: unless-stopped
 
   noisecraft:
@@ -68,9 +70,9 @@ services:
       - noisecraft_node_modules:/srv/node_modules
     command: >
       sh -c "npm install --no-audit --no-fund && \
-             npm run watch"
+             npm start"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - HTTP_PORT_NO=4000
     restart: unless-stopped
 

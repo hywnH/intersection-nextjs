@@ -557,12 +557,17 @@ function removePlayerCollisions(id: string) {
 }
 
 const DEFAULT_ALLOWED_ORIGINS = [
+  // 로컬 개발용 (http)
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "http://localhost:4000",
   "http://127.0.0.1:4000",
   "http://localhost:7773",
   "http://127.0.0.1:7773",
+  // 로컬 HTTPS (Caddy 프록시를 통한 접속)
+  "https://localhost",
+  "https://127.0.0.1",
+  // 프로덕션/스테이징 도메인
   "https://intersection-web.onrender.com",
   "https://intersection-audio.onrender.com",
   "https://intersection-nextjs.site",
@@ -587,12 +592,57 @@ const httpServer = http.createServer((_, res) => {
   res.end("ok");
 });
 
+const isDev = process.env.NODE_ENV !== "production";
+const allowIpOriginsAlways = process.env.CORS_ALLOW_IP_ORIGINS === "true";
+const allowIpOriginsInDev =
+  process.env.CORS_ALLOW_IP_ORIGINS_IN_DEV !== "false";
+
+const isLocalLikeOrigin = (origin: string) => {
+  // 예:
+  // - https://localhost
+  // - https://127.0.0.1
+  // - https://192.168.1.19
+  // - http://10.0.0.5:3000
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const host = url.hostname;
+    if (host === "localhost" || host === "127.0.0.1") return true;
+    // IPv4
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+type SocketIoCorsOriginFn = (
+  origin: string | undefined,
+  callback: (err: Error | null, allow?: boolean) => void
+) => void;
+
+const originChecker: SocketIoCorsOriginFn = (
+  origin: string | undefined,
+  callback: (err: Error | null, allow?: boolean) => void
+) => {
+  // socket.io에서 origin이 undefined로 들어오는 경우가 있어서 허용
+  if (!origin) return callback(null, true);
+  if (allowedOrigins.includes(origin)) return callback(null, true);
+  if (
+    (allowIpOriginsAlways || (isDev && allowIpOriginsInDev)) &&
+    isLocalLikeOrigin(origin)
+  ) {
+    return callback(null, true);
+  }
+  return callback(new Error("CORS origin not allowed"), false);
+};
+
 const io = new Server(httpServer, {
   path: SOCKET_PATH,
   transports: ["websocket"],
   allowEIO3: false,
   cors: {
-    origin: allowedOrigins,
+    origin: originChecker,
     credentials: true,
   },
   pingInterval: 10000,

@@ -54,3 +54,5 @@ next-env.d.ts
 
 # Optional: ignore npm lockfile if using yarn
 package-lock.json
+
+certificates
