@@ -1,0 +1,38 @@
+{
+  # 로컬 개발용 자체 CA(내부 인증서) 사용
+  # 문제 발생 시 원인 파악을 위해 로그를 상세하게
+  debug
+}
+
+:80 {
+  redir https://{host}{uri}
+}
+
+:443 {
+  # :443 처럼 호스트를 지정하지 않고 받는 경우,
+  # 요청된 Host(SNI)에 대해 내부 인증서를 on-demand로 발급해야 한다.
+  tls internal {
+    on_demand
+  }
+
+  @socket path /socket*
+  reverse_proxy @socket game:3001
+
+  # /audiocraft 프리픽스를 제거한 뒤 NoiseCraft로 전달
+  handle_path /audiocraft* {
+    reverse_proxy noisecraft:4000
+  }
+
+  # NoiseCraft 정적 리소스(/public/*)도 NoiseCraft로 프록시
+  handle /public* {
+    reverse_proxy noisecraft:4000
+  }
+
+  # 나머지 모든 트래픽은 Next.js dev 서버로 전달
+  # prod 모드에서는 next build 중 잠시 3000이 열리지 않아
+  # 초기 요청이 502로 떨어질 수 있으니, 잠깐 재시도한다.
+  reverse_proxy web:3000 {
+    lb_try_duration 30s
+    lb_try_interval 500ms
+  }
+}
