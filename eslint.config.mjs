@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Ignore backend workspaces
     "realtime/**",
     "noisecraft/**",
+    // Ignore archived/experimental examples
+    "react-three-fiber-example/**",
   ]),
 ]);
 

@@ -109,7 +109,11 @@ export class AudioView
             return;
         }
 
-        console.log('recompile unit');
+        // Log only occasionally to reduce console spam
+        if (!window._lastRecompileLog || Date.now() - window._lastRecompileLog > 5000) {
+          console.log('recompile unit');
+          window._lastRecompileLog = Date.now();
+        }
 
         // Compile a new unit from the project state
         this.unit = compile(state);
