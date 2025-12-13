@@ -17,46 +17,55 @@ const StartScreen = () => {
   };
 
   return (
-    <div className="flex flex-col gap-12 text-white">
-      <div className="space-y-4">
-        <p className="font-mono text-xs uppercase tracking-[0.4em] text-white/40">
-          Intersection
-        </p>
-        <h1 className="text-4xl font-semibold leading-tight sm:text-5xl">
+    <div className="flex flex-col gap-8 text-white">
+      <div className="space-y-6">
+        <h1 className="text-5xl font-bold leading-tight sm:text-6xl md:text-7xl vintage-serif">
           Intersection
         </h1>
-        <p className="max-w-2xl text-lg text-white/70">
-          Intersection is a collaborative music experience. Join a global
-          audience or create your own personal space.
+      </div>
+
+      <div className="space-y-4">
+        <p className="text-sm leading-normal text-white/70 font-normal vintage-serif">
+          The sphere at the center is yours.
+          <br />
+          <br />
+          Touch and hold the space
+          <br />
+          to move it in that direction.
+          <br />
+          <br />
+          Listen carefully —
+          <br />
+          sound will guide you toward encounters.
         </p>
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm text-white/60" htmlFor="displayName">
-          Your Name (optional)
-        </label>
-        <input
-          id="displayName"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Explorer-123"
-          className="w-full rounded-lg border border-white/20 bg-black/40 px-4 py-3 text-base text-white outline-none focus:border-white"
-        />
-      </div>
+      <div className="flex flex-col items-center gap-4">
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-normal text-white/60 vintage-serif" htmlFor="displayName">
+            your name
+          </label>
+          <input
+            id="displayName"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Voyager-123"
+            className="rounded-lg border border-white/30 bg-white px-12 py-3 text-sm font-normal text-gray-800 outline-none transition-colors focus:border-white/50 vintage-serif w-[200px]"
+          />
+        </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row">
         <button
-          className="rounded-full bg-white px-8 py-4 text-center text-black transition hover:bg-white/90"
+          className="rounded-lg border border-white bg-transparent px-12 py-3 text-sm font-normal text-white transition-all duration-300 hover:border-white/80 hover:text-white/90 active:scale-[0.98] vintage-serif w-[200px]"
           onClick={() => handleEnter("personal")}
         >
-          Personal Space
+          Enter the space
         </button>
-        <button
-          className="rounded-full border border-white/30 px-8 py-4 text-center transition hover:border-white hover:bg-white/10"
-          onClick={() => handleEnter("global")}
-        >
-          Global Space
-        </button>
+      </div>
+
+      <div className="mt-auto pt-8">
+        <p className="text-xs font-extralight italic text-white/40 tracking-widest vintage-serif">
+          "Across the sea of space, the stars are other suns." - Carl Sagan
+        </p>
       </div>
     </div>
   );
