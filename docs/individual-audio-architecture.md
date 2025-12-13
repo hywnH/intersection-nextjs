@@ -17,7 +17,6 @@ The audio system has been refactored to separate **individual audio** (per-user)
 - Uses proper orbital velocity calculations: `v = sqrt(G*M/r) * 0.8`
 
 **Benefits**:
-
 - Stable orbits that don't drift apart
 - Predictable motion for audio spatialization
 - Mimics real planetary systems
@@ -41,20 +40,16 @@ Created a new modular system for routing individual audio per user:
 
 ```javascript
 const router = new IndividualAudioRouter({
-  maxDistance: 300, // Max distance for audio interaction
-  panningRange: 0.8, // Max pan value (-0.8 to 0.8)
-  updateRate: 60, // Updates per second
+  maxDistance: 300,      // Max distance for audio interaction
+  panningRange: 0.8,     // Max pan value (-0.8 to 0.8)
+  updateRate: 60,        // Updates per second
 });
 
 // Register user with particle
-router.registerUser("user_123", particleId);
+router.registerUser('user_123', particleId);
 
 // Generate individual audio data
-const audioData = router.generateIndividualAudio(
-  userId,
-  allParticles,
-  signalGenerator
-);
+const audioData = router.generateIndividualAudio(userId, allParticles, signalGenerator);
 ```
 
 #### Audio Data Structure
@@ -99,7 +94,6 @@ const audioData = router.generateIndividualAudio(
 ### Individual Audio vs Global Audio
 
 #### Individual Audio (Per-User)
-
 - **Purpose**: Personal auditory cues for each user
 - **Focus**: Interaction with nearby particles, spatial awareness
 - **Features**:
@@ -110,7 +104,6 @@ const audioData = router.generateIndividualAudio(
   - Connection to nearby particles
 
 #### Global Audio (Future)
-
 - **Purpose**: Ambient sound, cluster-based audio
 - **Focus**: Overall system state, non-disturbing background
 - **Features**:
@@ -161,7 +154,7 @@ const audioData = router.generateIndividualAudio(
 ### Basic Individual Audio Setup
 
 ```javascript
-import { IndividualAudioRouter } from "/public/individual-audio.js";
+import { IndividualAudioRouter } from '/public/individual-audio.js';
 
 // Initialize router
 const audioRouter = new IndividualAudioRouter({
@@ -170,13 +163,13 @@ const audioRouter = new IndividualAudioRouter({
 });
 
 // Register users as they join
-audioRouter.registerUser("user_123", 0); // Particle ID 0
-audioRouter.registerUser("user_456", 1); // Particle ID 1
+audioRouter.registerUser('user_123', 0);  // Particle ID 0
+audioRouter.registerUser('user_456', 1);  // Particle ID 1
 
 // Generate audio for a user
 const particles = particleSystem.getParticles();
 const audioData = audioRouter.generateIndividualAudio(
-  "user_123",
+  'user_123',
   particles,
   signalGenerator
 );
@@ -184,30 +177,30 @@ const audioData = audioRouter.generateIndividualAudio(
 // Use audio data to control NoiseCraft nodes
 if (audioData.enabled) {
   // Map to NoiseCraft parameters
-  const params = audioData.interactions.map((interaction) => ({
-    nodeId: "pan_node_id",
-    paramName: "value",
+  const params = audioData.interactions.map(interaction => ({
+    nodeId: 'pan_node_id',
+    paramName: 'value',
     value: interaction.pan, // -1 to 1
   }));
-
+  
   // Send to NoiseCraft
-  sendToNoiseCraft({ type: "noiseCraft:setParams", params });
+  sendToNoiseCraft({ type: 'noiseCraft:setParams', params });
 }
 ```
 
 ### Custom Mapping Function
 
 ```javascript
-import { createDefaultIndividualMapping } from "/public/individual-audio.js";
+import { createDefaultIndividualMapping } from '/public/individual-audio.js';
 
 const mappingFunction = createDefaultIndividualMapping({
-  distanceNodeId: "17", // % knob
-  velocityNodeId: "183", // Vol CHORDS
-  panNodeId: "custom_pan", // Custom pan node
+  distanceNodeId: '17',      // % knob
+  velocityNodeId: '183',     // Vol CHORDS
+  panNodeId: 'custom_pan',   // Custom pan node
 });
 
 const params = audioRouter.generateNoiseCraftParams(
-  "user_123",
+  'user_123',
   particles,
   signalGenerator,
   mappingFunction
@@ -221,3 +214,6 @@ const params = audioRouter.generateNoiseCraftParams(
 - Panning and distance attenuation provide natural spatial cues
 - The system is designed to be modular and extensible
 - Global audio will be implemented separately as a complementary system
+
+
+
