@@ -418,6 +418,7 @@
       import { VirtualParticle, SignalGenerator, ParticleSystem } from '/public/global-particle-system.js';
       import { SequencerLogic, convertNotePatternToNoiseCraft, updateMonoSeqSequencer } from '/public/sequencer-logic.js';
       import { createParticlePatternPipeline } from '/public/particle-pattern-pipeline.js';
+      import { ParticleSequencerMapper } from '/public/particle-sequencer-mapper.js';
       import { processBackgroundAudio, calculateLocalization } from '/public/background-audio-post-processing.js';
       import { SpatialAudioProcessor, createSpatialProcessor } from '/public/spatial-audio-processor.js';
       import { generateHarmoniousPattern, generateHarmonizingPattern, generateChordPatterns, SCALES, CHORD_TONES, getRandomScale } from '/public/music-theory.js';
@@ -425,59 +426,35 @@
       import { createPatternAssignmentManager } from '/public/pattern-assignment.js';
       import { createMappingStorage } from '/public/mapping-storage.js';
       import { GlobalHarmonicPlacer } from '/public/harmonic-placer.js';
+      import { HarmonicProgressionGenerator } from '/public/harmonic-progression.js';
+      
+      // Import modularized components
+      import { 
+        SEQUENCER_STEPS, 
+        STABLE_HARMONY_INTERVAL, 
+        USE_PROGRESSION_GENERATOR_THRESHOLD,
+        AVAILABLE_STREAMS,
+        INTERPOLATION_MODES,
+        OPERATIONS,
+        PARAM_UPDATE_INTERVAL,
+        PULSAR_DURATION
+      } from '/public/global-workspace-config.js';
+      import { initializeGlobalWorkspace, setupNavigationPrevention } from '/public/global-workspace-init.js';
+      import { 
+        calculateEntropy, 
+        calculateRMSVelocity, 
+        calculateClusterCount, 
+        calculateInInnerPulsars,
+        countInInnerConnections
+      } from '/public/global-workspace-calculations.js';
+      import { updateSequencerPatterns } from '/public/global-workspace-sequencer.js';
+      import { createUpdateFunction, createAnimationLoop } from '/public/global-workspace-update.js';
       
       console.log("[Init] ===== SCRIPT STARTING =====");
       console.log("[Init] All imports loaded successfully");
       
-      // Prevent browser back navigation (swipe gestures) from reloading the page
-      // This fixes the issue where touchpad swipe-left gestures cause page reloads
-      (function preventBackNavigation() {
-        // Push a state to the history stack so we can intercept back navigation
-        history.pushState(null, null, location.href);
-        
-        // Listen for popstate events (triggered by back/forward navigation or swipe gestures)
-        window.addEventListener('popstate', function(event) {
-          console.log('[Navigation] Back navigation detected, preventing reload...');
-          // Push the state back to prevent navigation
-          history.pushState(null, null, location.href);
-          // Optionally show a message to the user
-          const statusEl = document.getElementById('status');
-          if (statusEl) {
-            const originalText = statusEl.textContent;
-            statusEl.textContent = 'Back navigation prevented (use browser controls instead)';
-            statusEl.style.color = '#ffa';
-            setTimeout(() => {
-              statusEl.textContent = originalText;
-              statusEl.style.color = '';
-            }, 2000);
-          }
-        });
-        
-        // Also prevent swipe gestures on touch devices
-        let touchStartX = 0;
-        let touchStartY = 0;
-        document.addEventListener('touchstart', function(e) {
-          touchStartX = e.touches[0].clientX;
-          touchStartY = e.touches[0].clientY;
-        }, { passive: true });
-        
-        document.addEventListener('touchmove', function(e) {
-          if (!touchStartX || !touchStartY) return;
-          
-          const touchEndX = e.touches[0].clientX;
-          const touchEndY = e.touches[0].clientY;
-          const deltaX = touchEndX - touchStartX;
-          const deltaY = touchEndY - touchStartY;
-          
-          // If horizontal swipe is much larger than vertical, prevent it
-          if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-            // This is a horizontal swipe - prevent default browser behavior
-            e.preventDefault();
-          }
-        }, { passive: false });
-        
-        console.log('[Navigation] Back navigation prevention enabled');
-      })();
+      // Setup navigation prevention (using modular function)
+      setupNavigationPrevention();
       
       // Dummy storage fallback if mapping-storage.js is not available
       function createDummyStorage() {
@@ -496,31 +473,8 @@
       try {
         console.log("[Init] Entering try block...");
 
-      console.log("[Init] Defining AVAILABLE_STREAMS...");
-      // Global streams (different from Individual)
-      const AVAILABLE_STREAMS = [
-        "entropy",
-        "rmsVelocity",
-        "particleCount",
-        "clusterCount",
-        "inInnerPulsar",
-        "outInnerPulsar",
-      ];
-
-      // Interpolation modes
-      const INTERPOLATION_MODES = ["linear", "logarithmic", "exponential"];
-
-      // Mathematical operations
-      const OPERATIONS = [
-        { value: "none", label: "None" },
-        { value: "add", label: "Add (+)" },
-        { value: "subtract", label: "Subtract (-)" },
-        { value: "multiply", label: "Multiply (×)" },
-        { value: "divide", label: "Divide (÷)" },
-        { value: "min", label: "Min" },
-        { value: "max", label: "Max" },
-        { value: "average", label: "Average" },
-      ];
+      console.log("[Init] Using modularized configuration...");
+      // AVAILABLE_STREAMS, INTERPOLATION_MODES, OPERATIONS are now imported from global-workspace-config.js
 
       console.log("[Init] Defining StreamNodeMapper class...");
       // Stream-to-Node Mapping Manager (now uses MappingStorage module)
@@ -825,6 +779,19 @@
       // Initialize GlobalHarmonicPlacer for harmonic progression (before particle initialization)
       const harmonicPlacer = new GlobalHarmonicPlacer('C', 'major');
       
+      // Initialize new particle sequencer mapper for (a,b,c) coordinate system (before particle initialization)
+      const particleSequencerMapper = new ParticleSequencerMapper();
+      particleSequencerMapper.clear(); // Ensure clean start
+      window.particleSequencerMapper = particleSequencerMapper;
+      
+      // Initialize HarmonicProgressionGenerator with Tonal.js integration
+      const progressionGenerator = new HarmonicProgressionGenerator('C', 'major');
+      window.progressionGenerator = progressionGenerator;
+      console.log("[Init] ✓ HarmonicProgressionGenerator initialized with Tonal.js support");
+      
+      // Configuration: Use HarmonicProgressionGenerator when particle count >= threshold
+      // USE_PROGRESSION_GENERATOR_THRESHOLD is now imported from global-workspace-config.js
+      
       // Create a stable 3-body system: One central particle with 2 orbiting moons
       // Using more realistic mass ratios so all particles stay visible
       const centerX = 575;
@@ -835,15 +802,18 @@
       
       console.log("[Particle Init] Step 3: Adding particles...");
       
-      // Start with a single particle with random note assignment
-      // All particles start with [0,0,...,0] pattern and get assigned when added
+      // Start with a single particle with stable note assignment
+      // Use stable notes: G (7, Perfect 5th) is most stable, then C (0, Unison/Tonic)
+      // Stability priority: Perfect 5th (G=7) > Unison/Tonic (C=0)
       let particle0;
       try {
-        // Generate random note for initial particle
-        const randomNote = Math.floor(Math.random() * 12);
+        // STRICTLY only use most stable notes for first particle
+        // Only allow: G (7, Perfect 5th) or C (0, Tonic)
+        // Weight: 80% G, 20% C (G is more stable)
+        const initialNote = Math.random() < 0.8 ? 7 : 0; // G (7) or C (0)
         
-        console.log("[Particle Init]   Adding particle 0 with random note:", randomNote);
-        particle0 = particleSystem.addParticle(0, centerX, centerY, randomNote, centralMass);
+        console.log("[Particle Init]   Adding particle 0 with random note:", initialNote);
+        particle0 = particleSystem.addParticle(0, centerX, centerY, initialNote, centralMass);
         console.log("[Particle Init]   ✓ Particle 0 added:", particle0);
         console.log("[Particle Init]   Current particles:", particleSystem.getParticles().length);
         
@@ -853,25 +823,41 @@
           patternManager.assignPattern(0, particle0.sequencerPattern);
         }
         
-        // Assign initial particle to sequencer using harmonic progression
-        // Use tone property directly since pattern is [0,0,...,0]
-        const noteIndex = particle0.tone !== undefined ? (particle0.tone % 12) : particle0.getActiveNoteIndex();
-        if (noteIndex >= 0 && noteIndex < 12 && harmonicPlacer) {
-          const position = harmonicPlacer.assignNewUser(noteIndex, 1, true);
-          if (position >= 0 && position < 36) {
-            const voiceIndex = Math.floor(position / 12);
-            const column = position % 12;
-            const voices = ['bass', 'baritone', 'tenor'];
-            const voice = voices[voiceIndex];
-            
-            if (!window.globalParticleAssignments) {
-              window.globalParticleAssignments = {};
+        // Assign initial particle using new (a,b,c) mapper for immediate sound
+        // The sequencer update will happen in projectLoaded event handler when iframe is ready
+        // NOTE: This assignment will be cleared and re-assigned in projectLoaded event
+        if (particleSequencerMapper) {
+          // Check if already assigned (shouldn't happen, but safety check)
+          if (!particleSequencerMapper.particleAssignments.has(particle0.id)) {
+            const assignment = particleSequencerMapper.assignParticle(particle0, 1);
+            if (assignment) {
+              console.log(`[Particle Init] Assigned initial particle ${particle0.id} (note: ${initialNote}, tone: ${particle0.tone}) using (a,b,c) mapper: a=${assignment.a}, b=${assignment.b}, c=${assignment.c}`);
+              // Store assignment for later update when iframe is ready
+              window._initialParticleAssignment = assignment;
             }
-            window.globalParticleAssignments[particle0.id] = { voice, column };
-            harmonicPlacer.addAssignment(noteIndex, position);
-            
-            console.log(`[Particle Init] Assigned initial particle (note: ${noteIndex}, tone: ${particle0.tone}) to ${voice} step ${column}`);
+          } else {
+            console.warn(`[Particle Init] ⚠️ Particle ${particle0.id} already assigned before init!`);
           }
+        } else {
+          // Fallback to old method
+          if (!window.globalParticleAssignments) {
+            window.globalParticleAssignments = {};
+          }
+          
+          // Randomly choose one voice (bass, baritone, or tenor) for column 0
+          const voices = ['bass', 'baritone', 'tenor'];
+          const voiceIndex = Math.floor(Math.random() * 3);
+          const selectedVoice = voices[voiceIndex];
+          const stablePosition = voiceIndex * SEQUENCER_STEPS + 0; // voice * SEQUENCER_STEPS + column 0
+          
+          window.globalParticleAssignments[particle0.id] = { voice: selectedVoice, column: 0 };
+          if (harmonicPlacer) {
+            harmonicPlacer.addAssignment(initialNote, stablePosition);
+          }
+          
+          console.log(`[Particle Init] Assigned initial particle (note: ${initialNote}, tone: ${particle0.tone}) to ${selectedVoice} step 0 (stable position)`);
+          // Store for later update
+          window._initialParticleAssignment = { voice: selectedVoice, column: 0, note: initialNote };
         }
         
         console.log("[Particle Init] ✓ Initial particle added successfully with empty pattern");
@@ -894,36 +880,83 @@
       let outInnerPulsarTimer = 0; // Timer for outInnerPulsar (0 when inactive)
       const PULSAR_DURATION = 0.5; // Duration in seconds for pulsar signals
       
-      // Calculate Shannon entropy based on velocity diversity
+      // Calculate Shannon entropy based on velocity diversity and spatial distribution
+      // Improved entropy calculation considering both velocity and position diversity
       function calculateEntropy(particles) {
         if (!particles || particles.length === 0) return 0;
+        if (particles.length === 1) return 0; // Single particle has no diversity
         
-        // Calculate velocity magnitudes
+        // 1. Velocity entropy (movement diversity)
         const velocities = particles.map(p => {
           return Math.sqrt(p.velocity.x ** 2 + p.velocity.y ** 2);
         });
         
-        // Normalize velocities to 0-1 range (assuming max speed of ~100)
-        const maxSpeed = 100;
-        const normalized = velocities.map(v => Math.min(v / maxSpeed, 1.0));
+        const maxObservedSpeed = Math.max(...velocities, 1.0);
+        const minSpeed = Math.min(...velocities);
+        const speedRange = maxObservedSpeed - minSpeed;
         
-        // Calculate Shannon entropy
-        const bins = 12;
-        const counts = new Array(bins).fill(0);
-        normalized.forEach(v => {
-          const bin = Math.floor(v * bins);
-          counts[Math.min(bin, bins - 1)]++;
-        });
+        let velocityEntropy = 0;
+        if (speedRange > 0.01) {
+          const maxSpeed = Math.max(maxObservedSpeed, 1.0);
+          const normalized = velocities.map(v => Math.min(v / maxSpeed, 1.0));
+          const bins = Math.min(12, particles.length);
+          const counts = new Array(bins).fill(0);
+          normalized.forEach(v => {
+            const bin = Math.floor(v * bins);
+            counts[Math.min(bin, bins - 1)]++;
+          });
+          
+          counts.forEach(count => {
+            if (count > 0) {
+              const p = count / particles.length;
+              velocityEntropy -= p * Math.log2(p);
+            }
+          });
+        }
         
-        let entropy = 0;
-        counts.forEach(count => {
-          if (count > 0) {
-            const p = count / particles.length;
-            entropy -= p * Math.log2(p);
-          }
-        });
+        // 2. Position entropy (spatial distribution diversity)
+        // Calculate how spread out particles are in space
+        if (particles.length > 1) {
+          const positions = particles.map(p => ({ x: p.position.x, y: p.position.y }));
+          
+          // Find bounding box
+          const xs = positions.map(p => p.x);
+          const ys = positions.map(p => p.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          
+          const width = Math.max(maxX - minX, 1);
+          const height = Math.max(maxY - minY, 1);
+          
+          // Divide space into grid cells and count particles per cell
+          const gridSize = Math.min(4, Math.ceil(Math.sqrt(particles.length)));
+          const cellWidth = width / gridSize;
+          const cellHeight = height / gridSize;
+          
+          const grid = Array(gridSize * gridSize).fill(0);
+          positions.forEach(pos => {
+            const col = Math.floor((pos.x - minX) / cellWidth);
+            const row = Math.floor((pos.y - minY) / cellHeight);
+            const cellIndex = Math.min(row * gridSize + col, grid.length - 1);
+            grid[cellIndex]++;
+          });
+          
+          let positionEntropy = 0;
+          grid.forEach(count => {
+            if (count > 0) {
+              const p = count / particles.length;
+              positionEntropy -= p * Math.log2(p);
+            }
+          });
+          
+          // Combine velocity and position entropy (weighted average)
+          // Position entropy is more important for system diversity
+          return (velocityEntropy * 0.4) + (positionEntropy * 0.6);
+        }
         
-        return entropy;
+        return velocityEntropy;
       }
       
       // Calculate RMS (Root Mean Square) velocity
@@ -945,8 +978,8 @@
         if (!particles || particles.length === 0) return 0;
         if (particles.length === 1) return 1;
         
-        const config = particleSystem.getConfig();
-        const innerRadius = config.innerRadius || 80;
+        // Use signalGenerator directly instead of getConfig()
+        const innerRadius = signalGenerator ? signalGenerator.innerRadius : 80;
         const visited = new Set();
         let clusterCount = 0;
         
@@ -1058,12 +1091,15 @@
       // Initialize sequencer logic
       const sequencerLogic = new SequencerLogic();
       
-      // Sequencer node IDs from glb_audio_map.ncft (12 columns per voice)
+      // particleSequencerMapper is already initialized above (before particle initialization)
+      
+      // Sequencer node IDs from glb_audio_map.ncft (8 columns per voice)
+      const SEQUENCER_STEPS = 8; // Reduced from 12 to 8 steps per voice
       const SEQUENCER_NODES = {
         global: {
-          bass: "211",      // MonoSeq "bass" (12 columns)
-          baritone: "212",  // MonoSeq "baritone" (12 columns)
-          tenor: "213"      // MonoSeq "tenor" (12 columns)
+          bass: "211",      // MonoSeq "bass" (8 columns)
+          baritone: "212",  // MonoSeq "baritone" (8 columns)
+          tenor: "213"      // MonoSeq "tenor" (8 columns)
         }
       };
       
@@ -1097,8 +1133,25 @@
         const x = cmX + Math.cos(angle) * radius;
         const y = cmY + Math.sin(angle) * radius;
         
-        // Random note assignment (0-11)
-        const randomNote = Math.floor(Math.random() * 12);
+        // Note assignment: early stage (<=18 users) uses only stable notes
+        // Stable notes: C(0), Eb(3), E(4), G(7), A(9) - instability <= 2.5
+        // Later stage (>18 users): allow all notes
+        const allParticlesBefore = particleSystem.getParticles();
+        const totalUsers = allParticlesBefore.length + 1; // +1 for the new particle
+        let randomNote;
+        
+        if (totalUsers <= 18) {
+          // Early stage: only stable notes (instability <= 2.5)
+          const stableNotes = [0, 3, 4, 7, 9]; // C, Eb, E, G, A
+          randomNote = stableNotes[Math.floor(Math.random() * stableNotes.length)];
+        } else if (totalUsers <= 30) {
+          // Mid stage: stable + moderately stable (instability <= 4.5)
+          const midStableNotes = [0, 2, 3, 4, 5, 7, 9, 10]; // C, D, Eb, E, F, G, A, Bb
+          randomNote = midStableNotes[Math.floor(Math.random() * midStableNotes.length)];
+        } else {
+          // Later stage: all notes allowed
+          randomNote = Math.floor(Math.random() * 12);
+        }
         
         // Add particle with standard mass
         const newParticle = particleSystem.addParticle(nextParticleId, x, y, randomNote, 50);
@@ -1118,17 +1171,18 @@
           return;
         }
         
+        let globalAssignment = null; // Initialize outside if block
         const noteIndex = newParticle.tone !== undefined ? (newParticle.tone % 12) : newParticle.getActiveNoteIndex();
         if (noteIndex >= 0 && noteIndex < 12) {
           try {
             const position = harmonicPlacer.assignNewUser(noteIndex, allParticles.length, true);
-            if (position >= 0 && position < 36) {
-              const voiceIndex = Math.floor(position / 12);
-              const column = position % 12;
+            if (position >= 0 && position < (3 * SEQUENCER_STEPS)) {
+              const voiceIndex = Math.floor(position / SEQUENCER_STEPS);
+              const column = position % SEQUENCER_STEPS;
               const voices = ['bass', 'baritone', 'tenor'];
               const voice = voices[voiceIndex];
               
-              const globalAssignment = { voice, column };
+              globalAssignment = { voice, column };
               if (!window.globalParticleAssignments) {
                 window.globalParticleAssignments = {};
               }
@@ -1149,60 +1203,65 @@
           console.warn(`[Particle] Invalid note index ${noteIndex} for particle ${newParticle.id} (tone: ${newParticle.tone})`);
         }
         
-        // Store pattern pipeline for later use (optional, for compatibility)
-        if (typeof createParticlePatternPipeline === 'function') {
-          try {
-            const patternPipeline = window.patternPipeline || createParticlePatternPipeline({
-              mode: 'global',
-              harmonicPlacer: harmonicPlacer,
-              patternManager: patternManager || null
-            });
-            window.patternPipeline = patternPipeline;
-          } catch (e) {
-            console.warn("[Particle] Failed to create pattern pipeline:", e);
-            // Continue without pattern pipeline - not critical
-          }
-        }
-        
         nextParticleId++;
         
-        // Update sequencer pattern immediately when particle is added
+        // Update sequencer immediately when particle is added - use direct ToggleCell (like clicking a cell)
         if (iframe && iframe.contentWindow && allParticles.length > 0) {
-          // Force pattern update by resetting previousSequencerPattern
-          if (window.previousSequencerPattern !== undefined) {
-            window.previousSequencerPattern = null;
+          // Use new (a,b,c) mapper if available
+          if (particleSequencerMapper) {
+            // Assign new particle using (a,b,c) coordinate system
+            const abcAssignment = particleSequencerMapper.assignParticle(newParticle, allParticles.length);
+            if (abcAssignment) {
+              const { a, b, c } = abcAssignment;
+              
+              // Map (a,b,c) to NoiseCraft sequencer coordinates
+              // a: note index (0-12) -> rowIdx (0-11, 12 wraps to 0)
+              // b: voice (0-2) -> nodeId (bass=211, baritone=212, tenor=213)
+              // c: step (0-11) -> stepIdx
+              const rowIdx = a % 12; // Map 0-12 to 0-11
+              const voiceNodeIds = [SEQUENCER_NODES.global.bass, SEQUENCER_NODES.global.baritone, SEQUENCER_NODES.global.tenor];
+              const nodeId = voiceNodeIds[b];
+              const stepIdx = c;
+              const patIdx = 0; // First pattern
+              
+              // Send ToggleCell message directly (like clicking the cell in editor)
+              iframe.contentWindow.postMessage({
+                type: "noiseCraft:toggleCell",
+                nodeId: String(nodeId),
+                patIdx: patIdx,
+                stepIdx: stepIdx,
+                rowIdx: rowIdx,
+                value: 1 // Set cell to 1
+              }, "*");
+              
+              console.log(`[Particle] Assigned particle ${newParticle.id} (note: ${randomNote}) to sequencer: voice=${['bass','baritone','tenor'][b]}, step=${c}, row=${rowIdx}`);
+            } else {
+              console.warn(`[Particle Mapper] Failed to assign particle ${newParticle.id}`);
+            }
+          } else if (globalAssignment) {
+            // Fallback: use old harmonic placer assignment
+            const voiceNodeIds = {
+              bass: SEQUENCER_NODES.global.bass,
+              baritone: SEQUENCER_NODES.global.baritone,
+              tenor: SEQUENCER_NODES.global.tenor
+            };
+            const nodeId = voiceNodeIds[globalAssignment.voice];
+            const stepIdx = globalAssignment.column;
+            const rowIdx = noteIndex % 12;
+            const patIdx = 0;
+            
+            // Send ToggleCell message directly
+            iframe.contentWindow.postMessage({
+              type: "noiseCraft:toggleCell",
+              nodeId: String(nodeId),
+              patIdx: patIdx,
+              stepIdx: stepIdx,
+              rowIdx: rowIdx,
+              value: 1
+            }, "*");
+            
+            console.log(`[Particle] Assigned particle ${newParticle.id} (note: ${noteIndex}) to sequencer: voice=${globalAssignment.voice}, step=${stepIdx}, row=${rowIdx}`);
           }
-          
-          const globalPattern = sequencerLogic.generateGlobalPattern(
-            allParticles,
-            window.globalParticleAssignments,
-            harmonicPlacer,
-            true // verbose: log when particle is added
-          );
-          window.globalParticleAssignments = globalPattern.assignments || {};
-          patternPipeline.updateGlobalAssignments(window.globalParticleAssignments);
-          
-          // Count active cells for logging
-          const bassActiveCells = globalPattern.bass.reduce((sum, step) => 
-            sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
-          const baritoneActiveCells = globalPattern.baritone.reduce((sum, step) => 
-            sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
-          const tenorActiveCells = globalPattern.tenor.reduce((sum, step) => 
-            sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
-          
-          console.log(`[Global Sequencer] Particle ${newParticle.id} added (note: ${randomNote}), updating patterns:`, {
-            totalParticles: allParticles.length,
-            bassCells: bassActiveCells,
-            baritoneCells: baritoneActiveCells,
-            tenorCells: tenorActiveCells,
-            assignment: globalAssignment
-          });
-          
-          requestAnimationFrame(() => {
-            updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, 12);
-            updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, 12);
-            updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, 12);
-          });
         }
         
         // Update particle count display
@@ -1222,10 +1281,32 @@
           return;
         }
         
-        // Remove particle with highest ID (most recently added)
-        const sortedParticles = [...particles].sort((a, b) => b.id - a.id);
-        const particleToRemove = sortedParticles[0];
+        // Remove particle with highest instability (most unstable note first)
+        // Import INSTABILITY_MAP for instability calculation
+        const INSTABILITY_MAP = {
+          0: 0, 1: 9, 2: 3, 3: 2, 4: 1.5, 5: 2.5, 6: 8, 7: 0.5, 8: 4, 9: 2, 10: 4.5, 11: 7
+        };
+        
+        // Calculate instability for each particle
+        const particlesWithInstability = particles.map(particle => {
+          const noteIndex = particle.tone !== undefined ? (particle.tone % 12) : 
+                           (particle.getActiveNoteIndex ? particle.getActiveNoteIndex() : 0);
+          const instability = INSTABILITY_MAP[noteIndex] || 0;
+          return { particle, instability, noteIndex };
+        });
+        
+        // Sort by instability (highest first), then by ID (newest first) as tiebreaker
+        particlesWithInstability.sort((a, b) => {
+          if (Math.abs(a.instability - b.instability) > 0.1) {
+            return b.instability - a.instability; // Higher instability first
+          }
+          return b.particle.id - a.particle.id; // Newer first if same instability
+        });
+        
+        const particleToRemove = particlesWithInstability[0].particle;
         const removedId = particleToRemove.id;
+        
+        console.log(`[Particle] Removing most unstable particle ${removedId} (note: ${particlesWithInstability[0].noteIndex}, instability: ${particlesWithInstability[0].instability.toFixed(2)})`);
         
         particleSystem.removeParticle(removedId);
         
@@ -1245,9 +1326,9 @@
             );
             window.globalParticleAssignments = globalPattern.assignments || {};
             requestAnimationFrame(() => {
-              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, 12);
-              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, 12);
-              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, 12);
+              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, SEQUENCER_STEPS);
+              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, SEQUENCER_STEPS);
+              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, SEQUENCER_STEPS);
             });
           }
         }
@@ -1995,6 +2076,7 @@
       const SIGNAL_UPDATE_INTERVAL = 16; // ~60fps for signal updates
       const PARAM_UPDATE_INTERVAL = 33; // ~30fps for parameter updates (less critical)
       const SEQUENCER_UPDATE_THROTTLE = 100; // Only update sequencers every 100ms max
+      // STABLE_HARMONY_INTERVAL is now imported from global-workspace-config.js
       
       // Parameter smoothing to prevent clicks/pops from rapid changes
       const paramSmoothing = new Map(); // nodeId:paramName -> {current, target, smoothing}
@@ -2147,8 +2229,8 @@
             
             // Count In Inner connections
             let inInnerNumber = 0;
-            const config = particleSystem.getConfig();
-            const innerRadius = config.innerRadius || 80;
+            // Use signalGenerator directly instead of getConfig()
+            const innerRadius = signalGenerator ? signalGenerator.innerRadius : 80;
             particles.forEach(p => {
               particles.forEach(other => {
                 if (other.id !== p.id) {
@@ -2167,6 +2249,7 @@
             const entropyEl = document.getElementById("system-entropy");
             const rmsEl = document.getElementById("system-rms-velocity");
             const clusterEl = document.getElementById("cluster-count");
+            const globalParticleCountEl = document.getElementById("global-particle-count");
             const inInnerEl = document.getElementById("in-inner-number");
             const pulsarInEl = document.getElementById("in-inner-pulsar");
             const pulsarOutEl = document.getElementById("out-inner-pulsar");
@@ -2174,6 +2257,7 @@
             if (entropyEl) entropyEl.textContent = entropy.toFixed(2);
             if (rmsEl) rmsEl.textContent = rmsVelocity.toFixed(2);
             if (clusterEl) clusterEl.textContent = clusterCount.toString();
+            if (globalParticleCountEl) globalParticleCountEl.textContent = particles.length.toString();
             if (inInnerEl) inInnerEl.textContent = inInnerNumber.toString();
             if (pulsarInEl) pulsarInEl.textContent = pulsars.inInnerPulsar.toString();
             if (pulsarOutEl) pulsarOutEl.textContent = pulsars.outInnerPulsar.toString();
@@ -2204,37 +2288,165 @@
             const params = streamMapper.generateParams(globalSignals);
             sendToNoiseCraft(params);
             
-            // Update Global sequencer pattern
+            // Update Global sequencer pattern using modularized function
             if (iframe && iframe.contentWindow && particles.length > 0) {
-              if (!window.globalParticleAssignments) {
-                window.globalParticleAssignments = {};
+              // Use modularized sequencer update function
+              updateSequencerPatterns({
+                particles,
+                progressionGenerator,
+                particleSequencerMapper,
+                iframe,
+                harmonicPlacer,
+                patternManager,
+                sequencerLogic,
+                createParticlePatternPipeline
+              }).catch(err => {
+                console.error("[Sequencer] Error updating patterns:", err);
+              });
+              
+              // Legacy code below (will be removed after testing)
+              let globalPattern;
+              
+              // Use HarmonicProgressionGenerator for richer harmonic progressions (3+ particles)
+              // Use particleSequencerMapper for simple assignments (1-2 particles)
+              const shouldUseProgression = particles.length >= USE_PROGRESSION_GENERATOR_THRESHOLD && progressionGenerator;
+              
+              if (shouldUseProgression) {
+                // Collect all particle notes (0-11)
+                const allParticleNotes = particles.map(p => {
+                  const note = p.tone !== undefined ? (p.tone % 12) : (p.getActiveNoteIndex ? p.getActiveNoteIndex() : 0);
+                  return note >= 0 && note < 12 ? note : 0;
+                }).filter(note => note >= 0 && note < 12);
+                
+                // Calculate current step (0-7, cycles every 8 steps)
+                if (!window._progressionStepCounter) {
+                  window._progressionStepCounter = 0;
+                }
+                const currentStep = window._progressionStepCounter;
+                
+                // Generate harmonic progression pattern (async)
+                (async () => {
+                  try {
+                    const pattern = await progressionGenerator.generateFullCyclePattern(allParticleNotes, currentStep);
+                    
+                    // Update step counter for next cycle
+                    window._progressionStepCounter = (window._progressionStepCounter + 1) % 8;
+                    
+                    // Apply pattern with stable harmony interval check
+                    const patternKey = JSON.stringify({
+                      bass: pattern.bass.map(step => step.join(',')),
+                      baritone: pattern.baritone.map(step => step.join(',')),
+                      tenor: pattern.tenor.map(step => step.join(','))
+                    });
+                    
+                    const prevPattern = window.previousSequencerPattern;
+                    
+                    if (!prevPattern || prevPattern !== patternKey) {
+                      const now = Date.now();
+                      const lastHarmonyChange = window._lastHarmonyChangeTime || 0;
+                      const timeSinceLastChange = now - lastHarmonyChange;
+                      
+                      if (timeSinceLastChange < STABLE_HARMONY_INTERVAL) {
+                        window._pendingHarmonyPattern = patternKey;
+                        window._pendingHarmonyPatternData = pattern;
+                        return;
+                      }
+                      
+                      window._lastHarmonyChangeTime = now;
+                      window._pendingHarmonyPattern = null;
+                      window._pendingHarmonyPatternData = null;
+                      
+                      requestAnimationFrame(() => {
+                        updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, pattern.bass, SEQUENCER_STEPS);
+                        updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, pattern.baritone, SEQUENCER_STEPS);
+                        updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, pattern.tenor, SEQUENCER_STEPS);
+                      });
+                      
+                      window.previousSequencerPattern = patternKey;
+                    }
+                  } catch (err) {
+                    console.error("[HarmonicProgression] Error generating pattern:", err);
+                  }
+                })();
+                
+                // For this update cycle, continue with particleSequencerMapper as fallback
+                // The progression generator will update in the next cycle
               }
               
-              // Use pattern pipeline to ensure all particles have assignments
-              const patternPipeline = window.patternPipeline || createParticlePatternPipeline({
-                mode: 'global',
-                harmonicPlacer: harmonicPlacer,
-                patternManager: patternManager
-              });
-              
-              // Assign global positions for any particles that don't have them yet
-              particles.forEach(particle => {
-                if (!window.globalParticleAssignments[particle.id]) {
-                  const assignment = patternPipeline.assignGlobalPositionToParticle(particle, particles.length);
-                  if (assignment) {
-                    window.globalParticleAssignments[particle.id] = assignment;
+              // Use new (a,b,c) mapper if available for real-time updates (fallback or for < 3 particles)
+              if (!shouldUseProgression && particleSequencerMapper) {
+                // Clear any stale assignments first - ensure mapper only has current particles
+                const existingParticleIds = new Set(particles.map(p => p.id));
+                const staleAssignments = [];
+                particleSequencerMapper.particleAssignments.forEach((assignment, particleId) => {
+                  if (!existingParticleIds.has(particleId)) {
+                    staleAssignments.push(particleId);
+                  }
+                });
+                staleAssignments.forEach(pid => particleSequencerMapper.removeParticle(pid));
+                
+                // Ensure all current particles are assigned (assignParticle checks for duplicates)
+                particles.forEach(particle => {
+                  if (!particleSequencerMapper.particleAssignments.has(particle.id)) {
+                    particleSequencerMapper.assignParticle(particle, particles.length);
+                  }
+                });
+                
+                // Convert to NoiseCraft format (only includes actually assigned particles)
+                globalPattern = particleSequencerMapper.toNoiseCraftFormat();
+                
+                // Debug: Verify assignment count matches particle count
+                const assignmentCount = particleSequencerMapper.getAssignmentCount();
+                if (assignmentCount !== particles.length) {
+                  console.warn(`[Global] Assignment mismatch: ${assignmentCount} assignments for ${particles.length} particles`);
+                  const summary = particleSequencerMapper.getAssignmentSummary();
+                  console.log(`[Global] Assignment summary:`, summary);
+                } else if (particles.length === 1) {
+                  // For single particle, verify only one voice has notes
+                  const bassCount = globalPattern.bass.reduce((sum, step) => sum + step.reduce((s, c) => s + (c === 1 ? 1 : 0), 0), 0);
+                  const baritoneCount = globalPattern.baritone.reduce((sum, step) => sum + step.reduce((s, c) => s + (c === 1 ? 1 : 0), 0), 0);
+                  const tenorCount = globalPattern.tenor.reduce((sum, step) => sum + step.reduce((s, c) => s + (c === 1 ? 1 : 0), 0), 0);
+                  const totalNotes = bassCount + baritoneCount + tenorCount;
+                  if (totalNotes !== 1) {
+                    console.warn(`[Global] ⚠️ Single particle but ${totalNotes} notes found: Bass=${bassCount}, Baritone=${baritoneCount}, Tenor=${tenorCount}`);
+                    const summary = particleSequencerMapper.getAssignmentSummary();
+                    console.log(`[Global] Assignment details:`, summary);
                   }
                 }
-              });
-              
-              const globalPattern = sequencerLogic.generateGlobalPattern(
-                particles,
-                window.globalParticleAssignments,
-                harmonicPlacer,
-                false // verbose: don't log during regular updates
-              );
-              window.globalParticleAssignments = globalPattern.assignments || {};
-              patternPipeline.updateGlobalAssignments(window.globalParticleAssignments);
+              } else {
+                // Fallback to old method
+                if (!window.globalParticleAssignments) {
+                  window.globalParticleAssignments = {};
+                }
+                
+                // Use pattern pipeline to ensure all particles have assignments
+                const patternPipeline = window.patternPipeline || createParticlePatternPipeline({
+                  mode: 'global',
+                  harmonicPlacer: harmonicPlacer,
+                  patternManager: patternManager
+                });
+                
+                // Assign global positions for any particles that don't have them yet
+                particles.forEach(particle => {
+                  if (!window.globalParticleAssignments[particle.id]) {
+                    const assignment = patternPipeline.assignGlobalPositionToParticle(particle, particles.length);
+                    if (assignment) {
+                      window.globalParticleAssignments[particle.id] = assignment;
+                    }
+                  }
+                });
+                
+                globalPattern = sequencerLogic.generateGlobalPattern(
+                  particles,
+                  window.globalParticleAssignments,
+                  harmonicPlacer,
+                  false // verbose: don't log during regular updates
+                );
+                window.globalParticleAssignments = globalPattern.assignments || {};
+                if (patternPipeline) {
+                  patternPipeline.updateGlobalAssignments(window.globalParticleAssignments);
+                }
+              }
               
               const patternKey = JSON.stringify({
                 bass: globalPattern.bass.map(step => step.join(',')),
@@ -2245,7 +2457,26 @@
               // Update patternKey reference from global
               previousSequencerPattern = window.previousSequencerPattern;
               
+              // Strict comparison: only update if pattern actually changed
               if (!previousSequencerPattern || previousSequencerPattern !== patternKey) {
+                // Stable harmony interval: only allow pattern changes after minimum interval has passed
+                const now = Date.now();
+                const lastHarmonyChange = window._lastHarmonyChangeTime || 0;
+                const timeSinceLastChange = now - lastHarmonyChange;
+                
+                if (timeSinceLastChange < STABLE_HARMONY_INTERVAL) {
+                  // Harmony is still in stable interval, don't update yet
+                  // Store the pending pattern to apply after interval
+                  window._pendingHarmonyPattern = patternKey;
+                  window._pendingHarmonyPatternData = globalPattern;
+                  return; // Skip this update
+                }
+                
+                // Harmony interval has passed, allow the change
+                window._lastHarmonyChangeTime = now;
+                window._pendingHarmonyPattern = null;
+                window._pendingHarmonyPatternData = null;
+                
                 // Only log warnings if patterns are empty, not regular updates
                 const bassActiveCells = globalPattern.bass.reduce((sum, step) => 
                   sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
@@ -2257,17 +2488,48 @@
                 if (bassActiveCells === 0 && baritoneActiveCells === 0 && tenorActiveCells === 0) {
                   const totalActiveNotes = particles.filter(p => p.getActiveNoteIndex() >= 0).length;
                   console.warn(`[Global Sequencer] ⚠️ All patterns are empty! Total particles: ${totalActiveNotes}`);
+                } else {
+                  // Log pattern update only when it actually changes (throttled)
+                  const shouldLog = !window._lastPatternUpdateLog || Date.now() - window._lastPatternUpdateLog > 3000;
+                  if (shouldLog) {
+                    console.log(`[Global Sequencer] Pattern changed - Bass: ${bassActiveCells}, Baritone: ${baritoneActiveCells}, Tenor: ${tenorActiveCells} cells`);
+                    window._lastPatternUpdateLog = Date.now();
+                  }
                 }
                 
                 requestAnimationFrame(() => {
-                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, 12);
-                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, 12);
-                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, 12);
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, SEQUENCER_STEPS);
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, SEQUENCER_STEPS);
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, SEQUENCER_STEPS);
                 });
                 
                 // Update both local and global references
                 previousSequencerPattern = patternKey;
                 window.previousSequencerPattern = patternKey;
+              } else if (window._pendingHarmonyPattern) {
+                // Check if we have a pending pattern and enough time has passed
+                const now = Date.now();
+                const lastHarmonyChange = window._lastHarmonyChangeTime || 0;
+                const timeSinceLastChange = now - lastHarmonyChange;
+                
+                if (timeSinceLastChange >= STABLE_HARMONY_INTERVAL) {
+                  // Apply pending pattern
+                  const pendingPattern = window._pendingHarmonyPattern;
+                  const pendingData = window._pendingHarmonyPatternData;
+                  
+                  window._lastHarmonyChangeTime = now;
+                  window._pendingHarmonyPattern = null;
+                  window._pendingHarmonyPatternData = null;
+                  
+                  requestAnimationFrame(() => {
+                    updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, pendingData.bass, SEQUENCER_STEPS);
+                    updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, pendingData.baritone, SEQUENCER_STEPS);
+                    updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, pendingData.tenor, SEQUENCER_STEPS);
+                  });
+                  
+                  previousSequencerPattern = pendingPattern;
+                  window.previousSequencerPattern = pendingPattern;
+                }
               }
             }
           }
@@ -2308,7 +2570,7 @@
           await streamMapper.loadMappings();
           renderMappings();
           
-          // Enable auto-save for indiv_audio_map.ncft when iframe is ready
+          // Enable auto-save for glb_audio_map.ncft when iframe is ready
           if (iframe.contentWindow) {
             // Small delay to ensure iframe message handler is ready
             setTimeout(() => {
@@ -2366,22 +2628,240 @@
           }
           
           // Update sequencer pattern for initial particle when project is loaded
-          if (iframe && iframe.contentWindow && particleSystem) {
+          // IMPORTANT: Only update if this is the first load (prevent duplicate assignments)
+          if (iframe && iframe.contentWindow && particleSystem && !window._projectLoadedHandled) {
+            window._projectLoadedHandled = true; // Mark as handled to prevent duplicate updates
+            
+            // First, clear ALL sequencer patterns to ensure clean start
+            const clearSequencer = () => {
+              if (!iframe || !iframe.contentWindow) return;
+              
+              // Clear all cells in all three voices
+              for (let voice = 0; voice < 3; voice++) {
+                const nodeId = [SEQUENCER_NODES.global.bass, SEQUENCER_NODES.global.baritone, SEQUENCER_NODES.global.tenor][voice];
+                for (let step = 0; step < SEQUENCER_STEPS; step++) {
+                  for (let row = 0; row < 12; row++) {
+                    iframe.contentWindow.postMessage({
+                      type: "noiseCraft:toggleCell",
+                      nodeId: String(nodeId),
+                      patIdx: 0,
+                      stepIdx: step,
+                      rowIdx: row,
+                      value: 0
+                    }, "*");
+                  }
+                }
+              }
+              console.log("[Global] Cleared all sequencer patterns for clean start");
+            };
+            
+            // Clear sequencer first
+            setTimeout(clearSequencer, 100);
+            
             const particles = particleSystem.getParticles();
-            if (particles.length > 0 && window.globalParticleAssignments) {
-              setTimeout(() => {
-                const globalPattern = sequencerLogic.generateGlobalPattern(
-                  particles,
-                  window.globalParticleAssignments,
-                  harmonicPlacer,
-                  true // verbose: log initial pattern
+            if (particles.length > 0) {
+              // Clear any stale assignments from old system to prevent duplicates
+              if (window.globalParticleAssignments) {
+                const existingParticleIds = new Set(particles.map(p => String(p.id)));
+                const staleKeys = Object.keys(window.globalParticleAssignments).filter(
+                  pid => !existingParticleIds.has(pid)
                 );
-                requestAnimationFrame(() => {
-                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, 12);
-                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, 12);
-                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, 12);
+                staleKeys.forEach(pid => delete window.globalParticleAssignments[pid]);
+              }
+              
+              // Use new (a,b,c) mapper if available, otherwise use old system
+              if (particleSequencerMapper) {
+                // Clear ALL old assignments to prevent conflicts
+                if (window.globalParticleAssignments) {
+                  window.globalParticleAssignments = {};
+                }
+                
+                // Clear ALL assignments in mapper for clean start
+                console.log(`[Global] Clearing mapper before projectLoaded assignment (had ${particleSequencerMapper.getAssignmentCount()} assignments)`);
+                particleSequencerMapper.clear();
+                
+                // Re-assign all particles (now that mapper is cleared)
+                // Only assign particles that don't already have assignments
+                console.log(`[Global] Re-assigning ${particles.length} particles after clear...`);
+                particles.forEach(particle => {
+                  if (!particleSequencerMapper.particleAssignments.has(particle.id)) {
+                    const assignment = particleSequencerMapper.assignParticle(particle, particles.length);
+                    if (assignment) {
+                      console.log(`[Global] Assigned particle ${particle.id}: a=${assignment.a}, b=${assignment.b}, c=${assignment.c}`);
+                    }
+                  } else {
+                    console.warn(`[Global] ⚠️ Particle ${particle.id} already assigned after clear!`);
+                  }
                 });
-              }, 500); // Small delay to ensure iframe is fully ready
+                
+                // Verify assignment count matches particle count
+                const assignmentCount = particleSequencerMapper.getAssignmentCount();
+                if (assignmentCount !== particles.length) {
+                  console.warn(`[Global] ⚠️ After projectLoaded: ${assignmentCount} assignments for ${particles.length} particles`);
+                  const summary = particleSequencerMapper.getAssignmentSummary();
+                  console.log(`[Global] Assignment summary:`, summary);
+                } else {
+                  console.log(`[Global] ✓ After projectLoaded: ${assignmentCount} assignments for ${particles.length} particles`);
+                }
+              } else {
+                // Fallback to old system - only if mapper is not available
+                // Clear any stale assignments first
+                if (window.globalParticleAssignments) {
+                  const existingParticleIds = new Set(particles.map(p => String(p.id)));
+                  const staleKeys = Object.keys(window.globalParticleAssignments).filter(
+                    pid => !existingParticleIds.has(pid)
+                  );
+                  staleKeys.forEach(pid => delete window.globalParticleAssignments[pid]);
+                }
+                
+                if (!window.globalParticleAssignments || Object.keys(window.globalParticleAssignments).length === 0) {
+                  console.log("[Global] Initializing particle assignments from existing particles");
+                  if (!window.globalParticleAssignments) {
+                    window.globalParticleAssignments = {};
+                  }
+                  
+                  // Assign positions for any particles that don't have assignments
+                  particles.forEach(particle => {
+                    if (!window.globalParticleAssignments[particle.id] && harmonicPlacer) {
+                      const noteIndex = particle.tone !== undefined ? (particle.tone % 12) : particle.getActiveNoteIndex();
+                      if (noteIndex >= 0 && noteIndex < 12) {
+                        const position = harmonicPlacer.assignNewUser(noteIndex, particles.length, false);
+                        if (position >= 0 && position < 36) {
+                          const voiceIndex = Math.floor(position / 12);
+                          const column = position % 12;
+                          const voices = ['bass', 'baritone', 'tenor'];
+                          const voice = voices[voiceIndex];
+                          window.globalParticleAssignments[particle.id] = { voice, column };
+                          harmonicPlacer.addAssignment(noteIndex, position);
+                          console.log(`[Global] Assigned particle ${particle.id} (note: ${noteIndex}) to ${voice} step ${column}`);
+                        }
+                      }
+                    }
+                  });
+                }
+              }
+              
+              // Now update sequencer pattern - use direct ToggleCell for each particle (like clicking cells)
+              // Prevent duplicate updates
+              if (window._updateSequencerInProgress) {
+                console.log("[Global] updateSequencer already in progress, skipping duplicate call");
+                return;
+              }
+              
+              const updateSequencer = () => {
+                if (!iframe || !iframe.contentWindow || !noisecraftReady) {
+                  console.log("[Global] Waiting for NoiseCraft to be ready...");
+                  setTimeout(updateSequencer, 200);
+                  return;
+                }
+                
+                window._updateSequencerInProgress = true;
+                
+                // Use new (a,b,c) mapper - send individual ToggleCell messages for each particle
+                if (particleSequencerMapper) {
+                  // Get current assignment count before update
+                  const assignmentCountBefore = particleSequencerMapper.getAssignmentCount();
+                  console.log(`[Global] updateSequencer: ${assignmentCountBefore} assignments before update, ${particles.length} particles`);
+                  
+                  // Clear any stale assignments first to prevent duplicates
+                  // Only keep assignments for particles that still exist
+                  const existingParticleIds = new Set(particles.map(p => p.id));
+                  const staleAssignments = [];
+                  particleSequencerMapper.particleAssignments.forEach((assignment, particleId) => {
+                    if (!existingParticleIds.has(particleId)) {
+                      staleAssignments.push(particleId);
+                    }
+                  });
+                  staleAssignments.forEach(pid => particleSequencerMapper.removeParticle(pid));
+                  
+                  // Ensure all particles are assigned (assignParticle now checks for duplicates)
+                  particles.forEach(particle => {
+                    if (!particleSequencerMapper.particleAssignments.has(particle.id)) {
+                      const assignment = particleSequencerMapper.assignParticle(particle, particles.length);
+                      if (assignment) {
+                        console.log(`[Global] updateSequencer: Assigned particle ${particle.id}: a=${assignment.a}, b=${assignment.b}, c=${assignment.c}`);
+                      }
+                    }
+                  });
+                  
+                  // Track which cells are being set to detect duplicates
+                  const cellTracker = new Map(); // key: "nodeId-step-row", value: particleId
+                  
+                  // Send ToggleCell message for each assigned particle
+                  let cellCount = 0;
+                  particleSequencerMapper.particleAssignments.forEach((assignment, particleId) => {
+                    const { a, b, c } = assignment;
+                    const rowIdx = a % 12;
+                    const voiceNodeIds = [SEQUENCER_NODES.global.bass, SEQUENCER_NODES.global.baritone, SEQUENCER_NODES.global.tenor];
+                    const nodeId = voiceNodeIds[b];
+                    const stepIdx = c;
+                    const patIdx = 0;
+                    
+                    // Check for duplicate cell
+                    const cellKey = `${nodeId}-${stepIdx}-${rowIdx}`;
+                    if (cellTracker.has(cellKey)) {
+                      const existingParticleId = cellTracker.get(cellKey);
+                      console.warn(`[Global] ⚠️ Duplicate cell in updateSequencer! Cell ${cellKey} already set by particle ${existingParticleId}, now trying to set by particle ${particleId}`);
+                    } else {
+                      cellTracker.set(cellKey, particleId);
+                    }
+                    
+                    iframe.contentWindow.postMessage({
+                      type: "noiseCraft:toggleCell",
+                      nodeId: String(nodeId),
+                      patIdx: patIdx,
+                      stepIdx: stepIdx,
+                      rowIdx: rowIdx,
+                      value: 1
+                    }, "*");
+                    cellCount++;
+                  });
+                  
+                  // Verify: should only have as many cells as particles
+                  if (cellCount !== particles.length) {
+                    console.warn(`[Global] ⚠️ Cell count mismatch: ${cellCount} cells for ${particles.length} particles`);
+                  } else {
+                    console.log(`[Global] ✓ Updated sequencer with ${cellCount} cells using (a,b,c) mapper for ${particles.length} particles`);
+                  }
+                  
+                  window._updateSequencerInProgress = false;
+                } else if (window.globalParticleAssignments) {
+                  // Fallback: use old assignments
+                  let cellCount = 0;
+                  Object.entries(window.globalParticleAssignments).forEach(([particleId, assignment]) => {
+                    const particle = particles.find(p => String(p.id) === String(particleId));
+                    if (!particle) return;
+                    
+                    const noteIndex = particle.tone !== undefined ? (particle.tone % 12) : particle.getActiveNoteIndex();
+                    if (noteIndex < 0 || noteIndex >= 12) return;
+                    
+                    const voiceNodeIds = {
+                      bass: SEQUENCER_NODES.global.bass,
+                      baritone: SEQUENCER_NODES.global.baritone,
+                      tenor: SEQUENCER_NODES.global.tenor
+                    };
+                    const nodeId = voiceNodeIds[assignment.voice];
+                    const stepIdx = assignment.column;
+                    const rowIdx = noteIndex % 12;
+                    const patIdx = 0;
+                    
+                    iframe.contentWindow.postMessage({
+                      type: "noiseCraft:toggleCell",
+                      nodeId: String(nodeId),
+                      patIdx: patIdx,
+                      stepIdx: stepIdx,
+                      rowIdx: rowIdx,
+                      value: 1
+                    }, "*");
+                    cellCount++;
+                  });
+                  
+                  console.log(`[Global] Updated sequencer with ${cellCount} cells using old assignments for ${particles.length} particles`);
+                }
+              };
+              
+              // Start update after a short delay, then retry if needed
+              setTimeout(updateSequencer, 500);
             }
           }
         } else if (event.data?.type === "noiseCraft:nodeSelection") {
@@ -2578,8 +3058,55 @@
         console.warn("[Button] btn-remove-particle not found in DOM");
       }
       
-      btnStart.addEventListener("click", () => {
-        iframe.contentWindow?.postMessage({ type: "noiseCraft:play" }, "*");
+      btnStart.addEventListener("click", async () => {
+        if (!noisecraftReady) {
+          console.warn("[Button] NoiseCraft not ready yet, cannot start audio");
+          statusEl.textContent = "NoiseCraft not ready. Please wait...";
+          return;
+        }
+        if (!iframe || !iframe.contentWindow) {
+          console.warn("[Button] Iframe not available");
+          return;
+        }
+        
+        // Check if sequencer has any notes
+        const particles = particleSystem.getParticles();
+        if (particles.length === 0) {
+          console.warn("[Button] No particles available");
+          statusEl.textContent = "No particles. Add a particle first.";
+          return;
+        }
+        
+        // Check sequencer patterns
+        const hasActiveNotes = particles.some(p => {
+          if (p.sequencerPattern) {
+            return p.sequencerPattern.some(val => val === 1);
+          }
+          return false;
+        });
+        
+        if (!hasActiveNotes && window.globalParticleAssignments) {
+          const assignments = Object.keys(window.globalParticleAssignments);
+          if (assignments.length === 0) {
+            console.warn("[Button] No sequencer assignments found");
+            statusEl.textContent = "No sequencer patterns. Waiting for assignments...";
+            return;
+          }
+        }
+        
+        console.log("[Button] Sending play message to NoiseCraft");
+        iframe.contentWindow.postMessage({ type: "noiseCraft:play" }, "*");
+        
+        // Also try to resume audio context if available
+        try {
+          const audioCtx = iframe.contentWindow?.noiseCraftAudioContext;
+          if (audioCtx && audioCtx.state === 'suspended') {
+            console.log("[Button] Resuming suspended audio context");
+            await audioCtx.resume();
+          }
+        } catch (e) {
+          console.warn("[Button] Could not access audio context:", e);
+        }
       });
 
       btnStop.addEventListener("click", () => {

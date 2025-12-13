@@ -24,7 +24,8 @@
     "socket.io-client": "^4.6.1",
     "three": "^0.181.2",
     "three.meshline": "^1.4.0",
-    "threejs-meshline": "2.0.12"
+    "threejs-meshline": "2.0.12",
+    "tonal": "^6.4.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

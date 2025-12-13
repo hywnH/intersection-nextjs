@@ -568,7 +568,7 @@ function calculateTargetDistance(userCount) {
 
 ### 우선순위 1: Individual Audio 완성
 1. ⏳ **In Outer 배경음 Post-processing 구현**
-   - 다른 유저의 오디오 스트림을 받아서
+   - 다른 유저의 음 정보에 해당하는 sine wave 에
    - Panning, spatialization, pre-delay, reverb 적용
    - 최대 2개 파티클만 배경음으로 사용
 
@@ -600,7 +600,7 @@ function calculateTargetDistance(userCount) {
 
 | Interval (Semitones) | Note Name | Dissonance Level | Instability Score |
 |----------------------|-----------|------------------|-------------------|
-| 0 | Unison (C) | 매우 높음 (~1.0) | 0 (Tonic - harmonic function 기준) |
+| 0 | Unison (C) | 매우 낮음 (~0) | 0 (Tonic - harmonic function 기준) |
 | 1 | Minor 2nd (C#) | 매우 높음 (~1.0) | 9 |
 | 2 | Major 2nd (D) | 중간 (~0.4-0.5) | 3 |
 | 3 | Minor 3rd (D#) | 낮음 (~0.3) | 2 |
@@ -612,7 +612,7 @@ function calculateTargetDistance(userCount) {
 | 9 | Major 6th (A) | 낮음 (~0.3) | 2 |
 | 10 | Minor 7th (A#) | 중간-높음 | 4.5 |
 | 11 | Major 7th (B) | 높음 (~0.7) | 7 |
-| 12 | Octave (C) | 매우 높음 | 0 (Tonic - harmonic function 기준) |
+| 12 | Octave (C) | 매우 낮음 | 0 (Tonic - harmonic function 기준) |
 
 **참고**:
 - Instability는 **sensory dissonance + harmonic function**을 결합한 값입니다

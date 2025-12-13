@@ -108,7 +108,7 @@
     />
 
     <script type="module">
-      import { Model, SetParam, Play, Stop } from "/public/model.js";
+      import { Model, SetParam, Play, Stop, ToggleCell } from "/public/model.js";
       import { AudioView } from "/public/audioview.js";
       import { Editor } from "/public/editor.js";
 
@@ -513,7 +513,7 @@
       let autoSaveEnabled = false;
       let autoSaveFilename = null;
       let saveDebounceTimer = null;
-      const SAVE_DEBOUNCE_MS = 1000; // Wait 1 second after last change before saving
+      const SAVE_DEBOUNCE_MS = 3000; // Wait 3 seconds after last change before saving (increased to reduce save frequency)
 
       // Function to save the current state to the server
       const saveProjectToServer = async (filename, force = false) => {
@@ -558,10 +558,8 @@
               console.log(`[Save] Serialized state with ${nodeCount} nodes`);
               console.log(`[Save] Saving to filename: ${filename}`);
               
-              // Verify the filename matches what we're trying to save
-              if (filename !== 'indiv_audio_map.ncft' && filename.endsWith('.ncft')) {
-                console.warn(`[Save] Saving to ${filename}, but expected indiv_audio_map.ncft`);
-              }
+              // Filename validation removed - different workspaces use different project files
+              // global-workspace uses glb_audio_map.ncft, individual/test workspaces use indiv_audio_map.ncft
             } catch (e) {
               console.error(`[Save] Error formatting serialized data:`, e);
               // If parsing fails, use as-is
@@ -670,12 +668,18 @@
           // Exclude programmatic updates to prevent reload loops:
           // - SetParam with paramName "value": stream updates from mappings
           // - SetCurStep: sequencer playback updates (not user-initiated)
-          // Note: ToggleCell from external updates (via postMessage) don't go through model.update,
-          // so they won't trigger auto-save. User-initiated ToggleCell (clicking sequencer) 
-          // should be saved, so we include it here.
+          // - Play/Stop: audio playback control (not user-initiated changes)
+          // - ToggleCell: sequencer pattern updates from external code (not user-initiated)
+          // Note: ToggleCell from external updates (via postMessage) go through model.update,
+          // but they should NOT trigger auto-save to prevent save loops. Only user-initiated
+          // ToggleCell (clicking sequencer in UI) should trigger auto-save, but we can't
+          // distinguish them, so we exclude all ToggleCell to be safe.
           const isStreamParamUpdate = actionType === 'SetParam' && action?.paramName === 'value';
           const isProgrammaticUpdate = isStreamParamUpdate || 
-                                       actionType === 'SetCurStep';
+                                       actionType === 'SetCurStep' ||
+                                       actionType === 'Play' ||
+                                       actionType === 'Stop' ||
+                                       actionType === 'ToggleCell';
           
           if (autoSaveEnabled && autoSaveFilename && action && !isProgrammaticUpdate) {
             if (saveDebounceTimer) {
@@ -935,7 +939,7 @@
         }
       };
 
-      const ensurePlaying = (customStatus) => {
+      const ensurePlaying = async (customStatus) => {
         if (!btnStart || !btnStop || !statusEl) return;
         // Don't start if already playing
         if (model.playing) {
@@ -943,19 +947,43 @@
           return;
         }
         try {
+          // Check if audio context exists and resume if suspended
+          if (audioView.audioCtx) {
+            if (audioView.audioCtx.state === 'suspended') {
+              console.log("[Audio] Resuming suspended audio context");
+              await audioView.audioCtx.resume();
+            }
+            console.log(`[Audio] Audio context state: ${audioView.audioCtx.state}`);
+          }
+          
+          // Start audio immediately without waiting
           app.play();
-          // Wait a tiny bit for model.playing to update, then sync buttons
+          console.log("[Audio] Play action sent to model");
+          
+          // Sync immediately and notify parent
+          syncButtonStates();
+          if (customStatus && statusEl) {
+            statusEl.textContent = customStatus;
+          }
+          notifyParent({ type: "noiseCraft:audioState", status: "playing" });
+          
+          // Also check state after a short delay for confirmation
           setTimeout(() => {
             syncButtonStates();
             if (customStatus && statusEl) {
               statusEl.textContent = customStatus;
             }
-            notifyParent({ type: "noiseCraft:audioState", status: "playing" });
-          }, 10);
+            const isPlaying = model.playing;
+            console.log(`[Audio] Model playing state: ${isPlaying}`);
+            if (audioView.audioCtx) {
+              console.log(`[Audio] Audio context state after play: ${audioView.audioCtx.state}`);
+            }
+            notifyParent({ type: "noiseCraft:audioState", status: isPlaying ? "playing" : "stopped" });
+          }, 100);
         } catch (err) {
-          console.warn("Failed to start audio automatically", err);
+          console.error("Failed to start audio:", err);
           statusEl.textContent = "Autoplay blocked. Click Start.";
-          notifyParent({ type: "noiseCraft:audioState", status: "blocked" });
+          notifyParent({ type: "noiseCraft:audioState", status: "blocked", error: err.message });
         }
       };
 
@@ -1085,10 +1113,57 @@
               return;
             }
             const oldValue = node.params[paramName];
-            // updateParam calls model.update which triggers model.broadcast
-            // This automatically calls editor.update, which updates the UI
-            app.updateParam(id, paramName, Number(param.value));
-            updatedCount++;
+            let newValue = Number(param.value);
+            let valueChanged = false;
+            
+            // Clamp value to minVal/maxVal if they exist
+            if (paramName === 'value' && 'minVal' in node.params && 'maxVal' in node.params) {
+              const minVal = node.params.minVal;
+              const maxVal = node.params.maxVal;
+              if (typeof minVal === 'number' && typeof maxVal === 'number') {
+                // If minVal === maxVal, the value must be exactly that (no variation allowed)
+                if (minVal === maxVal) {
+                  // Only update if current value is different from the fixed value
+                  if (oldValue !== minVal) {
+                    newValue = minVal;
+                    valueChanged = true;
+                    // Log only once per node to avoid spam
+                    if (!window._fixedValueNodes) window._fixedValueNodes = new Set();
+                    if (!window._fixedValueNodes.has(id)) {
+                      console.warn(`[Embedded] Node ${id} has fixed value ${minVal.toFixed(3)} (minVal === maxVal). Setting to fixed value.`);
+                      window._fixedValueNodes.add(id);
+                    }
+                  } else {
+                    // Value is already correct, skip update to prevent unnecessary saves
+                    skippedCount++;
+                    return;
+                  }
+                } else {
+                  // Normal clamping
+                  const clampedValue = Math.max(minVal, Math.min(maxVal, newValue));
+                  if (clampedValue !== newValue) {
+                    newValue = clampedValue;
+                    valueChanged = true;
+                    // Value was clamped, log it (throttled)
+                    if (!window._lastClampLog || Date.now() - window._lastClampLog > 5000) {
+                      console.warn(`[Embedded] Clamped ${id}.${paramName} from ${param.value.toFixed(3)} to ${newValue.toFixed(3)} (range: ${minVal.toFixed(3)}-${maxVal.toFixed(3)})`);
+                      window._lastClampLog = Date.now();
+                    }
+                  }
+                }
+              }
+            }
+            
+            // Only update if value actually changed (prevents unnecessary updates and saves)
+            if (oldValue !== newValue || valueChanged) {
+              // updateParam calls model.update which triggers model.broadcast
+              // This automatically calls editor.update, which updates the UI
+              app.updateParam(id, paramName, newValue);
+              updatedCount++;
+            } else {
+              // Value unchanged, skip update
+              skippedCount++;
+            }
             
             // Log value changes for first few updates (throttled)
             if (updatedCount <= 3 && (!window._lastValueLog || Date.now() - window._lastValueLog > 1000)) {
@@ -1138,20 +1213,62 @@
                 }
                 // Set the target row
                 const targetValue = value !== undefined ? value : 1;
-                node.patterns[patIdx][stepIdx][rowIdx] = targetValue;
                 
-                // Broadcast the change (this doesn't trigger model.update, so no auto-save)
-                // External updates via postMessage don't go through model.update,
-                // so they won't trigger auto-save. Only user-initiated changes (clicking sequencer)
-                // go through model.update and will be saved.
-                app.model?.broadcast(app.model.state, {
-                  type: "toggleCell",
-                  nodeId: String(nodeId),
-                  patIdx,
-                  stepIdx,
-                  rowIdx,
-                  value: targetValue,
-                });
+                // Use model.update to actually update the state (so it gets saved to ncft)
+                // This ensures sequencer patterns are directly determined by particle information
+                if (app.model) {
+                  // ToggleCell toggles the value, so we need to check current value first
+                  const currentValue = node.patterns[patIdx][stepIdx][rowIdx];
+                  
+                  // Only update if value needs to change
+                  if (currentValue !== targetValue) {
+                    // For MonoSeq, if setting to 1, clear other rows first
+                    if (node.type === "MonoSeq" && targetValue === 1) {
+                      const numRows = node.patterns[patIdx][stepIdx].length;
+                      for (let i = 0; i < numRows; i++) {
+                        if (i !== rowIdx && node.patterns[patIdx][stepIdx][i] === 1) {
+                          // Clear other active rows using ToggleCell
+                          app.model.update(new ToggleCell(String(nodeId), patIdx, stepIdx, i));
+                        }
+                      }
+                    }
+                    
+                    // Update the target cell using ToggleCell (it toggles, so if current is 0 and target is 1, it will set to 1)
+                    // If current is 1 and target is 0, toggle will set to 0
+                    app.model.update(new ToggleCell(String(nodeId), patIdx, stepIdx, rowIdx));
+                    
+                    // Batch save sequencer updates (debounced to avoid excessive saves)
+                    if (!window._sequencerSaveTimer) {
+                      window._sequencerSaveTimer = setTimeout(() => {
+                        if (autoSaveEnabled && autoSaveFilename) {
+                          saveProjectToServer(autoSaveFilename);
+                          console.log("[Embedded] Saved sequencer pattern updates to", autoSaveFilename);
+                        }
+                        window._sequencerSaveTimer = null;
+                      }, 2000); // Save after 2 seconds of no updates
+                    } else {
+                      // Reset timer if updates keep coming
+                      clearTimeout(window._sequencerSaveTimer);
+                      window._sequencerSaveTimer = setTimeout(() => {
+                        if (autoSaveEnabled && autoSaveFilename) {
+                          saveProjectToServer(autoSaveFilename);
+                          console.log("[Embedded] Saved sequencer pattern updates to", autoSaveFilename);
+                        }
+                        window._sequencerSaveTimer = null;
+                      }, 2000);
+                    }
+                  }
+                  
+                  // Also broadcast for UI update
+                  app.model.broadcast(app.model.state, {
+                    type: "toggleCell",
+                    nodeId: String(nodeId),
+                    patIdx,
+                    stepIdx,
+                    rowIdx,
+                    value: targetValue,
+                  });
+                }
               } else {
                 if (!window._lastToggleCellPatternWarning || Date.now() - window._lastToggleCellPatternWarning > 5000) {
                   console.warn(`[Embedded] Pattern not found for node ${nodeId}, patIdx ${patIdx}, stepIdx ${stepIdx}`);
