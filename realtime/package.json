@@ -1,14 +1,17 @@
 {
   "name": "intersection-realtime",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "build": "tsc -p ."
+    "build": "tsc -p .",
+    "load:clients": "tsx src/loadTestClients.ts"
   },
   "dependencies": {
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
     "tsx": "^4.15.7",
@@ -16,4 +19,3 @@
     "@types/node": "^20.11.30"
   }
 }
-

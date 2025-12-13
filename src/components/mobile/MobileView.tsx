@@ -17,10 +17,10 @@ import {
 import type { NoiseCraftParam } from "@/lib/audio/noiseCraftCore";
 import { generateDistancePanParams } from "@/lib/audio/streamMapping";
 import {
-  generateIndividualPattern,
-  hashToneIndex,
-  type IndividualPattern,
-} from "@/lib/audio/individualSequencer";
+  computePersonalSequencerV2,
+  PERSONAL_SEQ_V2,
+  PERSONAL_SEQ_V2_NODES,
+} from "@/lib/audio/personalSequencerV2";
 import type { GameState, PlayerSnapshot } from "@/types/game";
 import Hud from "./Hud";
 import StatusBanner from "./StatusBanner";
@@ -143,31 +143,50 @@ const MobileView = () => {
   const animationRef = useRef<number | null>(null);
   const latestState = useRef(state);
   const audioIframeRef = useRef<HTMLIFrameElement>(null);
-  const [noiseCraftOrigin, setNoiseCraftOrigin] = useState<string | null>(null);
-  const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
+  // Hydration-safe: 서버/클라 첫 렌더는 about:blank로 맞추고,
+  // 마운트 이후에만 실제 src/origin을 계산해 주입한다.
+  const [noiseCraftConfig, setNoiseCraftConfig] = useState<{
+    src: string;
+    origin: string | null;
+  }>({ src: "about:blank", origin: null });
+  const noiseCraftOrigin = noiseCraftConfig.origin ?? null;
+  const noiseCraftSrc = noiseCraftConfig.src ?? "about:blank";
   const [isProjectReady, setIsProjectReady] = useState(false);
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
+  // Hydration-safe: 첫 렌더는 false로 고정하고 마운트 이후에만 판별.
   const [isDebugView, setIsDebugView] = useState(false);
-  const lastSeqPatternRef = useRef<IndividualPattern | null>(null);
+  const lastV2InRadiusIdsRef = useRef<string[] | null>(null);
+  const meetGateTimerRef = useRef<number | null>(null);
+  const closeGateTimerRef = useRef<number | null>(null);
+  const lastVeryCloseRef = useRef(false);
   const lastParamUpdateRef = useRef(0);
   const paramSmoothingRef = useRef<
     Map<string, { current: number; target: number }>
   >(new Map());
 
   useEffect(() => {
-    latestState.current = state;
-  }, [state]);
+    // src/origin 계산은 클라이언트에서만 수행
+    const cfg = resolveNoiseCraftEmbed();
+    setNoiseCraftConfig(cfg);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const { src, origin } = resolveNoiseCraftEmbed();
-    setNoiseCraftSrc(src);
-    setNoiseCraftOrigin(origin);
     const path = window.location.pathname || "";
     setIsDebugView(path.startsWith("/mobile/debug"));
-    setIsProjectReady(false);
-    setAudioStatus("idle");
   }, []);
+
+  useEffect(() => {
+    // hydration 이후 확실히 반영되도록 ref에도 주입
+    if (!audioIframeRef.current) return;
+    audioIframeRef.current.src = noiseCraftSrc;
+  }, [noiseCraftSrc]);
+
+  useEffect(() => {
+    latestState.current = state;
+  }, [state]);
+
+  // noiseCraft / debug 여부는 초기화 시점에 결정 (setState-in-effect 회피)
 
   // NoiseCraft 매핑 파라미터 전송 (모바일/디버그 공통)
   useEffect(() => {
@@ -175,7 +194,7 @@ const MobileView = () => {
 
     // test-workspace와 유사하게 파라미터 업데이트를 스로틀링
     const now = Date.now();
-    const PARAM_UPDATE_INTERVAL_MS = 500;
+    const PARAM_UPDATE_INTERVAL_MS = 100;
     if (now - lastParamUpdateRef.current < PARAM_UPDATE_INTERVAL_MS) {
       return;
     }
@@ -183,6 +202,7 @@ const MobileView = () => {
 
     // 개인 뷰용 거리/팬 → 3개 파라미터로 매핑
     const mappedParams = generateDistancePanParams(state);
+    const v2 = computePersonalSequencerV2(state, lastV2InRadiusIdsRef.current);
 
     // 파라미터 스무딩(클릭/팝 노이즈 방지)
     // 더 강한 스무딩: 천천히 따라가도록 작은 값 사용
@@ -204,7 +224,8 @@ const MobileView = () => {
       return { value: next, changed };
     };
 
-    const combined: NoiseCraftParam[] = mappedParams
+    const extended = v2 ? [...mappedParams, ...v2.params] : mappedParams;
+    const combined: NoiseCraftParam[] = extended
       .map((p): NoiseCraftParam | null => {
         const nodeId = String(p.nodeId);
         const paramName = p.paramName || "value";
@@ -226,97 +247,120 @@ const MobileView = () => {
     postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, combined);
   }, [state, noiseCraftOrigin]);
 
-  // MonoSeq 패턴 기반 화음 업데이트 (indiv_audio_map과 동일한 구조, 디버그 뷰 전용)
+  // MonoSeq 패턴 기반 화음 업데이트 (v2 패치 기준)
   useEffect(() => {
-    if (!isDebugView) return;
     if (!noiseCraftOrigin) return;
     if (!audioIframeRef.current) return;
-    const selfId = state.selfId;
-    const selfPlayer = selfId ? state.players[selfId] : null;
-
-    // self / neighbor 톤 결정 (ID 해시 기반 12톤)
-    let selfTone: number | null = null;
-    const neighborTones: number[] = [];
-
-    if (selfId) {
-      selfTone = hashToneIndex(selfId);
-    }
-
-    if (selfPlayer && selfId) {
-      const { position: selfPos } = selfPlayer.cell;
-      const entries = Object.entries(state.players).filter(
-        ([id]) => id !== selfId
-      );
-      const neighbors = entries
-        .map(([id, p]) => {
-          const dx = p.cell.position.x - selfPos.x;
-          const dy = p.cell.position.y - selfPos.y;
-          const dist = Math.hypot(dx, dy);
-          return { id, dist };
-        })
-        .sort((a, b) => a.dist - b.dist)
-        .slice(0, 2);
-
-      neighbors.forEach(({ id }) => {
-        neighborTones.push(hashToneIndex(id));
-      });
-    }
-
-    const pattern = generateIndividualPattern(selfTone, neighborTones, {
-      cluster: state.audio.cluster ?? null,
-      isInCluster:
-        !!state.audio.cluster &&
-        !!state.audio.self?.clusterId &&
-        state.audio.cluster.clusterId === state.audio.self.clusterId &&
-        (state.audio.cluster.memberCount ?? 0) >= 3,
-    });
-
-    const last = lastSeqPatternRef.current;
-    if (
-      last &&
-      last.bassRow === pattern.bassRow &&
-      last.baritoneRow === pattern.baritoneRow &&
-      last.tenorRow === pattern.tenorRow
-    ) {
-      return;
-    }
-    lastSeqPatternRef.current = pattern;
+    // 일반 /mobile 에서는 프로젝트 로딩 이후에만(초기 패치의 기본 화음을 덮어쓰기 위함)
+    if (!isDebugView && !isProjectReady) return;
 
     const win = audioIframeRef.current.contentWindow;
     const targetOrigin =
       process.env.NODE_ENV === "development" ? "*" : noiseCraftOrigin || "*";
 
-    const sendVoice = (nodeId: string, row: number | null) => {
-      const rowIdx = row ?? 0;
-      const value = row === null ? 0 : 1;
-      const NUM_STEPS = 8;
-      for (let stepIdx = 0; stepIdx < NUM_STEPS; stepIdx += 1) {
-        win?.postMessage(
-          {
-            type: "noiseCraft:toggleCell",
-            nodeId,
-            patIdx: 0,
-            stepIdx,
-            rowIdx,
-            value,
-          },
-          targetOrigin
-        );
+    const v2 = computePersonalSequencerV2(state, lastV2InRadiusIdsRef.current);
+    if (!v2) return;
+
+    const prev = lastV2InRadiusIdsRef.current ?? [];
+    const prevSet = new Set(prev);
+    const nextSet = new Set(v2.inRadiusIds);
+    const boundaryChanged =
+      prev.length !== v2.inRadiusIds.length ||
+      prev.some((id) => !nextSet.has(id)) ||
+      v2.inRadiusIds.some((id) => !prevSet.has(id));
+    const isFirstSend = lastV2InRadiusIdsRef.current === null;
+
+    const sendGrid = (nodeId: string, grid: number[][]) => {
+      for (
+        let stepIdx = 0;
+        stepIdx < PERSONAL_SEQ_V2.MONOSEQ_STEPS;
+        stepIdx += 1
+      ) {
+        for (
+          let rowIdx = 0;
+          rowIdx < PERSONAL_SEQ_V2.MONOSEQ_ROWS;
+          rowIdx += 1
+        ) {
+          win?.postMessage(
+            {
+              type: "noiseCraft:toggleCell",
+              nodeId,
+              patIdx: 0,
+              stepIdx,
+              rowIdx,
+              value: grid[stepIdx]?.[rowIdx] ? 1 : 0,
+            },
+            targetOrigin
+          );
+        }
       }
     };
 
-    // indiv_audio_map 기준 MonoSeq 노드 ID
-    sendVoice("172", pattern.bassRow);
-    sendVoice("176", pattern.baritoneRow);
-    sendVoice("177", pattern.tenorRow);
-  }, [
-    state.audio,
-    state.noiseSlots,
-    state.players,
-    state.selfId,
-    noiseCraftOrigin,
-    isDebugView,
-  ]);
+    // v2 패치에서 기본 패턴을 비워두므로, 최초 1회는 무조건 그리드를 채워서
+    // "기본 자기 음"이 항상 들리도록 한다.
+    if (boundaryChanged || isFirstSend) {
+      sendGrid(PERSONAL_SEQ_V2_NODES.monoSeq.bass, v2.grids.bass);
+      sendGrid(PERSONAL_SEQ_V2_NODES.monoSeq.baritone, v2.grids.baritone);
+      sendGrid(PERSONAL_SEQ_V2_NODES.monoSeq.tenor, v2.grids.tenor);
+      lastV2InRadiusIdsRef.current = v2.inRadiusIds;
+
+      // meetGate 스위트너(enter 순간에만 0->1->0 펄스)
+      if (v2.meetGateTrigger) {
+        if (meetGateTimerRef.current) {
+          window.clearTimeout(meetGateTimerRef.current);
+          meetGateTimerRef.current = null;
+        }
+        // v2 패치의 detune 네트워크는 기존 `fact`(node 206)에 의해 깊이가 결정된다.
+        // "딱 만났을 때"만 아주 살짝 코러스가 느껴지도록 짧게 올렸다가 되돌린다.
+        const MEET_FACT_NODE = "206";
+        const BASE_FACT = 0.008132716005981842; // patch 기본값(안전한 미세 detune)
+        const MEET_FACT = 0.06;
+        postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, [
+          {
+            nodeId: PERSONAL_SEQ_V2_NODES.meetGate,
+            paramName: "value",
+            value: 1,
+          },
+          { nodeId: MEET_FACT_NODE, paramName: "value", value: MEET_FACT },
+        ]);
+        meetGateTimerRef.current = window.setTimeout(() => {
+          postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, [
+            {
+              nodeId: PERSONAL_SEQ_V2_NODES.meetGate,
+              paramName: "value",
+              value: 0,
+            },
+            { nodeId: MEET_FACT_NODE, paramName: "value", value: BASE_FACT },
+          ]);
+          meetGateTimerRef.current = null;
+        }, PERSONAL_SEQ_V2.SWEETENER_HOLD_MS);
+      }
+    }
+
+    // 초근접(딱 붙었을 때) 전용 “띵~ 화음” 레이어 트리거
+    // - veryClose로 들어오는 순간에만 1회 펄스
+    const VERY_CLOSE_DIST = 120;
+    const closeNow =
+      Number.isFinite(v2.nearestDist) && v2.nearestDist <= VERY_CLOSE_DIST;
+    const closePrev = lastVeryCloseRef.current;
+    if (closeNow && !closePrev) {
+      if (closeGateTimerRef.current) {
+        window.clearTimeout(closeGateTimerRef.current);
+        closeGateTimerRef.current = null;
+      }
+      const CLOSE_GATE_NODE = "9060";
+      postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, [
+        { nodeId: CLOSE_GATE_NODE, paramName: "value", value: 1 },
+      ]);
+      closeGateTimerRef.current = window.setTimeout(() => {
+        postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, [
+          { nodeId: CLOSE_GATE_NODE, paramName: "value", value: 0 },
+        ]);
+        closeGateTimerRef.current = null;
+      }, 160);
+    }
+    lastVeryCloseRef.current = closeNow;
+  }, [state, noiseCraftOrigin, isDebugView, isProjectReady]);
 
   useEffect(() => {
     if (!noiseCraftOrigin) return;

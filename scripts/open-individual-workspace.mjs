@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Open NoiseCraft Individual Audio Workspace
- * 
+ *
  * Opens the individual audio mapping workspace with:
- * - Individual audio map (indiv_audio_map.ncft)
+ * - Individual audio map (indiv_audio_map_v2.ncft)
  * - Per-user sequencer patterns
  * - Individual particle audio modulation
  */
@@ -19,11 +19,17 @@ const __dirname = dirname(__filename);
 const PROJECT_DIR = join(__dirname, "..");
 const NOISECRAFT_DIR = join(PROJECT_DIR, "noisecraft");
 
-const NOISECRAFT_PORT = process.env.NOISECRAFT_PORT || process.env.HTTP_PORT_NO || 7773;
+const NOISECRAFT_PORT =
+  process.env.NOISECRAFT_PORT || process.env.HTTP_PORT_NO || 7773;
 const NOISECRAFT_URL = `http://localhost:${NOISECRAFT_PORT}`;
-const RT_ENV = process.env.NEXT_PUBLIC_WS_URL || 
-  (process.env.NODE_ENV === "development" ? "http://localhost:3001/socket" : "/socket");
-const RT_URL = RT_ENV.startsWith("/") ? `${new URL(NOISECRAFT_URL).origin}${RT_ENV}` : RT_ENV;
+const RT_ENV =
+  process.env.NEXT_PUBLIC_WS_URL ||
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:3001/socket"
+    : "/socket");
+const RT_URL = RT_ENV.startsWith("/")
+  ? `${new URL(NOISECRAFT_URL).origin}${RT_ENV}`
+  : RT_ENV;
 
 // Individual audio workspace URL (with full workspace UI)
 const INDIVIDUAL_URL = `${NOISECRAFT_URL}/public/individual-workspace.html`;
@@ -99,7 +105,7 @@ async function startServer() {
       cwd: NOISECRAFT_DIR,
       stdio: "inherit",
     });
-    
+
     await new Promise((resolve, reject) => {
       npmInstall.on("close", (code) => {
         if (code === 0) {
@@ -135,14 +141,14 @@ async function main() {
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
   const serverRunning = await checkServer(NOISECRAFT_URL);
-  
+
   if (!serverRunning) {
     console.log("⚠️  NoiseCraft server not running");
     const pid = await startServer();
     console.log(`✅ Started server (PID: ${pid})`);
     console.log("⏳ Waiting for server to start");
     process.stdout.write("   ");
-    
+
     if (!(await waitForServer(NOISECRAFT_URL))) {
       console.log("\n❌ Server failed to start");
       process.exit(1);
@@ -173,4 +179,3 @@ main().catch((err) => {
   console.error("Error:", err);
   process.exit(1);
 });
-

@@ -42,7 +42,10 @@ const StartScreen = () => {
 
       <div className="flex flex-col items-center gap-4">
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-normal text-white/60 vintage-serif" htmlFor="displayName">
+          <label
+            className="text-sm font-normal text-white/60 vintage-serif"
+            htmlFor="displayName"
+          >
             your name
           </label>
           <input
@@ -64,7 +67,8 @@ const StartScreen = () => {
 
       <div className="mt-auto pt-8">
         <p className="text-xs font-extralight italic text-white/40 tracking-widest vintage-serif">
-          "Across the sea of space, the stars are other suns." - Carl Sagan
+          &quot;Across the sea of space, the stars are other suns.&quot; - Carl
+          Sagan
         </p>
       </div>
     </div>
