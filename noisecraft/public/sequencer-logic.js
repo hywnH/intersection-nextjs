@@ -98,15 +98,20 @@ export class SequencerLogic {
     }
     
     // Inner particles' notes (added when in inner radius)
+    // Each inner particle contributes its pattern information as "ingredients"
     if (Array.isArray(innerParticles) && innerParticles.length > 0) {
       innerParticles.forEach((innerParticle, index) => {
         if (!innerParticle || typeof innerParticle.getActiveNoteIndex !== 'function') return;
         if (index >= 2) return; // Only use first 2 inner particles (max 3 notes total)
         
+        // Get note from inner particle (as if receiving pattern info from that particle)
         const noteIndex12 = innerParticle.getActiveNoteIndex();
         if (noteIndex12 >= 0 && noteIndex12 < 12) {
           availableNotes.push(noteIndex12);
         }
+        
+        // TODO: In future, also receive noise pattern from inner particle
+        // For now, just pass (noise implementation later)
       });
     }
     
@@ -152,7 +157,7 @@ export class SequencerLogic {
    * @param {Object} harmonicPlacer - Optional: GlobalHarmonicPlacer instance (creates new one if not provided)
    * @returns {Object} Pattern updates: { bass: [12 steps x 12 rows], baritone: [...], tenor: [...] }
    */
-  generateGlobalPattern(allParticles, assignments = {}, harmonicPlacer = null) {
+  generateGlobalPattern(allParticles, assignments = {}, harmonicPlacer = null, verbose = false) {
     // Initialize patterns: 12 steps, each with 12 rows (one per semitone)
     const bassPattern = Array(12).fill(null).map(() => new Array(12).fill(0));
     const baritonePattern = Array(12).fill(null).map(() => new Array(12).fill(0));
@@ -175,14 +180,50 @@ export class SequencerLogic {
     // If harmonic placer is available, use it for new assignments
     let useHarmonicPlacement = harmonicPlacer !== null && typeof harmonicPlacer.assignNewUser === 'function';
     
-    // Update harmonic placer with existing assignments
+    // Update harmonic placer with existing assignments (don't clear, just sync)
     if (useHarmonicPlacement) {
-      harmonicPlacer.updateAssignmentsFromMap(assignments, sortedParticles);
+      harmonicPlacer.updateAssignmentsFromMap(assignments, sortedParticles, false);
+    }
+    
+    // Count particles with valid notes for logging
+    const validParticles = sortedParticles.filter(p => {
+      const noteIndex = p.getActiveNoteIndex();
+      return noteIndex >= 0 && noteIndex < 12;
+    });
+    
+    if (validParticles.length === 0) {
+      console.warn('[SequencerLogic] No particles with valid notes');
+      return {
+        bass: bassPattern,
+        baritone: baritonePattern,
+        tenor: tenorPattern,
+        assignments: assignments
+      };
+    }
+    
+    // Log current state only if verbose
+    if (verbose) {
+      const existingAssignments = Object.keys(assignments).length;
+      const availablePos = useHarmonicPlacement ? harmonicPlacer.getAvailablePositions().length : 36;
+      console.log(`[SequencerLogic] Generating pattern: ${validParticles.length} valid particles, ${existingAssignments} existing assignments, ${availablePos} available positions`);
     }
     
     sortedParticles.forEach((particle) => {
-      const noteIndex = particle.getActiveNoteIndex();
-      if (noteIndex < 0 || noteIndex >= 12) return;
+      // Use tone property as fallback if pattern is empty
+      let noteIndex = particle.getActiveNoteIndex();
+      if (noteIndex < 0 || noteIndex >= 12) {
+        // Fallback to tone property
+        if (particle.tone !== undefined) {
+          noteIndex = particle.tone % 12;
+        }
+        if (noteIndex < 0 || noteIndex >= 12) {
+          if (!window._lastNoteIndexWarning || Date.now() - window._lastNoteIndexWarning > 5000) {
+            console.warn(`[SequencerLogic] Particle ${particle.id} has invalid note index: ${noteIndex} (tone: ${particle.tone})`);
+            window._lastNoteIndexWarning = Date.now();
+          }
+          return;
+        }
+      }
       
       // Get assignment for this particle (voice and column position)
       let assignment = assignments[particle.id];
@@ -192,7 +233,7 @@ export class SequencerLogic {
         if (useHarmonicPlacement) {
           // Use harmonic progression algorithm
           try {
-            const position = harmonicPlacer.assignNewUser(noteIndex, totalUsers);
+            const position = harmonicPlacer.assignNewUser(noteIndex, totalUsers, verbose);
             if (position >= 0 && position < 36) {
               const voiceIndex = Math.floor(position / 12);
               const column = position % 12;
@@ -205,21 +246,40 @@ export class SequencerLogic {
                 usedPositions[voice].add(column);
                 harmonicPlacer.addAssignment(noteIndex, position);
                 assignments[particle.id] = assignment; // Update assignments map
+                
+                // Log new assignment only if verbose
+                if (verbose) {
+                  console.log(`[SequencerLogic] ✓ Assigned particle ${particle.id} (note: ${noteIndex}) to ${voice} column ${column} (position: ${position})`);
+                }
               } else {
                 // Fallback to random if harmonic placement conflicts
+                console.warn(`[SequencerLogic] Harmonic placement conflict for particle ${particle.id}, using random`);
                 assignment = this._getRandomAvailablePosition(usedPositions);
+                if (assignment) {
+                  assignments[particle.id] = assignment;
+                }
               }
             } else {
               // Fallback to random if harmonic placement fails
+              console.warn(`[SequencerLogic] Harmonic placement returned invalid position ${position} for particle ${particle.id}, using random`);
               assignment = this._getRandomAvailablePosition(usedPositions);
+              if (assignment) {
+                assignments[particle.id] = assignment;
+              }
             }
           } catch (e) {
             console.warn('[SequencerLogic] Harmonic placement failed, using random:', e);
             assignment = this._getRandomAvailablePosition(usedPositions);
+            if (assignment) {
+              assignments[particle.id] = assignment;
+            }
           }
         } else {
           // Random fallback
           assignment = this._getRandomAvailablePosition(usedPositions);
+          if (assignment) {
+            assignments[particle.id] = assignment;
+          }
         }
         
         if (!assignment) {
@@ -238,8 +298,23 @@ export class SequencerLogic {
       if (assignment.column >= 0 && assignment.column < 12 && 
           noteIndex >= 0 && noteIndex < 12) {
         targetPattern[assignment.column][noteIndex] = 1;
+        
+        // Log pattern placement only if verbose
+        if (verbose) {
+          console.log(`[SequencerLogic] ✓ Placed note ${noteIndex} at ${assignment.voice} step ${assignment.column} for particle ${particle.id}`);
+        }
+      } else {
+        console.warn(`[SequencerLogic] Invalid assignment for particle ${particle.id}:`, assignment, `noteIndex: ${noteIndex}`);
       }
     });
+    
+    // Log final pattern state only if verbose
+    if (verbose) {
+      const bassCount = bassPattern.reduce((sum, step) => sum + step.reduce((s, c) => s + (c === 1 ? 1 : 0), 0), 0);
+      const baritoneCount = baritonePattern.reduce((sum, step) => sum + step.reduce((s, c) => s + (c === 1 ? 1 : 0), 0), 0);
+      const tenorCount = tenorPattern.reduce((sum, step) => sum + step.reduce((s, c) => s + (c === 1 ? 1 : 0), 0), 0);
+      console.log(`[SequencerLogic] Pattern summary: Bass=${bassCount}, Baritone=${baritoneCount}, Tenor=${tenorCount}, Total=${bassCount + baritoneCount + tenorCount}`);
+    }
     
     return {
       bass: bassPattern,
@@ -386,6 +461,18 @@ export function updateMonoSeqSequencer(iframeWindow, nodeId, patternIndex, noteP
     const patternSteps = notePattern.length;
     const patternRows = notePattern[0]?.length || 12;
     
+    // Count active cells first
+    let cellCount = 0;
+    for (let step = 0; step < Math.min(patternSteps, numSteps); step++) {
+      const stepPattern = notePattern[step];
+      if (!Array.isArray(stepPattern)) continue;
+      for (let row = 0; row < Math.min(stepPattern.length, patternRows); row++) {
+        if (stepPattern[row] === 1) cellCount++;
+      }
+    }
+    
+    // Send all updates in a single batch
+    // First, clear all steps and rows, then set active cells
     requestAnimationFrame(() => {
       // Clear all steps and rows first
       for (let step = 0; step < numSteps; step++) {
@@ -401,9 +488,9 @@ export function updateMonoSeqSequencer(iframeWindow, nodeId, patternIndex, noteP
         }
       }
       
-      // Then set the arpeggiator pattern
-      requestAnimationFrame(() => {
-        let cellCount = 0;
+      // Use a microtask to ensure clears are processed before sets
+      Promise.resolve().then(() => {
+        // Set active cells
         for (let step = 0; step < Math.min(patternSteps, numSteps); step++) {
           const stepPattern = notePattern[step];
           if (!Array.isArray(stepPattern)) continue;
@@ -418,11 +505,16 @@ export function updateMonoSeqSequencer(iframeWindow, nodeId, patternIndex, noteP
                 rowIdx: row,
                 value: 1 // Set cell
               }, "*");
-              cellCount++;
             }
           }
         }
-        console.log(`[Sequencer] Updated node ${nodeId} with arpeggiator pattern: ${patternSteps} steps, ${cellCount} active cells`);
+        
+        // Log update (throttled, but always log when verbose)
+        const shouldLog = !window._lastSequencerLog || Date.now() - window._lastSequencerLog > 2000;
+        if (shouldLog) {
+          console.log(`[Sequencer] Updated node ${nodeId} with arpeggiator pattern: ${patternSteps} steps, ${cellCount} active cells`);
+          window._lastSequencerLog = Date.now();
+        }
       });
     });
     return;

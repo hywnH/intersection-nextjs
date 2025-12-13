@@ -53,7 +53,7 @@
   {
     "nodeId": "183",
     "paramName": "value",
-    "operation": "add",
+    "operation": "none",
     "enabled": true,
     "streams": [
       {
@@ -70,7 +70,7 @@
   {
     "nodeId": "194",
     "paramName": "value",
-    "operation": "add",
+    "operation": "none",
     "enabled": true,
     "streams": [
       {

@@ -1,5 +1,5 @@
 {
-  "title": "Individual Audio",
+  "title": "Global Audio",
   "nodes": {
     "0": {
       "type": "Noise",
@@ -2967,7 +2967,7 @@
       "params": {
         "minVal": 0,
         "maxVal": 2,
-        "value": 0.4001316105893349,
+        "value": 0.8544277004313782,
         "deviceId": null,
         "controlId": null
       }
@@ -3141,7 +3141,7 @@
       "params": {
         "minVal": 0,
         "maxVal": 1,
-        "value": 0.3616962147108092,
+        "value": 0.1,
         "deviceId": null,
         "controlId": null
       }
@@ -3279,7 +3279,7 @@
       "params": {
         "minVal": 0,
         "maxVal": 1,
-        "value": 0.0014997858722700357,
+        "value": 0.05307614890275266,
         "deviceId": null,
         "controlId": null
       }
@@ -3471,7 +3471,7 @@
         ""
       ],
       "params": {
-        "value": 0.05
+        "value": 0.15935
       }
     },
     "195": {
@@ -3705,7 +3705,7 @@
       "params": {
         "minVal": 0,
         "maxVal": 0.1,
-        "value": 0.01173450777770606,
+        "value": 0.008132716005981842,
         "deviceId": null,
         "controlId": null
       }
@@ -3755,7 +3755,7 @@
             0,
             0,
             0,
-            1,
+            0,
             0,
             0,
             0,

@@ -290,107 +290,29 @@
 
         <div class="tab-content active" id="signals-tab">
           <div class="panel-section">
-            <h3>Signal Streams - Particle 0</h3>
-            <div id="signal-info-0">
-              <div class="param-row">
-                <span class="param-label">Attraction:</span>
-                <span class="param-value" id="signal-attraction-0">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Velocity:</span>
-                <span class="param-value" id="signal-velocity-0">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Distance:</span>
-                <span class="param-value" id="signal-distance-0">∞</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Closing Speed:</span>
-                <span class="param-value" id="signal-closing-0">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Is Inner:</span>
-                <span class="param-value" id="signal-inner-0">false</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Is Outer:</span>
-                <span class="param-value" id="signal-outer-0">false</span>
-              </div>
+            <h3>Particle Management</h3>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+              <button id="btn-add-particle" style="flex: 1; padding: 8px; background: #4a8;">+ Add Particle</button>
+              <button id="btn-remove-particle" style="flex: 1; padding: 8px; background: #a84;">- Remove Particle</button>
             </div>
-            <div class="scope-container" style="margin-top: 12px;">
-              <canvas id="scope-attraction-0" width="320" height="60" style="width: 100%; height: 60px; background: #111; border: 1px solid #333; display: block; margin-bottom: 4px;"></canvas>
-              <canvas id="scope-velocity-0" width="320" height="60" style="width: 100%; height: 60px; background: #111; border: 1px solid #333; display: block;"></canvas>
+            <div style="font-size: 11px; color: #aaa;">
+              Particles: <span id="particle-count">1</span>
             </div>
           </div>
           
           <div class="panel-section">
-            <h3>Signal Streams - Particle 1</h3>
-            <div id="signal-info-1">
-              <div class="param-row">
-                <span class="param-label">Attraction:</span>
-                <span class="param-value" id="signal-attraction-1">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Velocity:</span>
-                <span class="param-value" id="signal-velocity-1">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Distance:</span>
-                <span class="param-value" id="signal-distance-1">∞</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Closing Speed:</span>
-                <span class="param-value" id="signal-closing-1">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Is Inner:</span>
-                <span class="param-value" id="signal-inner-1">false</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Is Outer:</span>
-                <span class="param-value" id="signal-outer-1">false</span>
-              </div>
-            </div>
-            <div class="scope-container" style="margin-top: 12px;">
-              <canvas id="scope-attraction-1" width="320" height="60" style="width: 100%; height: 60px; background: #111; border: 1px solid #333; display: block; margin-bottom: 4px;"></canvas>
-              <canvas id="scope-velocity-1" width="320" height="60" style="width: 100%; height: 60px; background: #111; border: 1px solid #333; display: block;"></canvas>
+            <h3>Global System Metrics</h3>
+            <div style="font-size: 11px; color: #aaa; line-height: 1.8;">
+              <div>Entropy: <span id="system-entropy">0.00</span></div>
+              <div>RMS Velocity: <span id="system-rms-velocity">0.00</span></div>
+              <div>Particles: <span id="global-particle-count">1</span></div>
+              <div>Clusters: <span id="cluster-count">0</span></div>
+              <div>In Inner: <span id="in-inner-number">0</span></div>
+              <div>In Inner Pulsar: <span id="in-inner-pulsar">0</span></div>
+              <div>Out Inner Pulsar: <span id="out-inner-pulsar">0</span></div>
             </div>
           </div>
           
-          <div class="panel-section">
-            <h3>Signal Streams - Particle 2</h3>
-            <div id="signal-info-2">
-              <div class="param-row">
-                <span class="param-label">Attraction:</span>
-                <span class="param-value" id="signal-attraction-2">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Velocity:</span>
-                <span class="param-value" id="signal-velocity-2">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Distance:</span>
-                <span class="param-value" id="signal-distance-2">∞</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Closing Speed:</span>
-                <span class="param-value" id="signal-closing-2">0.00</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Is Inner:</span>
-                <span class="param-value" id="signal-inner-2">false</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">Is Outer:</span>
-                <span class="param-value" id="signal-outer-2">false</span>
-              </div>
-            </div>
-            <div class="scope-container" style="margin-top: 12px;">
-              <canvas id="scope-attraction-2" width="320" height="60" style="width: 100%; height: 60px; background: #111; border: 1px solid #333; display: block; margin-bottom: 4px;"></canvas>
-              <canvas id="scope-velocity-2" width="320" height="60" style="width: 100%; height: 60px; background: #111; border: 1px solid #333; display: block;"></canvas>
-            </div>
-          </div>
-
           <div class="panel-section">
             <h3>Interaction Radii</h3>
             <div class="slider-group">
@@ -452,22 +374,13 @@
           </div>
           
           <div class="panel-section">
-            <h3>Particle Visualization (Global View)</h3>
-            <canvas id="particle-canvas" width="320" height="320" style="width: 100%; height: 320px; background: #0a0a0a; border: 1px solid #333; display: block; cursor: default;"></canvas>
+            <!-- Particle visualization removed for performance -->
             <div style="margin-top: 8px; font-size: 11px; color: #aaa;">
               <div>Particles: <span id="particle-count">3</span></div>
               <div>Fixed view centered on center of mass</div>
             </div>
           </div>
           
-          <div class="panel-section">
-            <h3>Individual View (Moon 1)</h3>
-            <canvas id="individual-canvas" width="320" height="320" style="width: 100%; height: 320px; background: #0a0a0a; border: 1px solid #333; display: block; cursor: crosshair;"></canvas>
-            <div style="margin-top: 8px; font-size: 11px; color: #aaa;">
-              <div>Viewing from: <span id="viewed-particle">P1</span></div>
-              <div>Drag from center to control velocity</div>
-            </div>
-          </div>
         </div>
 
         <div class="tab-content" id="mappings-tab">
@@ -502,17 +415,69 @@
 
     <script type="module">
       // Import particle system module
-      import { VirtualParticle, SignalGenerator, ParticleSystem } from '/public/particle-system.js';
+      import { VirtualParticle, SignalGenerator, ParticleSystem } from '/public/global-particle-system.js';
       import { SequencerLogic, convertNotePatternToNoiseCraft, updateMonoSeqSequencer } from '/public/sequencer-logic.js';
+      import { createParticlePatternPipeline } from '/public/particle-pattern-pipeline.js';
       import { processBackgroundAudio, calculateLocalization } from '/public/background-audio-post-processing.js';
       import { SpatialAudioProcessor, createSpatialProcessor } from '/public/spatial-audio-processor.js';
       import { generateHarmoniousPattern, generateHarmonizingPattern, generateChordPatterns, SCALES, CHORD_TONES, getRandomScale } from '/public/music-theory.js';
       // Import new modular components
       import { createPatternAssignmentManager } from '/public/pattern-assignment.js';
       import { createMappingStorage } from '/public/mapping-storage.js';
+      import { GlobalHarmonicPlacer } from '/public/harmonic-placer.js';
       
       console.log("[Init] ===== SCRIPT STARTING =====");
       console.log("[Init] All imports loaded successfully");
+      
+      // Prevent browser back navigation (swipe gestures) from reloading the page
+      // This fixes the issue where touchpad swipe-left gestures cause page reloads
+      (function preventBackNavigation() {
+        // Push a state to the history stack so we can intercept back navigation
+        history.pushState(null, null, location.href);
+        
+        // Listen for popstate events (triggered by back/forward navigation or swipe gestures)
+        window.addEventListener('popstate', function(event) {
+          console.log('[Navigation] Back navigation detected, preventing reload...');
+          // Push the state back to prevent navigation
+          history.pushState(null, null, location.href);
+          // Optionally show a message to the user
+          const statusEl = document.getElementById('status');
+          if (statusEl) {
+            const originalText = statusEl.textContent;
+            statusEl.textContent = 'Back navigation prevented (use browser controls instead)';
+            statusEl.style.color = '#ffa';
+            setTimeout(() => {
+              statusEl.textContent = originalText;
+              statusEl.style.color = '';
+            }, 2000);
+          }
+        });
+        
+        // Also prevent swipe gestures on touch devices
+        let touchStartX = 0;
+        let touchStartY = 0;
+        document.addEventListener('touchstart', function(e) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        
+        document.addEventListener('touchmove', function(e) {
+          if (!touchStartX || !touchStartY) return;
+          
+          const touchEndX = e.touches[0].clientX;
+          const touchEndY = e.touches[0].clientY;
+          const deltaX = touchEndX - touchStartX;
+          const deltaY = touchEndY - touchStartY;
+          
+          // If horizontal swipe is much larger than vertical, prevent it
+          if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+            // This is a horizontal swipe - prevent default browser behavior
+            e.preventDefault();
+          }
+        }, { passive: false });
+        
+        console.log('[Navigation] Back navigation prevention enabled');
+      })();
       
       // Dummy storage fallback if mapping-storage.js is not available
       function createDummyStorage() {
@@ -532,14 +497,14 @@
         console.log("[Init] Entering try block...");
 
       console.log("[Init] Defining AVAILABLE_STREAMS...");
-      // Available streams
+      // Global streams (different from Individual)
       const AVAILABLE_STREAMS = [
-        "attraction",
-        "velocity",
-        "distance",
-        "closingSpeed",
-        "isInner",
-        "isOuter",
+        "entropy",
+        "rmsVelocity",
+        "particleCount",
+        "clusterCount",
+        "inInnerPulsar",
+        "outInnerPulsar",
       ];
 
       // Interpolation modes
@@ -569,22 +534,38 @@
 
         async loadMappings() {
           try {
-            // Try loading from project file first, then localStorage
+            // First, try loading from dedicated mappings JSON file
+            try {
+              const mappingsResponse = await fetch('/public/global-workspace-mappings.json');
+              if (mappingsResponse.ok) {
+                const mappingsData = await mappingsResponse.json();
+                if (Array.isArray(mappingsData) && mappingsData.length > 0) {
+                  this.mappings = mappingsData;
+                  console.log(`[MappingStorage] Loaded ${this.mappings.length} mappings from global-workspace-mappings.json`);
+                  return; // Successfully loaded, exit early
+                }
+              }
+            } catch (e) {
+              console.warn('[MappingStorage] Failed to load from global-workspace-mappings.json, trying other sources:', e);
+            }
+            
+            // Fallback: Try loading from project file
             const response = await fetch(`/public/examples/${this.filename}`);
             if (response.ok) {
               const projectData = await response.json();
               this.mappings = await this.storage.loadMappings(projectData);
               if (this.mappings.length > 0) {
                 console.log(`[MappingStorage] Loaded ${this.mappings.length} mappings from project file`);
+                return; // Successfully loaded, exit early
               }
             }
             
-            // If no project mappings, fallback to localStorage
-            if (this.mappings.length === 0) {
-              this.mappings = this.storage.loadFromLocalStorage();
-              if (this.mappings.length > 0) {
-                console.log(`[MappingStorage] Loaded ${this.mappings.length} mappings from localStorage`);
-              }
+            // Final fallback: localStorage
+            this.mappings = this.storage.loadFromLocalStorage();
+            if (this.mappings.length > 0) {
+              console.log(`[MappingStorage] Loaded ${this.mappings.length} mappings from localStorage`);
+            } else {
+              console.log(`[MappingStorage] No mappings found in any source`);
             }
           } catch (e) {
             console.warn("Failed to load mappings, using localStorage:", e);
@@ -595,6 +576,32 @@
         saveToStorage() {
           // Save to localStorage (always)
           this.storage.saveToLocalStorage(this.mappings);
+        }
+        
+        async saveToJSONFile() {
+          // Save mappings to global-workspace-mappings.json file on server
+          try {
+            const response = await fetch('/save-json/global-workspace-mappings.json', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(this.mappings, null, 2)
+            });
+            
+            if (response.ok) {
+              const result = await response.json();
+              console.log(`[StreamNodeMapper] Successfully saved ${this.mappings.length} mappings to global-workspace-mappings.json`);
+              return true;
+            } else {
+              const error = await response.json();
+              console.error('[StreamNodeMapper] Failed to save mappings:', error);
+              return false;
+            }
+          } catch (e) {
+            console.error('[StreamNodeMapper] Error saving mappings:', e);
+            return false;
+          }
         }
         
         async saveToProjectFile(projectData) {
@@ -610,13 +617,45 @@
         
         async importMappings(file) {
           try {
+            console.log(`[StreamNodeMapper] Starting import for file: ${file.name}`);
             const imported = await this.storage.importFromJSON(file);
-            this.mappings = imported;
+            console.log(`[StreamNodeMapper] Parsed ${imported?.length || 0} mappings from file`);
+            
+            if (!Array.isArray(imported)) {
+              throw new Error('Imported data is not an array');
+            }
+            
+            if (imported.length === 0) {
+              console.warn('[StreamNodeMapper] No mappings found in file');
+              return false;
+            }
+            
+            // Validate each mapping has required fields
+            const validMappings = imported.filter(m => {
+              const isValid = m && typeof m === 'object' && 
+                             'nodeId' in m && 
+                             'streams' in m && 
+                             Array.isArray(m.streams) && 
+                             m.streams.length > 0;
+              if (!isValid) {
+                console.warn('[StreamNodeMapper] Invalid mapping found:', m);
+              }
+              return isValid;
+            });
+            
+            if (validMappings.length === 0) {
+              throw new Error('No valid mappings found in file');
+            }
+            
+            console.log(`[StreamNodeMapper] ${validMappings.length} valid mappings out of ${imported.length}`);
+            this.mappings = validMappings;
             this.saveToStorage();
-            console.log(`[MappingStorage] Imported ${imported.length} mappings`);
+            console.log(`[StreamNodeMapper] Successfully imported and saved ${this.mappings.length} mappings`);
+            console.log(`[StreamNodeMapper] Mappings:`, this.mappings);
             return true;
           } catch (e) {
-            console.error('Failed to import mappings:', e);
+            console.error('[StreamNodeMapper] Failed to import mappings:', e);
+            console.error('[StreamNodeMapper] Error stack:', e.stack);
             return false;
           }
         }
@@ -783,6 +822,9 @@
       let currentScale = availableScales[randomScaleIndex];
       console.log(`[Music Theory] Using scale: ${currentScale} (randomized for variety)`);
       
+      // Initialize GlobalHarmonicPlacer for harmonic progression (before particle initialization)
+      const harmonicPlacer = new GlobalHarmonicPlacer('C', 'major');
+      
       // Create a stable 3-body system: One central particle with 2 orbiting moons
       // Using more realistic mass ratios so all particles stay visible
       const centerX = 575;
@@ -793,120 +835,448 @@
       
       console.log("[Particle Init] Step 3: Adding particles...");
       
-      // Generate initial chord using modular pattern manager
-      const defaultTriad = 'C Major'; // [0, 4, 7] = C, E, G
-      const chordTones = CHORD_TONES[defaultTriad];
-      
-      // Two "moon" particles with similar mass to central for visible interaction
-      const moonMass = 50; // Closer to central mass ratio
-      const moonDistance = 100; // Increased distance for better visibility
-      
-      let particle0, particle1, particle2;
+      // Start with a single particle with random note assignment
+      // All particles start with [0,0,...,0] pattern and get assigned when added
+      let particle0;
       try {
-        console.log("[Particle Init]   Adding particle 0...");
-        particle0 = particleSystem.addParticle(0, centerX, centerY, 0, centralMass);
+        // Generate random note for initial particle
+        const randomNote = Math.floor(Math.random() * 12);
+        
+        console.log("[Particle Init]   Adding particle 0 with random note:", randomNote);
+        particle0 = particleSystem.addParticle(0, centerX, centerY, randomNote, centralMass);
         console.log("[Particle Init]   ✓ Particle 0 added:", particle0);
         console.log("[Particle Init]   Current particles:", particleSystem.getParticles().length);
         
-        const createPatternFromNote = (noteIndex) => {
-          const pattern = new Array(12).fill(0);
-          pattern[noteIndex % 12] = 1;
-          return pattern;
-        };
-        
-        // Assign triad tones directly: Root, Third, Fifth
-        particle0.sequencerPattern = createPatternFromNote(chordTones[0]); // C (root)
+        // Initialize with empty pattern [0,0,...,0]
+        particle0.sequencerPattern = new Array(12).fill(0);
         if (patternManager) {
           patternManager.assignPattern(0, particle0.sequencerPattern);
         }
         
-        console.log("[Particle Init]   Adding particle 1...");
-        particle1 = particleSystem.addParticle(1, centerX + moonDistance, centerY, 4, moonMass);
-        console.log("[Particle Init]   ✓ Particle 1 added:", particle1);
-        console.log("[Particle Init]   Current particles:", particleSystem.getParticles().length);
-        
-        particle1.sequencerPattern = createPatternFromNote(chordTones[1]); // E (third)
-        if (patternManager) {
-          patternManager.assignPattern(1, particle1.sequencerPattern);
+        // Assign initial particle to sequencer using harmonic progression
+        // Use tone property directly since pattern is [0,0,...,0]
+        const noteIndex = particle0.tone !== undefined ? (particle0.tone % 12) : particle0.getActiveNoteIndex();
+        if (noteIndex >= 0 && noteIndex < 12 && harmonicPlacer) {
+          const position = harmonicPlacer.assignNewUser(noteIndex, 1, true);
+          if (position >= 0 && position < 36) {
+            const voiceIndex = Math.floor(position / 12);
+            const column = position % 12;
+            const voices = ['bass', 'baritone', 'tenor'];
+            const voice = voices[voiceIndex];
+            
+            if (!window.globalParticleAssignments) {
+              window.globalParticleAssignments = {};
+            }
+            window.globalParticleAssignments[particle0.id] = { voice, column };
+            harmonicPlacer.addAssignment(noteIndex, position);
+            
+            console.log(`[Particle Init] Assigned initial particle (note: ${noteIndex}, tone: ${particle0.tone}) to ${voice} step ${column}`);
+          }
         }
         
-        console.log("[Particle Init]   Adding particle 2...");
-        particle2 = particleSystem.addParticle(2, centerX, centerY - moonDistance, 7, moonMass);
-        console.log("[Particle Init]   ✓ Particle 2 added:", particle2);
-        console.log("[Particle Init]   Current particles:", particleSystem.getParticles().length);
-        
-        particle2.sequencerPattern = createPatternFromNote(chordTones[2]); // G (fifth)
-        if (patternManager) {
-          patternManager.assignPattern(2, particle2.sequencerPattern);
-        }
-        
-        console.log("[Particle Init] ✓ All 3 particles added successfully");
+        console.log("[Particle Init] ✓ Initial particle added successfully with empty pattern");
       } catch (e) {
-        console.error("[Particle Init] ✗ Failed to add particles:", e);
+        console.error("[Particle Init] ✗ Failed to add particle:", e);
         console.error("[Particle Init]   Error stack:", e.stack);
         throw e;
       }
-      
-      // Verify the triad was assigned correctly
-      const assignedNotes = {
-        particle0: particle0.sequencerPattern.findIndex(v => v === 1),
-        particle1: particle1.sequencerPattern.findIndex(v => v === 1),
-        particle2: particle2.sequencerPattern.findIndex(v => v === 1),
-      };
-      console.log('✓ Initial triad assigned:', assignedNotes);
-      console.log('  Expected:', chordTones);
 
-      // Set velocities for stable orbital motion
-      // Central particle starts with small velocity (will move due to lighter mass)
+      // Set initial velocity
       particle0.velocity = { x: 0, y: 0 };
-      
-      // Calculate orbital velocities for moons around central particle
-      // For circular orbit: v = sqrt(G*M_central/r)
-      // Using 70% of circular velocity for stable elliptical orbits (all particles visible)
-      const G = 500;
-      const centralMassForOrbit = centralMass; // centralMass is defined above (line ~791)
-      
-      // Moon 1: Orbital velocity (counter-clockwise)
-      const r1 = moonDistance;
-      const v1 = Math.sqrt(G * centralMassForOrbit / r1) * 0.7;
-      particle1.velocity = { x: 0, y: v1 }; // Tangential to orbit
-      
-      // Moon 2: Orbital velocity (counter-clockwise, perpendicular to moon 1)
-      const r2 = moonDistance;
-      const v2 = Math.sqrt(G * centralMassForOrbit / r2) * 0.7;
-      particle2.velocity = { x: -v2, y: 0 }; // Tangential to orbit
 
       // Get particles and signal generator for backward compatibility
       const particles = particleSystem.getParticles();
       const signalGenerator = particleSystem.signalGenerator;
       
+      // Global streams calculation functions
+      let previousInInnerState = new Map(); // particleId -> Set of neighborIds that are In Inner
+      let inInnerPulsarTimer = 0; // Timer for inInnerPulsar (0 when inactive)
+      let outInnerPulsarTimer = 0; // Timer for outInnerPulsar (0 when inactive)
+      const PULSAR_DURATION = 0.5; // Duration in seconds for pulsar signals
+      
+      // Calculate Shannon entropy based on velocity diversity
+      function calculateEntropy(particles) {
+        if (!particles || particles.length === 0) return 0;
+        
+        // Calculate velocity magnitudes
+        const velocities = particles.map(p => {
+          return Math.sqrt(p.velocity.x ** 2 + p.velocity.y ** 2);
+        });
+        
+        // Normalize velocities to 0-1 range (assuming max speed of ~100)
+        const maxSpeed = 100;
+        const normalized = velocities.map(v => Math.min(v / maxSpeed, 1.0));
+        
+        // Calculate Shannon entropy
+        const bins = 12;
+        const counts = new Array(bins).fill(0);
+        normalized.forEach(v => {
+          const bin = Math.floor(v * bins);
+          counts[Math.min(bin, bins - 1)]++;
+        });
+        
+        let entropy = 0;
+        counts.forEach(count => {
+          if (count > 0) {
+            const p = count / particles.length;
+            entropy -= p * Math.log2(p);
+          }
+        });
+        
+        return entropy;
+      }
+      
+      // Calculate RMS (Root Mean Square) velocity
+      function calculateRMSVelocity(particles) {
+        if (!particles || particles.length === 0) return 0;
+        
+        let sumSquared = 0;
+        particles.forEach(p => {
+          const vx = p.velocity.x;
+          const vy = p.velocity.y;
+          sumSquared += vx * vx + vy * vy;
+        });
+        
+        return Math.sqrt(sumSquared / particles.length);
+      }
+      
+      // Calculate number of clusters using DFS
+      function calculateClusterCount(particles) {
+        if (!particles || particles.length === 0) return 0;
+        if (particles.length === 1) return 1;
+        
+        const config = particleSystem.getConfig();
+        const innerRadius = config.innerRadius || 80;
+        const visited = new Set();
+        let clusterCount = 0;
+        
+        function dfs(particleId, clusterSet) {
+          if (visited.has(particleId)) return;
+          visited.add(particleId);
+          clusterSet.add(particleId);
+          
+          const particle = particles.find(p => p.id === particleId);
+          if (!particle) return;
+          
+          particles.forEach(other => {
+            if (other.id !== particleId && !visited.has(other.id)) {
+              const dx = other.position.x - particle.position.x;
+              const dy = other.position.y - particle.position.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              if (distance <= innerRadius) {
+                dfs(other.id, clusterSet);
+              }
+            }
+          });
+        }
+        
+        particles.forEach(particle => {
+          if (!visited.has(particle.id)) {
+            dfs(particle.id, new Set());
+            clusterCount++;
+          }
+        });
+        
+        return clusterCount;
+      }
+      
+      // Calculate In Inner state changes and update pulsars
+      function calculateInInnerPulsars(particles, dt) {
+        if (!particles || particles.length === 0) {
+          previousInInnerState.clear();
+          return { inInnerPulsar: 0, outInnerPulsar: 0 };
+        }
+        
+        const config = particleSystem.getConfig();
+        const innerRadius = config.innerRadius || 80;
+        const currentInInnerState = new Map();
+        
+        // Build current In Inner state
+        particles.forEach(particle => {
+          const neighbors = new Set();
+          particles.forEach(other => {
+            if (other.id !== particle.id) {
+              const dx = other.position.x - particle.position.x;
+              const dy = other.position.y - particle.position.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              if (distance <= innerRadius) {
+                neighbors.add(other.id);
+              }
+            }
+          });
+          currentInInnerState.set(particle.id, neighbors);
+        });
+        
+        // Detect changes: new connections (inInnerPulsar) and broken connections (outInnerPulsar)
+        let newConnections = false;
+        let brokenConnections = false;
+        
+        particles.forEach(particle => {
+          const prevNeighbors = previousInInnerState.get(particle.id) || new Set();
+          const currNeighbors = currentInInnerState.get(particle.id) || new Set();
+          
+          // Check for new connections
+          currNeighbors.forEach(neighborId => {
+            if (!prevNeighbors.has(neighborId)) {
+              newConnections = true;
+            }
+          });
+          
+          // Check for broken connections
+          prevNeighbors.forEach(neighborId => {
+            if (!currNeighbors.has(neighborId)) {
+              brokenConnections = true;
+            }
+          });
+        });
+        
+        // Update pulsar timers
+        if (newConnections) {
+          inInnerPulsarTimer = PULSAR_DURATION;
+        } else if (inInnerPulsarTimer > 0) {
+          inInnerPulsarTimer = Math.max(0, inInnerPulsarTimer - dt);
+        }
+        
+        if (brokenConnections) {
+          outInnerPulsarTimer = PULSAR_DURATION;
+        } else if (outInnerPulsarTimer > 0) {
+          outInnerPulsarTimer = Math.max(0, outInnerPulsarTimer - dt);
+        }
+        
+        // Update previous state
+        previousInInnerState = new Map();
+        currentInInnerState.forEach((neighbors, particleId) => {
+          previousInInnerState.set(particleId, new Set(neighbors));
+        });
+        
+        return {
+          inInnerPulsar: inInnerPulsarTimer > 0 ? 1 : 0,
+          outInnerPulsar: outInnerPulsarTimer > 0 ? 1 : 0
+        };
+      }
+      
       // Initialize sequencer logic
       const sequencerLogic = new SequencerLogic();
       
-      // Sequencer node IDs from glb_audio_map.ncft
+      // Sequencer node IDs from glb_audio_map.ncft (12 columns per voice)
       const SEQUENCER_NODES = {
-        individual: {
-          bass: "211",      // MonoSeq "bass"
-          baritone: "212",  // MonoSeq "baritone"
-          tenor: "213"      // MonoSeq "tenor"
+        global: {
+          bass: "211",      // MonoSeq "bass" (12 columns)
+          baritone: "212",  // MonoSeq "baritone" (12 columns)
+          tenor: "213"      // MonoSeq "tenor" (12 columns)
         }
       };
       
+      // harmonicPlacer is already initialized above (before particle initialization)
+      
+      // Particle management: Add/Remove functionality
+      let nextParticleId = 1; // Start from 1 since we have 0 as initial particle
+      
+      function addNewParticle() {
+        const particles = particleSystem.getParticles();
+        if (particles.length >= 36) {
+          console.warn("[Particle] Maximum 36 particles reached");
+          return;
+        }
+        
+        // Place new particle around center of mass
+        let totalMass = 0, cmX = 575, cmY = 525;
+        if (particles.length > 0) {
+          particles.forEach(p => {
+            totalMass += p.mass || 1;
+            cmX += (p.position.x * (p.mass || 1));
+            cmY += (p.position.y * (p.mass || 1));
+          });
+          cmX /= totalMass;
+          cmY /= totalMass;
+        }
+        
+        // Random position around center of mass
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 80 + Math.random() * 60;
+        const x = cmX + Math.cos(angle) * radius;
+        const y = cmY + Math.sin(angle) * radius;
+        
+        // Random note assignment (0-11)
+        const randomNote = Math.floor(Math.random() * 12);
+        
+        // Add particle with standard mass
+        const newParticle = particleSystem.addParticle(nextParticleId, x, y, randomNote, 50);
+        
+        // Initialize particle with empty pattern [0,0,...,0]
+        // Pattern will be assigned to sequencer based on harmonic progression
+        newParticle.sequencerPattern = new Array(12).fill(0);
+        
+        // Get all particles including the new one
+        const allParticles = particleSystem.getParticles();
+        
+        // Assign global sequencer position using harmonic progression algorithm
+        // The harmonic placer will calculate the best position based on current harmonic context
+        // Use tone property directly since pattern is [0,0,...,0]
+        if (!harmonicPlacer) {
+          console.error("[Particle] harmonicPlacer is not available");
+          return;
+        }
+        
+        const noteIndex = newParticle.tone !== undefined ? (newParticle.tone % 12) : newParticle.getActiveNoteIndex();
+        if (noteIndex >= 0 && noteIndex < 12) {
+          try {
+            const position = harmonicPlacer.assignNewUser(noteIndex, allParticles.length, true);
+            if (position >= 0 && position < 36) {
+              const voiceIndex = Math.floor(position / 12);
+              const column = position % 12;
+              const voices = ['bass', 'baritone', 'tenor'];
+              const voice = voices[voiceIndex];
+              
+              const globalAssignment = { voice, column };
+              if (!window.globalParticleAssignments) {
+                window.globalParticleAssignments = {};
+              }
+              window.globalParticleAssignments[newParticle.id] = globalAssignment;
+              
+              // Add assignment to harmonic placer
+              harmonicPlacer.addAssignment(noteIndex, position);
+              
+              console.log(`[Particle] Assigned particle ${newParticle.id} (note: ${noteIndex}, tone: ${newParticle.tone}) to ${voice} step ${column}`);
+            } else {
+              console.warn(`[Particle] Failed to assign position for particle ${newParticle.id}, position: ${position}`);
+            }
+          } catch (e) {
+            console.error(`[Particle] Error assigning position for particle ${newParticle.id}:`, e);
+            throw e; // Re-throw to be caught by outer try-catch
+          }
+        } else {
+          console.warn(`[Particle] Invalid note index ${noteIndex} for particle ${newParticle.id} (tone: ${newParticle.tone})`);
+        }
+        
+        // Store pattern pipeline for later use (optional, for compatibility)
+        if (typeof createParticlePatternPipeline === 'function') {
+          try {
+            const patternPipeline = window.patternPipeline || createParticlePatternPipeline({
+              mode: 'global',
+              harmonicPlacer: harmonicPlacer,
+              patternManager: patternManager || null
+            });
+            window.patternPipeline = patternPipeline;
+          } catch (e) {
+            console.warn("[Particle] Failed to create pattern pipeline:", e);
+            // Continue without pattern pipeline - not critical
+          }
+        }
+        
+        nextParticleId++;
+        
+        // Update sequencer pattern immediately when particle is added
+        if (iframe && iframe.contentWindow && allParticles.length > 0) {
+          // Force pattern update by resetting previousSequencerPattern
+          if (window.previousSequencerPattern !== undefined) {
+            window.previousSequencerPattern = null;
+          }
+          
+          const globalPattern = sequencerLogic.generateGlobalPattern(
+            allParticles,
+            window.globalParticleAssignments,
+            harmonicPlacer,
+            true // verbose: log when particle is added
+          );
+          window.globalParticleAssignments = globalPattern.assignments || {};
+          patternPipeline.updateGlobalAssignments(window.globalParticleAssignments);
+          
+          // Count active cells for logging
+          const bassActiveCells = globalPattern.bass.reduce((sum, step) => 
+            sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
+          const baritoneActiveCells = globalPattern.baritone.reduce((sum, step) => 
+            sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
+          const tenorActiveCells = globalPattern.tenor.reduce((sum, step) => 
+            sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
+          
+          console.log(`[Global Sequencer] Particle ${newParticle.id} added (note: ${randomNote}), updating patterns:`, {
+            totalParticles: allParticles.length,
+            bassCells: bassActiveCells,
+            baritoneCells: baritoneActiveCells,
+            tenorCells: tenorActiveCells,
+            assignment: globalAssignment
+          });
+          
+          requestAnimationFrame(() => {
+            updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, 12);
+            updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, 12);
+            updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, 12);
+          });
+        }
+        
+        // Update particle count display
+        const updatedParticles = particleSystem.getParticles();
+        const particleCountEl = document.getElementById("particle-count");
+        if (particleCountEl) {
+          particleCountEl.textContent = updatedParticles.length.toString();
+        }
+        
+        console.log(`[Particle] Added particle ${newParticle.id} with note ${randomNote}, total: ${updatedParticles.length}`);
+      }
+      
+      function removeLastParticle() {
+        const particles = particleSystem.getParticles();
+        if (particles.length <= 1) {
+          console.warn("[Particle] Cannot remove last particle");
+          return;
+        }
+        
+        // Remove particle with highest ID (most recently added)
+        const sortedParticles = [...particles].sort((a, b) => b.id - a.id);
+        const particleToRemove = sortedParticles[0];
+        const removedId = particleToRemove.id;
+        
+        particleSystem.removeParticle(removedId);
+        
+        // Clean up assignment
+        if (window.globalParticleAssignments) {
+          delete window.globalParticleAssignments[removedId];
+        }
+        
+        // Update sequencer pattern immediately
+        if (iframe && iframe.contentWindow) {
+          const allParticles = particleSystem.getParticles();
+          if (allParticles.length > 0) {
+            const globalPattern = sequencerLogic.generateGlobalPattern(
+              allParticles,
+              window.globalParticleAssignments || {},
+              harmonicPlacer
+            );
+            window.globalParticleAssignments = globalPattern.assignments || {};
+            requestAnimationFrame(() => {
+              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, 12);
+              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, 12);
+              updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, 12);
+            });
+          }
+        }
+        
+        // Update particle count display
+        const updatedParticles = particleSystem.getParticles();
+        const particleCountEl = document.getElementById("particle-count");
+        if (particleCountEl) {
+          particleCountEl.textContent = updatedParticles.length.toString();
+        }
+        
+        console.log(`[Particle] Removed particle ${removedId}, remaining: ${updatedParticles.length}`);
+      }
+      
       // Track previous inner particle state to detect changes
       let previousInnerParticleIds = new Set();
-      let previousSequencerPattern = null;
+      // Store previousSequencerPattern globally so it can be reset when particles are added
+      if (!window.previousSequencerPattern) {
+        window.previousSequencerPattern = null;
+      }
+      let previousSequencerPattern = window.previousSequencerPattern;
       
       // Debug: Verify particles are created and log note profiles
       console.log(`Particle system initialized with ${particles.length} particles:`, particles);
       console.log('Particle positions:', particles.map(p => ({ id: p.id, x: p.position.x, y: p.position.y })));
       console.log('Particle note profiles:', {
         0: particle0.sequencerPattern,
-        1: particle1.sequencerPattern,
-        2: particle2.sequencerPattern,
         activeNotes: {
-          0: particle0.getActiveNoteIndex(),
-          1: particle1.getActiveNoteIndex(),
-          2: particle2.getActiveNoteIndex()
+          0: particle0.getActiveNoteIndex()
         }
       });
       
@@ -921,9 +1291,10 @@
         // Emergency reinitialize if needed
         console.warn("⚠️ Attempting emergency particle reinitialization...");
         try {
-          const emergency0 = particleSystem.addParticle(0, centerX, centerY, 0, centralMass);
-          const emergency1 = particleSystem.addParticle(1, centerX + moonDistance, centerY, 4, moonMass);
-          const emergency2 = particleSystem.addParticle(2, centerX, centerY - moonDistance, 7, moonMass);
+          const randomNote = Math.floor(Math.random() * 12);
+          const emergency0 = particleSystem.addParticle(0, centerX, centerY, randomNote, centralMass);
+          emergency0.sequencerPattern = new Array(12).fill(0);
+          emergency0.velocity = { x: 0, y: 0 };
           const emergencyParticles = particleSystem.getParticles();
           console.log(`Emergency reinit result: ${emergencyParticles.length} particles`);
         } catch (e) {
@@ -1077,109 +1448,6 @@
       
       // Update spatial audio positions (called from background audio processing)
       // This applies modular post-processing using Web Audio API for actual spatialization
-      function updateSpatialAudioPositions(backgroundAudioState, selfParticle, particles) {
-        // Check if spatial audio is enabled and nodes are initialized
-        if (!isSpatialAudioEnabled || !window.stereoPanner || !window.distanceGain) {
-          return; // Not enabled yet or nodes not initialized
-        }
-        
-        // Update listener position (self particle at origin for relative positioning)
-        if (spatialProcessor && selfParticle) {
-          spatialProcessor.updateListenerPosition({
-            x: selfParticle.position.x,
-            y: selfParticle.position.y,
-            z: 0
-          });
-        }
-        
-        // Apply spatialization from modular post-processing system
-        // Use background-audio-post-processing.js calculated values
-        const candidates = backgroundAudioState.localization?.candidates || [];
-        
-        // IMPORTANT: When candidates are present, we're hearing background audio from other users
-        // This should have reverb to distinguish from self audio
-        if (candidates.length > 0) {
-          // Use the closest candidate's panning and gain to adjust the overall mix
-          const primaryCandidate = candidates[0]; // Already sorted by distance
-          
-          // Apply panning (from calculateLocalization in background-audio-post-processing.js)
-          // This pans the entire mix based on the closest particle's position
-          // Use more extreme panning for better directional perception (-1 to 1 full range)
-          let targetPan = primaryCandidate.pan || 0;
-          
-          // Make panning more extreme: amplify the pan value and clamp to -1 to 1
-          // This makes direction changes more noticeable and intuitive
-          targetPan = Math.max(-1, Math.min(1, targetPan * 1.5)); // Amplify panning
-          
-          const currentPan = window.stereoPanner.pan.value;
-          // Faster panning response for more intuitive direction perception
-          const panDiff = targetPan - currentPan;
-          const panSmoothing = 0.5; // Higher = faster response (was 0.15, now 0.5 for less lag)
-          window.stereoPanner.pan.value = currentPan + panDiff * panSmoothing;
-          
-          // Apply distance-based gain (from calculateLocalization)
-          // This adjusts overall volume based on distance to nearest particle
-          // Note: Self audio is always present, this just adjusts based on interaction
-          const targetGain = Math.min(1.0, 0.7 + (primaryCandidate.gain || 0) * 0.3); // 0.7-1.0 range
-          const currentGain = window.distanceGain.gain.value;
-          const gainDiff = targetGain - currentGain;
-          const gainSmoothing = 0.15; // Faster gain response (was 0.1)
-          window.distanceGain.gain.value = Math.max(0.5, Math.min(1.0, currentGain + gainDiff * gainSmoothing));
-          
-          // Enable reverb for background audio (other users' sounds)
-          // OPTIMIZED: Only update reverb every 5 frames to reduce lag
-          if (window._reverbUpdateCounter === undefined) window._reverbUpdateCounter = 0;
-          window._reverbUpdateCounter++;
-          
-          if (window._reverbUpdateCounter % 5 === 0 && window.reverbMix && window.reverbInputGain) {
-            const isOuter = primaryCandidate.isInOuter === 1 && primaryCandidate.isInDistinct === 0;
-            const isInner = primaryCandidate.isInDistinct === 1;
-            
-            // Outer particles: more reverb (wet, distant feel)
-            // Inner particles: moderate reverb (closer but still distinct)
-            let targetReverbWetness = isOuter ? 0.6 : (isInner ? 0.4 : 0.3);
-            
-            // Increase reverb based on distance (further = more reverb)
-            const distanceFactor = Math.min(1, primaryCandidate.distance / outerRadius);
-            targetReverbWetness = Math.min(0.8, targetReverbWetness + distanceFactor * 0.2);
-            
-            const currentReverb = window.reverbMix.gain.value;
-            const reverbDiff = targetReverbWetness - currentReverb;
-            const reverbSmoothing = 0.3; // Faster smoothing since we update less frequently
-            window.reverbMix.gain.value = Math.max(0, Math.min(0.8, currentReverb + reverbDiff * reverbSmoothing));
-            
-            // Also adjust reverb input gain (how much signal goes into reverb)
-            window.reverbInputGain.gain.value = targetReverbWetness * 0.7; // Scale down input to prevent feedback
-          }
-          
-          // Log for debugging (throttled)
-          if (window._lastSpatialLog === undefined) window._lastSpatialLog = 0;
-          const now = Date.now();
-          if (now - window._lastSpatialLog > 1000) { // Log once per second
-            const reverbLevel = window.reverbMix ? window.reverbMix.gain.value.toFixed(2) : 'N/A';
-            console.log(`[SpatialAudio] Pan: ${targetPan.toFixed(2)}, Gain: ${targetGain.toFixed(2)}, Reverb: ${reverbLevel}, Distance: ${primaryCandidate.distance.toFixed(1)}px`);
-            window._lastSpatialLog = now;
-          }
-        } else {
-          // No nearby particles: center pan, full gain (self audio only), no reverb
-          const targetPan = 0;
-          const targetGain = 1.0; // Full volume when alone (self audio)
-          const currentPan = window.stereoPanner.pan.value;
-          const currentGain = window.distanceGain.gain.value;
-          
-          window.stereoPanner.pan.value = currentPan + (targetPan - currentPan) * 0.5; // Faster return to center
-          window.distanceGain.gain.value = Math.max(0.5, currentGain + (targetGain - currentGain) * 0.15);
-          
-          // Disable reverb when alone (self audio is dry) - OPTIMIZED: Only update every 5 frames
-          if (window._reverbUpdateCounter !== undefined && window._reverbUpdateCounter % 5 === 0) {
-            if (window.reverbMix && window.reverbInputGain) {
-              const currentReverb = window.reverbMix.gain.value;
-              window.reverbMix.gain.value = Math.max(0, currentReverb - 0.2); // Faster fade out
-              window.reverbInputGain.gain.value = Math.max(0, (window.reverbInputGain.gain.value || 0) - 0.2);
-            }
-          }
-        }
-      }
       
       // Listen for audio stream from NoiseCraft iframe
       window.addEventListener("message", (event) => {
@@ -1238,17 +1506,17 @@
         }
       });
       
-      // Expose for debugging
+      // Expose for debugging (global workspace doesn't use spatial audio)
       window.spatialAudioProcessor = {
         initialize: initializeSpatialProcessor,
-        update: updateSpatialAudioPositions,
-        enabled: () => isSpatialAudioEnabled && window.stereoPanner && window.distanceGain,
-        processor: () => spatialProcessor,
+        update: () => {}, // No-op: global workspace doesn't use spatial audio
+        enabled: () => false, // Always disabled for global workspace
+        processor: () => null,
         getState: () => ({
-          enabled: isSpatialAudioEnabled,
-          hasPanner: !!window.stereoPanner,
-          hasGain: !!window.distanceGain,
-          hasReverb: !!window.reverbMix
+          enabled: false,
+          hasPanner: false,
+          hasGain: false,
+          hasReverb: false
         })
       };
       
@@ -1451,7 +1719,10 @@
 
       window.browseNodes = function(mappingId) {
         const mappingDiv = document.querySelector(`[data-mapping-id="${mappingId}"]`);
-        if (!mappingDiv) return;
+        if (!mappingDiv) {
+          console.error(`[Browse] Mapping div not found for ID: ${mappingId}`);
+          return;
+        }
         
         // Enable browse mode - allows single-click node selection
         const iframe = document.getElementById("noisecraft-iframe");
@@ -1459,6 +1730,8 @@
           // Set browse mode in iframe
           iframe.contentWindow.browseModeActive = true;
           iframe.contentWindow.browseModeMappingId = mappingId;
+          
+          console.log(`[Browse] Browse mode activated for mapping: ${mappingId}`);
           
           // Update UI to show browse mode is active
           const browseBtn = mappingDiv.querySelector(".browse-node-btn");
@@ -1468,10 +1741,10 @@
             browseBtn.disabled = true;
           }
           
-          statusEl.textContent = "Browse mode active: Click a node in the NoiseCraft editor to select it";
+          statusEl.textContent = "Browse mode active: Click a Const or Knob node in the NoiseCraft editor";
           
-          // Disable browse mode after 30 seconds or when node is selected
-          setTimeout(() => {
+          // Store timeout ID so we can clear it when node is selected
+          const timeoutId = setTimeout(() => {
             if (iframe.contentWindow) {
               iframe.contentWindow.browseModeActive = false;
               iframe.contentWindow.browseModeMappingId = null;
@@ -1484,7 +1757,13 @@
             if (statusEl.textContent.includes("Browse mode")) {
               statusEl.textContent = "Ready. Click Start to begin.";
             }
+            console.log(`[Browse] Browse mode timeout - deactivated`);
           }, 30000);
+          
+          // Store timeout ID for cleanup
+          iframe.contentWindow.browseModeTimeoutId = timeoutId;
+        } else {
+          console.error("[Browse] Iframe or contentWindow not available");
         }
         
         // Show node browser modal or update selector
@@ -1605,12 +1884,27 @@
 
       function renderMappings() {
         const container = document.getElementById("mappings-container");
+        if (!container) {
+          console.error("[renderMappings] Container not found!");
+          return;
+        }
         container.innerHTML = "";
-        streamMapper.mappings.forEach((mapping) => {
+        console.log(`[renderMappings] Rendering ${streamMapper.mappings.length} mappings`);
+        if (streamMapper.mappings.length === 0) {
+          console.warn("[renderMappings] No mappings to render!");
+          return;
+        }
+        streamMapper.mappings.forEach((mapping, index) => {
+          console.log(`[renderMappings] Rendering mapping ${index + 1}:`, mapping);
           const mappingDiv = createMappingUI(mapping);
-          container.appendChild(mappingDiv);
-          attachMappingListeners(mappingDiv);
+          if (mappingDiv) {
+            container.appendChild(mappingDiv);
+            attachMappingListeners(mappingDiv);
+          } else {
+            console.error(`[renderMappings] createMappingUI returned null for mapping ${index + 1}`);
+          }
         });
+        console.log(`[renderMappings] Completed rendering ${container.children.length} mapping elements`);
       }
 
       document.getElementById("add-mapping-btn").addEventListener("click", () => {
@@ -1653,25 +1947,38 @@
       importFileInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (file) {
-          const success = await streamMapper.importMappings(file);
-          if (success) {
-            renderMappings();
-            statusEl.textContent = `Imported ${streamMapper.mappings.length} mappings`;
+          try {
+            console.log(`[Import] Attempting to import file: ${file.name}`);
+            const success = await streamMapper.importMappings(file);
+            if (success) {
+              renderMappings();
+              statusEl.textContent = `Imported ${streamMapper.mappings.length} mappings`;
+              console.log(`[Import] Successfully imported ${streamMapper.mappings.length} mappings`);
+              setTimeout(() => {
+                if (statusEl.textContent.includes("Imported")) {
+                  statusEl.textContent = "Ready. Click Start to begin.";
+                }
+              }, 2000);
+            } else {
+              statusEl.textContent = "Failed to import mappings";
+              console.error("[Import] Import returned false");
+              setTimeout(() => {
+                if (statusEl.textContent.includes("Failed")) {
+                  statusEl.textContent = "Ready. Click Start to begin.";
+                }
+              }, 3000);
+            }
+          } catch (error) {
+            console.error("[Import] Error importing mappings:", error);
+            statusEl.textContent = `Import failed: ${error.message || "Unknown error"}`;
             setTimeout(() => {
-              if (statusEl.textContent.includes("Imported")) {
-                statusEl.textContent = "Ready. Click Start to begin.";
-              }
-            }, 2000);
-          } else {
-            statusEl.textContent = "Failed to import mappings";
-            setTimeout(() => {
-              if (statusEl.textContent.includes("Failed")) {
+              if (statusEl.textContent.includes("Import failed")) {
                 statusEl.textContent = "Ready. Click Start to begin.";
               }
             }, 3000);
           }
         }
-        // Reset file input
+        // Reset file input to allow selecting the same file again
         importFileInput.value = '';
       });
 
@@ -1832,197 +2139,135 @@
           if (now - lastSignalUpdate >= SIGNAL_UPDATE_INTERVAL) {
             lastSignalUpdate = now;
             
-            // Generate signals for all particles and update UI
-            particles.forEach((particle) => {
-              const signals = particleSystem.generateSignals(particle.id);
-              if (signals) {
-                const pid = particle.id;
-                
-                // Batch DOM updates
-                const attractionEl = document.getElementById(`signal-attraction-${pid}`);
-                const velocityEl = document.getElementById(`signal-velocity-${pid}`);
-                const distanceEl = document.getElementById(`signal-distance-${pid}`);
-                const closingEl = document.getElementById(`signal-closing-${pid}`);
-                const innerEl = document.getElementById(`signal-inner-${pid}`);
-                const outerEl = document.getElementById(`signal-outer-${pid}`);
-                
-                if (attractionEl) attractionEl.textContent = signals.attraction.toFixed(3);
-                if (velocityEl) velocityEl.textContent = signals.velocity.toFixed(3);
-                if (distanceEl) {
-                  distanceEl.textContent = signals.distance === Infinity
-                    ? "∞"
-                    : Math.round(signals.distance).toString();
+            // Global workspace: Calculate and display global metrics
+            const entropy = calculateEntropy(particles);
+            const rmsVelocity = calculateRMSVelocity(particles);
+            const clusterCount = calculateClusterCount(particles);
+            const pulsars = calculateInInnerPulsars(particles, dt);
+            
+            // Count In Inner connections
+            let inInnerNumber = 0;
+            const config = particleSystem.getConfig();
+            const innerRadius = config.innerRadius || 80;
+            particles.forEach(p => {
+              particles.forEach(other => {
+                if (other.id !== p.id) {
+                  const dx = other.position.x - p.position.x;
+                  const dy = other.position.y - p.position.y;
+                  const distance = Math.sqrt(dx * dx + dy * dy);
+                  if (distance <= innerRadius) {
+                    inInnerNumber++;
+                  }
                 }
-                if (closingEl) closingEl.textContent = signals.closingSpeed.toFixed(3);
-                if (innerEl) innerEl.textContent = signals.isInner.toString();
-                if (outerEl) outerEl.textContent = signals.isOuter.toString();
-
-                // Update scope data
-                scopeData[pid].attraction.push(signals.attraction);
-                scopeData[pid].velocity.push(signals.velocity);
-                
-                if (scopeData[pid].attraction.length > scopeData[pid].maxLength) {
-                  scopeData[pid].attraction.shift();
-                }
-                if (scopeData[pid].velocity.length > scopeData[pid].maxLength) {
-                  scopeData[pid].velocity.shift();
-                }
-                
-                // Draw scopes
-                drawScope(`scope-attraction-${pid}`, scopeData[pid].attraction, `Attraction: ${signals.attraction.toFixed(3)}`);
-                drawScope(`scope-velocity-${pid}`, scopeData[pid].velocity, `Velocity: ${signals.velocity.toFixed(3)}`);
-              }
+              });
             });
+            inInnerNumber = Math.floor(inInnerNumber / 2); // Each connection counted twice
+            
+            // Update UI
+            const entropyEl = document.getElementById("system-entropy");
+            const rmsEl = document.getElementById("system-rms-velocity");
+            const clusterEl = document.getElementById("cluster-count");
+            const inInnerEl = document.getElementById("in-inner-number");
+            const pulsarInEl = document.getElementById("in-inner-pulsar");
+            const pulsarOutEl = document.getElementById("out-inner-pulsar");
+            
+            if (entropyEl) entropyEl.textContent = entropy.toFixed(2);
+            if (rmsEl) rmsEl.textContent = rmsVelocity.toFixed(2);
+            if (clusterEl) clusterEl.textContent = clusterCount.toString();
+            if (inInnerEl) inInnerEl.textContent = inInnerNumber.toString();
+            if (pulsarInEl) pulsarInEl.textContent = pulsars.inInnerPulsar.toString();
+            if (pulsarOutEl) pulsarOutEl.textContent = pulsars.outInnerPulsar.toString();
           }
           
-          // Draw particle visualizations (can run at full frame rate for smooth visuals)
-          drawParticles();
-          drawIndividualView();
+          // Particle visualization removed for performance
 
           // Throttle parameter updates (30fps max - audio params don't need 60fps)
           if (now - lastParamUpdate >= PARAM_UPDATE_INTERVAL) {
             lastParamUpdate = now;
             
-            // Generate parameters from mappings for all particles
-            // For now, use particle 0 for parameter mapping (individual audio control)
-            const signals0 = particleSystem.generateSignals(0);
-            if (signals0) {
-              const params = streamMapper.generateParams(signals0);
+            // Global workspace: Use global streams for parameter mapping
+            const entropy = calculateEntropy(particles);
+            const rmsVelocity = calculateRMSVelocity(particles);
+            const particleCount = particles.length;
+            const clusterCount = calculateClusterCount(particles);
+            const pulsars = calculateInInnerPulsars(particles, dt);
             
-              // Distance-based volume control: fade out other particles as they get far
-              // When particles are beyond outerRadius, only self is audible
-              const config = particleSystem.getConfig();
-              const outerRadius = config.outerRadius || 150;
-              const innerRadius = config.innerRadius || 80;
+            const globalSignals = {
+              entropy: entropy,
+              rmsVelocity: rmsVelocity,
+              particleCount: particleCount,
+              clusterCount: clusterCount,
+              inInnerPulsar: pulsars.inInnerPulsar,
+              outInnerPulsar: pulsars.outInnerPulsar
+            };
+            
+            const params = streamMapper.generateParams(globalSignals);
+            sendToNoiseCraft(params);
+            
+            // Update Global sequencer pattern
+            if (iframe && iframe.contentWindow && particles.length > 0) {
+              if (!window.globalParticleAssignments) {
+                window.globalParticleAssignments = {};
+              }
               
-              // ===== BACKGROUND AUDIO POST-PROCESSING =====
-              // Use the dedicated post-processing module (HTML-independent, reusable in backend)
-              const particles = particleSystem.getParticles();
-              const selfParticle = particles.find(p => p.id === 0);
+              // Use pattern pipeline to ensure all particles have assignments
+              const patternPipeline = window.patternPipeline || createParticlePatternPipeline({
+                mode: 'global',
+                harmonicPlacer: harmonicPlacer,
+                patternManager: patternManager
+              });
               
-              const backgroundAudio = processBackgroundAudio(
-                selfParticle,
-                particles,
-                {
-                  innerRadius,
-                  outerRadius,
-                  baseVolume: 0.0015
-                }
-              );
-              
-              // Merge background audio params with existing params
-              backgroundAudio.params.forEach(bgParam => {
-                const existingParam = params.find(p => 
-                  p.nodeId === bgParam.nodeId && p.paramName === bgParam.paramName
-                );
-                if (existingParam) {
-                  existingParam.value = bgParam.value;
-                } else {
-                  params.push(bgParam);
+              // Assign global positions for any particles that don't have them yet
+              particles.forEach(particle => {
+                if (!window.globalParticleAssignments[particle.id]) {
+                  const assignment = patternPipeline.assignGlobalPositionToParticle(particle, particles.length);
+                  if (assignment) {
+                    window.globalParticleAssignments[particle.id] = assignment;
+                  }
                 }
               });
               
-              // Store localization state for potential future use
-              if (!window.backgroundAudioState) window.backgroundAudioState = {};
-              window.backgroundAudioState = backgroundAudio.state;
-              
-              // ===== MODULAR AUDIO SYSTEM: Apply Web Audio API Spatialization =====
-              // Use the modular post-processing system instead of just NoiseCraft node parameters
-              // This provides actual spatial audio (panning, distance-based gain, reverb) using Web Audio API
-              if (window.spatialAudioProcessor && window.spatialAudioProcessor.enabled() && isSpatialAudioEnabled) {
-                window.spatialAudioProcessor.update(backgroundAudio.state, selfParticle, particles);
-              } else {
-                // Fallback: If Web Audio API spatialization is not available yet,
-                // still use NoiseCraft node parameters (but this is less effective)
-                // Only warn once to avoid spam
-                if (!window._spatialWarningShown) {
-                  console.warn('[Audio] Web Audio API spatialization not enabled, using NoiseCraft node parameters');
-                  window._spatialWarningShown = true;
-                }
-              }
-              
-              sendToNoiseCraft(params);
-              
-              // Store signals in global scope for sequencer logic access
-              if (!window.particleSignals) window.particleSignals = {};
-              window.particleSignals[0] = signals0;
-              
-              // Update sequencer patterns when inner particles change
-              const currentInnerParticleIds = new Set(
-                signals0.innerParticles ? signals0.innerParticles.map(p => p.id) : []
+              const globalPattern = sequencerLogic.generateGlobalPattern(
+                particles,
+                window.globalParticleAssignments,
+                harmonicPlacer,
+                false // verbose: don't log during regular updates
               );
+              window.globalParticleAssignments = globalPattern.assignments || {};
+              patternPipeline.updateGlobalAssignments(window.globalParticleAssignments);
               
-              // Check if inner particles changed
-              const innerParticlesChanged = 
-                currentInnerParticleIds.size !== previousInnerParticleIds.size ||
-                [...currentInnerParticleIds].some(id => !previousInnerParticleIds.has(id)) ||
-                [...previousInnerParticleIds].some(id => !currentInnerParticleIds.has(id));
+              const patternKey = JSON.stringify({
+                bass: globalPattern.bass.map(step => step.join(',')),
+                baritone: globalPattern.baritone.map(step => step.join(',')),
+                tenor: globalPattern.tenor.map(step => step.join(','))
+              });
               
-              // ALWAYS update sequencer patterns, not just when innerParticles change
-              // This ensures baritone/tenor are cleared when particle becomes alone
-              if (iframe && iframe.contentWindow) {
-                const selfParticle = particles.find(p => p.id === 0);
-                if (selfParticle) {
-                  // Convert innerParticles data to particle objects (may be empty array when alone)
-                  const innerParticleObjects = signals0.innerParticles 
-                    ? signals0.innerParticles.map(pData => 
-                        particles.find(p => p.id === pData.id)
-                      ).filter(p => p !== undefined)
-                    : [];
-                  
-                  // Generate individual sequencer pattern
-                  // When alone: only bass has note, baritone/tenor are all zeros
-                  // When with inner particles: bass + baritone (+ tenor) have notes
-                  const sequencerPattern = sequencerLogic.generateIndividualPattern(
-                    selfParticle, 
-                    innerParticleObjects
-                  );
-                  
-                  // Check if pattern actually changed
-                  const patternChanged = !previousSequencerPattern || 
-                    JSON.stringify(sequencerPattern) !== JSON.stringify(previousSequencerPattern);
-                  
-                  // Always update when pattern changes OR when inner particles change
-                  // This ensures we clear baritone/tenor when particle becomes alone
-                  if (patternChanged || innerParticlesChanged) {
-                    const isAlone = innerParticleObjects.length === 0;
-                    console.log(`[Sequencer] Updating patterns - ${isAlone ? 'ALONE (single tone)' : `CHORD (${innerParticleObjects.length + 1} notes)`}:`, sequencerPattern);
-                    
-                    // Update each sequencer (bass, baritone, tenor) - optimized with requestAnimationFrame
-                    // Use 12-step arpeggiator patterns
-                    requestAnimationFrame(() => {
-                      // Update sequencers with arpeggiator patterns (12 steps x 12 rows)
-                      // Each voice uses all available notes, creating independent arpeggiator patterns
-                      updateMonoSeqSequencer(
-                        iframe.contentWindow,
-                        SEQUENCER_NODES.individual.bass,
-                        0, // pattern index
-                        sequencerPattern.bass, // Arpeggiator pattern: [step0[row0...row11], step1[...], ...]
-                        12  // numSteps: 12 steps for arpeggiator
-                      );
-                      
-                      updateMonoSeqSequencer(
-                        iframe.contentWindow,
-                        SEQUENCER_NODES.individual.baritone,
-                        0,
-                        sequencerPattern.baritone, // Arpeggiator pattern
-                        12  // numSteps: 12 steps
-                      );
-                      
-                      updateMonoSeqSequencer(
-                        iframe.contentWindow,
-                        SEQUENCER_NODES.individual.tenor,
-                        0,
-                        sequencerPattern.tenor, // Arpeggiator pattern
-                        12  // numSteps: 12 steps
-                      );
-                    });
-                    
-                    previousSequencerPattern = JSON.parse(JSON.stringify(sequencerPattern));
-                  }
+              // Update patternKey reference from global
+              previousSequencerPattern = window.previousSequencerPattern;
+              
+              if (!previousSequencerPattern || previousSequencerPattern !== patternKey) {
+                // Only log warnings if patterns are empty, not regular updates
+                const bassActiveCells = globalPattern.bass.reduce((sum, step) => 
+                  sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
+                const baritoneActiveCells = globalPattern.baritone.reduce((sum, step) => 
+                  sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
+                const tenorActiveCells = globalPattern.tenor.reduce((sum, step) => 
+                  sum + step.reduce((stepSum, cell) => stepSum + (cell === 1 ? 1 : 0), 0), 0);
+                
+                if (bassActiveCells === 0 && baritoneActiveCells === 0 && tenorActiveCells === 0) {
+                  const totalActiveNotes = particles.filter(p => p.getActiveNoteIndex() >= 0).length;
+                  console.warn(`[Global Sequencer] ⚠️ All patterns are empty! Total particles: ${totalActiveNotes}`);
                 }
                 
-                previousInnerParticleIds = new Set(currentInnerParticleIds);
+                requestAnimationFrame(() => {
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, 12);
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, 12);
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, 12);
+                });
+                
+                // Update both local and global references
+                previousSequencerPattern = patternKey;
+                window.previousSequencerPattern = patternKey;
               }
             }
           }
@@ -2033,358 +2278,7 @@
       }
       
       // Global view visualization - fixed bounds centered on center of mass
-      function drawParticles() {
-        const canvas = document.getElementById("particle-canvas");
-        if (!canvas || !particleSystem) return;
-        const particles = particleSystem.getParticles();
-        if (!particles || particles.length === 0) return;
-        
-        const ctx = canvas.getContext("2d");
-        const width = canvas.width;
-        const height = canvas.height;
-        
-        // Clear canvas
-        ctx.fillStyle = "#0a0a0a";
-        ctx.fillRect(0, 0, width, height);
-        
-        // Calculate center of mass for stable reference
-        let totalMass = 0;
-        let cmX = 0, cmY = 0;
-        particles.forEach(p => {
-          totalMass += p.mass || 1;
-          cmX += (p.position.x * (p.mass || 1));
-          cmY += (p.position.y * (p.mass || 1));
-        });
-        cmX /= totalMass;
-        cmY /= totalMass;
-        
-        // Fixed bounds centered on center of mass (±400px view range - large enough to keep all particles visible)
-        const viewRange = 400;
-        const minX = cmX - viewRange;
-        const maxX = cmX + viewRange;
-        const minY = cmY - viewRange;
-        const maxY = cmY + viewRange;
-        
-        const rangeX = maxX - minX;
-        const rangeY = maxY - minY;
-        const scale = Math.min(width / rangeX, height / rangeY);
-        
-        const config = particleSystem.getConfig();
-        
-        // Draw grid center marker (center of mass)
-        const centerX = (cmX - minX) * scale;
-        const centerY = (cmY - minY) * scale;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(centerX - 10, centerY);
-        ctx.lineTo(centerX + 10, centerY);
-        ctx.moveTo(centerX, centerY - 10);
-        ctx.lineTo(centerX, centerY + 10);
-        ctx.stroke();
-        
-        // Draw connections (forces between particles)
-        particles.forEach((p1, i) => {
-          particles.forEach((p2, j) => {
-            if (i < j) {
-              const dx = p2.position.x - p1.position.x;
-              const dy = p2.position.y - p1.position.y;
-              const distance = Math.sqrt(dx * dx + dy * dy);
-              
-              // Draw connection if within outer radius
-              if (distance <= config.outerRadius) {
-                const x1 = (p1.position.x - minX) * scale;
-                const y1 = (p1.position.y - minY) * scale;
-                const x2 = (p2.position.x - minX) * scale;
-                const y2 = (p2.position.y - minY) * scale;
-                
-                // Color based on distance
-                const alpha = Math.max(0.1, 1 - distance / config.outerRadius);
-                ctx.strokeStyle = `rgba(100, 150, 255, ${alpha * 0.5})`;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
-                ctx.stroke();
-              }
-            }
-          });
-        });
-        
-        // Draw particles
-        particles.forEach((p, i) => {
-          const x = (p.position.x - minX) * scale;
-          const y = (p.position.y - minY) * scale;
-          
-          // Draw particle (larger for central heavy particle)
-          const radius = i === 0 ? 10 : 6;
-          ctx.fillStyle = i === 0 ? "#4a8" : i === 1 ? "#a84" : "#8a4";
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fill();
-          
-          // Draw velocity vector
-          ctx.strokeStyle = "#666";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + p.velocity.x * 2, y + p.velocity.y * 2);
-          ctx.stroke();
-          
-          // Draw ID label
-          ctx.fillStyle = "#aaa";
-          ctx.font = "10px monospace";
-          ctx.fillText(`P${i}`, x + radius + 2, y - 8);
-        });
-      }
-      
-      // Individual view visualization - perspective from one particle
-      let controlledParticleId = 1; // Default: moon 1
-      let isDragging = false;
-      let dragStartPos = null;
-      
-      function drawIndividualView() {
-        const canvas = document.getElementById("individual-canvas");
-        if (!canvas || !particleSystem) return;
-        const particles = particleSystem.getParticles();
-        if (!particles || particles.length === 0) return;
-        
-        const selfParticle = particles.find(p => p.id === controlledParticleId);
-        if (!selfParticle) return;
-        
-        const ctx = canvas.getContext("2d");
-        const width = canvas.width;
-        const height = canvas.height;
-        
-        // Clear canvas
-        ctx.fillStyle = "#0a0a0a";
-        ctx.fillRect(0, 0, width, height);
-        
-        // Center view on the controlled particle
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const viewRange = 150; // View distance in world coordinates
-        const scale = Math.min(width, height) / (viewRange * 2);
-        
-        const config = particleSystem.getConfig();
-        
-        // Draw radius rings for visual reference
-        const innerRadiusPx = config.innerRadius * scale;
-        const outerRadiusPx = config.outerRadius * scale;
-        
-        // Outer radius ring (audio cue range)
-        ctx.strokeStyle = "rgba(150, 150, 255, 0.2)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, outerRadiusPx, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        // Inner radius ring (distinct range)
-        ctx.strokeStyle = "rgba(100, 255, 100, 0.3)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, innerRadiusPx, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        // Draw center marker (self particle position) - always visible
-        ctx.fillStyle = "#a84";
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 8, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Add glowing outer ring for self particle
-        const gradient = ctx.createRadialGradient(centerX, centerY, 8, centerX, centerY, 15);
-        gradient.addColorStop(0, "rgba(170, 132, 68, 0.8)");
-        gradient.addColorStop(1, "rgba(170, 132, 68, 0)");
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Draw other particles relative to self
-        particles.forEach((p, i) => {
-          if (p.id === controlledParticleId) return; // Skip self
-          
-          const dx = p.position.x - selfParticle.position.x;
-          const dy = p.position.y - selfParticle.position.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          // Only draw if within view range
-          if (distance > viewRange) return;
-          
-          const x = centerX + dx * scale;
-          const y = centerY + dy * scale;
-          
-          const isInDistinct = distance <= config.innerRadius;
-          const isInOuter = distance <= config.outerRadius && !isInDistinct;
-          
-          // Visual feedback: Glowing add layer when in outer range (overlapped area)
-          if (isInOuter) {
-            // Draw glowing overlay for outer range
-            const outerGradient = ctx.createRadialGradient(x, y, 5, x, y, 12);
-            outerGradient.addColorStop(0, `rgba(100, 150, 255, ${0.4 * (1 - distance / config.outerRadius)})`);
-            outerGradient.addColorStop(1, "rgba(100, 150, 255, 0)");
-            ctx.fillStyle = outerGradient;
-            ctx.beginPath();
-            ctx.arc(x, y, 12, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          
-          // Draw connection line only in distinct range (visible connection)
-          if (isInDistinct) {
-            // Bright visible connection line for distinct range
-            ctx.strokeStyle = `rgba(100, 255, 100, ${0.8 * (1 - distance / config.innerRadius)})`;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(centerX, centerY);
-            ctx.lineTo(x, y);
-            ctx.stroke();
-          }
-          
-          // Draw particle (only visible in distinct range, or with glow in outer range)
-          const radius = p.mass > 100 ? 8 : 5;
-          if (isInDistinct || isInOuter) {
-            ctx.fillStyle = p.id === 0 ? "#4a8" : "#8a4";
-            ctx.beginPath();
-            ctx.arc(x, y, radius, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Distinct range: add brighter outline
-            if (isInDistinct) {
-              ctx.strokeStyle = `rgba(100, 255, 100, 0.8)`;
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.arc(x, y, radius + 2, 0, Math.PI * 2);
-              ctx.stroke();
-            }
-            
-            // Draw relative velocity vector
-            const relVx = p.velocity.x - selfParticle.velocity.x;
-            const relVy = p.velocity.y - selfParticle.velocity.y;
-            ctx.strokeStyle = "#666";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(x + relVx * 2, y + relVy * 2);
-            ctx.stroke();
-            
-            // Draw ID label
-            ctx.fillStyle = "#aaa";
-            ctx.font = "10px monospace";
-            ctx.fillText(`P${i}`, x + radius + 2, y - 8);
-          }
-        });
-        
-        // Draw drag preview if dragging
-        if (isDragging && dragStartPos) {
-          ctx.strokeStyle = "rgba(255, 200, 0, 0.5)";
-          ctx.lineWidth = 2;
-          ctx.setLineDash([5, 5]);
-          ctx.beginPath();
-          ctx.moveTo(centerX, centerY);
-          ctx.lineTo(dragStartPos.x, dragStartPos.y);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          
-          // Draw velocity preview arrow
-          const dx = dragStartPos.x - centerX;
-          const dy = dragStartPos.y - centerY;
-          const angle = Math.atan2(dy, dx);
-          const length = Math.min(50, Math.sqrt(dx * dx + dy * dy));
-          const arrowX = centerX + Math.cos(angle) * length;
-          const arrowY = centerY + Math.sin(angle) * length;
-          
-          ctx.fillStyle = "rgba(255, 200, 0, 0.3)";
-          ctx.beginPath();
-          ctx.moveTo(arrowX, arrowY);
-          ctx.lineTo(
-            arrowX - Math.cos(angle - Math.PI / 6) * 8,
-            arrowY - Math.sin(angle - Math.PI / 6) * 8
-          );
-          ctx.lineTo(
-            arrowX - Math.cos(angle + Math.PI / 6) * 8,
-            arrowY - Math.sin(angle + Math.PI / 6) * 8
-          );
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
-      
-      // Drag controls for individual view
-      function setupIndividualViewControls() {
-        const canvas = document.getElementById("individual-canvas");
-        if (!canvas || !particleSystem) return;
-        
-        const MAX_VELOCITY = 100; // Maximum velocity from drag
-        
-        canvas.addEventListener("mousedown", (e) => {
-          const rect = canvas.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
-          const centerX = canvas.width / 2;
-          const centerY = canvas.height / 2;
-          
-          // Check if click is near center (within 20px)
-          const dx = x - centerX;
-          const dy = y - centerY;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          
-          if (dist < 20) {
-            isDragging = true;
-            dragStartPos = { x, y };
-            canvas.style.cursor = "crosshair";
-          }
-        });
-        
-        canvas.addEventListener("mousemove", (e) => {
-          const rect = canvas.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
-          const centerX = canvas.width / 2;
-          const centerY = canvas.height / 2;
-          
-          if (isDragging) {
-            // Continuously update velocity based on cursor position relative to center
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const angle = Math.atan2(dy, dx);
-            
-            // Map distance to velocity (0 to MAX_VELOCITY)
-            // Use a portion of view range for max velocity (e.g., 70% for smoother control)
-            const viewRange = 150;
-            const maxControlRange = viewRange * 0.7;
-            const scale = MAX_VELOCITY / maxControlRange;
-            const velocity = Math.min(MAX_VELOCITY, distance * scale);
-            
-            // Apply velocity to controlled particle continuously
-            const particles = particleSystem.getParticles();
-            const particle = particles.find(p => p.id === controlledParticleId);
-            if (particle) {
-              particle.velocity.x = Math.cos(angle) * velocity;
-              particle.velocity.y = Math.sin(angle) * velocity;
-            }
-            
-            // Update drag position for visual feedback
-            dragStartPos = { x, y };
-          }
-        });
-        
-        canvas.addEventListener("mouseup", (e) => {
-          if (!isDragging) return;
-          
-          // Velocity is already set by mousemove, just clean up
-          isDragging = false;
-          dragStartPos = null;
-          canvas.style.cursor = "crosshair";
-        });
-        
-        canvas.addEventListener("mouseleave", () => {
-          isDragging = false;
-          dragStartPos = null;
-          canvas.style.cursor = "crosshair";
-        });
-      }
+      // Particle visualization function removed for performance
 
       function animate() {
         try {
@@ -2414,7 +2308,7 @@
           await streamMapper.loadMappings();
           renderMappings();
           
-          // Enable auto-save for glb_audio_map.ncft when iframe is ready
+          // Enable auto-save for indiv_audio_map.ncft when iframe is ready
           if (iframe.contentWindow) {
             // Small delay to ensure iframe message handler is ready
             setTimeout(() => {
@@ -2470,6 +2364,26 @@
               console.log(`Loaded ${projectMappings.length} mappings from project file`);
             }
           }
+          
+          // Update sequencer pattern for initial particle when project is loaded
+          if (iframe && iframe.contentWindow && particleSystem) {
+            const particles = particleSystem.getParticles();
+            if (particles.length > 0 && window.globalParticleAssignments) {
+              setTimeout(() => {
+                const globalPattern = sequencerLogic.generateGlobalPattern(
+                  particles,
+                  window.globalParticleAssignments,
+                  harmonicPlacer,
+                  true // verbose: log initial pattern
+                );
+                requestAnimationFrame(() => {
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.bass, 0, globalPattern.bass, 12);
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.baritone, 0, globalPattern.baritone, 12);
+                  updateMonoSeqSequencer(iframe.contentWindow, SEQUENCER_NODES.global.tenor, 0, globalPattern.tenor, 12);
+                });
+              }, 500); // Small delay to ensure iframe is fully ready
+            }
+          }
         } else if (event.data?.type === "noiseCraft:nodeSelection") {
           // Handle node selection from NoiseCraft editor
           console.log("Node selection received:", event.data);
@@ -2513,19 +2427,37 @@
             if (iframe && iframe.contentWindow && iframe.contentWindow.browseModeMappingId) {
               targetMappingId = iframe.contentWindow.browseModeMappingId;
               browseModeWasActive = true;
-              console.log(`Browse mode active, target mapping: ${targetMappingId}`);
+              console.log(`[Browse] Browse mode active, target mapping: ${targetMappingId}`);
+              
+              // Clear timeout
+              if (iframe.contentWindow.browseModeTimeoutId) {
+                clearTimeout(iframe.contentWindow.browseModeTimeoutId);
+                iframe.contentWindow.browseModeTimeoutId = null;
+              }
+              
               // Disable browse mode
               iframe.contentWindow.browseModeActive = false;
               iframe.contentWindow.browseModeMappingId = null;
+              
+              // Update UI to show browse mode is disabled
+              const mappingDiv = document.querySelector(`[data-mapping-id="${targetMappingId}"]`);
+              if (mappingDiv) {
+                const browseBtn = mappingDiv.querySelector(".browse-node-btn");
+                if (browseBtn) {
+                  browseBtn.textContent = "Browse";
+                  browseBtn.style.background = "";
+                  browseBtn.disabled = false;
+                }
+              }
             } else {
               // Browse mode is NOT active - ignore this selection
-              console.log(`Node selection ignored - browse mode is not active`);
+              console.log(`[Browse] Node selection ignored - browse mode is not active`);
               return; // Exit early - don't update any mappings
             }
             
             // Only proceed if browse mode was active
             if (!browseModeWasActive || !targetMappingId) {
-              console.log(`Skipping node selection - browse mode was not active`);
+              console.log(`[Browse] Skipping node selection - browse mode was not active`);
               return;
             }
             
@@ -2610,6 +2542,42 @@
         }
       });
 
+      // Add event listeners for particle management buttons
+      const btnAddParticle = document.getElementById("btn-add-particle");
+      const btnRemoveParticle = document.getElementById("btn-remove-particle");
+      if (btnAddParticle) {
+        btnAddParticle.addEventListener("click", () => {
+          console.log("[Button] Add particle clicked");
+          try {
+            addNewParticle();
+          } catch (error) {
+            console.error("[Button] Error adding particle:", error);
+            console.error("[Button] Error stack:", error.stack);
+            console.error("[Button] Error details:", {
+              message: error.message,
+              name: error.name,
+              particleSystem: !!particleSystem,
+              harmonicPlacer: !!harmonicPlacer,
+              iframe: !!iframe
+            });
+          }
+        });
+      } else {
+        console.warn("[Button] btn-add-particle not found in DOM");
+      }
+      if (btnRemoveParticle) {
+        btnRemoveParticle.addEventListener("click", () => {
+          console.log("[Button] Remove particle clicked");
+          try {
+            removeLastParticle();
+          } catch (error) {
+            console.error("[Button] Error removing particle:", error);
+          }
+        });
+      } else {
+        console.warn("[Button] btn-remove-particle not found in DOM");
+      }
+      
       btnStart.addEventListener("click", () => {
         iframe.contentWindow?.postMessage({ type: "noiseCraft:play" }, "*");
       });
@@ -2617,9 +2585,45 @@
       btnStop.addEventListener("click", () => {
         iframe.contentWindow?.postMessage({ type: "noiseCraft:stop" }, "*");
       });
-
-      // Setup individual view drag controls
-      setupIndividualViewControls();
+      
+      // Ctrl+S (or Cmd+S on Mac) to save mappings
+      document.addEventListener("keydown", async (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+          e.preventDefault(); // Prevent browser's default save dialog
+          
+          // Check if we're in a text input/textarea (don't override normal text saving)
+          const activeElement = document.activeElement;
+          if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+            // If user is typing in an input, don't save mappings
+            return;
+          }
+          
+          console.log("[Save] Ctrl+S pressed, saving mappings...");
+          const success = await streamMapper.saveToJSONFile();
+          
+          if (success) {
+            const statusEl = document.getElementById("status");
+            if (statusEl) {
+              statusEl.textContent = `✓ Saved ${streamMapper.mappings.length} mappings to global-workspace-mappings.json`;
+              setTimeout(() => {
+                if (statusEl.textContent.includes("Saved")) {
+                  statusEl.textContent = "Ready. Click Start to begin.";
+                }
+              }, 2000);
+            }
+          } else {
+            const statusEl = document.getElementById("status");
+            if (statusEl) {
+              statusEl.textContent = "✗ Failed to save mappings";
+              setTimeout(() => {
+                if (statusEl.textContent.includes("Failed")) {
+                  statusEl.textContent = "Ready. Click Start to begin.";
+                }
+              }, 2000);
+            }
+          }
+        }
+      });
       
       // Start animation loop (variables already initialized above)
       console.log("Starting animation loop...");
@@ -2636,19 +2640,13 @@
       }
       
       animate();
-      
-      } catch (error) {
+    } catch (error) {
         console.error("CRITICAL ERROR in script initialization:", error);
         console.error("Stack trace:", error.stack);
-        // Show error to user
         const statusEl = document.getElementById("status");
         if (statusEl) {
           statusEl.textContent = `Error: ${error.message}`;
           statusEl.style.color = "#f44";
         }
-        // Also log to console for debugging
-        console.error("Full error details:", error);
       }
     </script>
-  </body>
-</html>

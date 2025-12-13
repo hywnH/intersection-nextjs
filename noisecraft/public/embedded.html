@@ -343,10 +343,16 @@
         ).toString();
       };
 
+      // Track if we've already loaded the project to prevent reloads
+      let projectLoaded = false;
+      
       async function loadProjectFromSrc(src) {
-        // Use cache-busting for .ncft files to ensure we get the latest saved version
-        const cacheBuster = src.includes('.ncft') ? `?t=${Date.now()}` : '';
-        const url = src + cacheBuster;
+        // Use cache-busting ONLY on initial load, not on subsequent loads
+        // This prevents iframe from reloading when file is saved
+        const cleanSrc = src.split('?')[0];
+        // Only use cache-busting if this is the first load
+        const cacheBuster = (!projectLoaded && cleanSrc.includes('.ncft')) ? `?t=${Date.now()}` : '';
+        const url = cleanSrc + cacheBuster;
         const resp = await fetch(url, { 
           cache: "no-store",
           headers: {
@@ -388,7 +394,8 @@
             // If so, try to fetch with cache-busting to get the latest version
             if (src.includes('indiv_audio_map.ncft')) {
               try {
-                const latest = await loadProjectFromSrc(src + '?t=' + Date.now());
+                // loadProjectFromSrc already handles cache-busting, no need to add ?t= again
+                const latest = await loadProjectFromSrc(src);
                 console.log('[Load] Loaded latest indiv_audio_map.ncft from server');
                 return latest;
               } catch (e) {
@@ -660,7 +667,17 @@
           const result = originalModelUpdate(action);
           
           // Auto-save after state changes (debounced)
-          if (autoSaveEnabled && autoSaveFilename && action) {
+          // Exclude programmatic updates to prevent reload loops:
+          // - SetParam with paramName "value": stream updates from mappings
+          // - SetCurStep: sequencer playback updates (not user-initiated)
+          // Note: ToggleCell from external updates (via postMessage) don't go through model.update,
+          // so they won't trigger auto-save. User-initiated ToggleCell (clicking sequencer) 
+          // should be saved, so we include it here.
+          const isStreamParamUpdate = actionType === 'SetParam' && action?.paramName === 'value';
+          const isProgrammaticUpdate = isStreamParamUpdate || 
+                                       actionType === 'SetCurStep';
+          
+          if (autoSaveEnabled && autoSaveFilename && action && !isProgrammaticUpdate) {
             if (saveDebounceTimer) {
               clearTimeout(saveDebounceTimer);
             }
@@ -951,9 +968,20 @@
           autoSaveEnabled = data.enabled !== false;
           autoSaveFilename = data.filename || null;
           if (autoSaveEnabled && autoSaveFilename) {
-            console.log(`[Auto-save] Enabled for ${autoSaveFilename}`);
+            console.log(`[Auto-save] ✓ Enabled for ${autoSaveFilename}`);
+            console.log(`[Auto-save] Editor changes will be automatically saved (debounced: ${SAVE_DEBOUNCE_MS}ms)`);
+            // Notify parent that auto-save is enabled
+            notifyParent({ 
+              type: "noiseCraft:autoSaveStatus", 
+              enabled: true, 
+              filename: autoSaveFilename 
+            });
           } else {
             console.log(`[Auto-save] Disabled`);
+            notifyParent({ 
+              type: "noiseCraft:autoSaveStatus", 
+              enabled: false 
+            });
           }
           return;
         }
@@ -971,21 +999,111 @@
           data.type === "noiseCraft:setParams" &&
           Array.isArray(data.params)
         ) {
+          // Check if project is fully loaded before processing params
+          const hasModel = !!app.model;
+          const hasState = !!app.model?.state;
+          const hasNodes = !!app.model?.state?.nodes;
+          const nodeCount = hasNodes ? Object.keys(app.model.state.nodes).length : 0;
+          
+          if (!hasModel || !hasState || !hasNodes || nodeCount === 0) {
+            // Project not loaded yet, skip parameter updates
+            if (!window._projectNotLoadedWarning) {
+              console.warn(`[Embedded] Project not fully loaded yet, skipping ${data.params.length} param updates. Model: ${hasModel}, State: ${hasState}, Nodes: ${hasNodes}, Count: ${nodeCount}`);
+              window._projectNotLoadedWarning = true;
+              // Reset warning after 5 seconds to allow retry
+              setTimeout(() => {
+                window._projectNotLoadedWarning = false;
+              }, 5000);
+            }
+            return;
+          }
+          
           try {
-            console.log("[Embedded] received params", data.params);
+            // Throttle logging to avoid spam
+            if (!window._lastEmbeddedParamLog || Date.now() - window._lastEmbeddedParamLog > 2000) {
+              console.log("[Embedded] received params", data.params.length, "params:", 
+                         data.params.slice(0, 3).map(p => `${p.nodeId}.${p.paramName}=${p.value?.toFixed(3)}`));
+              window._lastEmbeddedParamLog = Date.now();
+            }
           } catch (e) {}
+          let updatedCount = 0;
+          let skippedCount = 0;
           data.params.forEach((param) => {
-            if (!param || param.value === undefined) return;
+            if (!param || param.value === undefined) {
+              skippedCount++;
+              return;
+            }
             const nodeId = param.nodeId ?? param.id;
-            if (nodeId === undefined) return;
+            if (nodeId === undefined) {
+              skippedCount++;
+              return;
+            }
             const paramName = param.paramName ?? "value";
             const id = String(nodeId);
             const node = app.model?.state?.nodes?.[id];
-            if (!node || !node.params || !(paramName in node.params)) {
+            if (!node) {
+              // Log missing nodes (throttled) with more details
+              if (!window._missingNodes) window._missingNodes = new Set();
+              if (!window._missingNodes.has(id)) {
+                const allNodeIds = Object.keys(app.model?.state?.nodes || {});
+                const sampleNodes = allNodeIds.slice(0, 10).map(nid => {
+                  const n = app.model?.state?.nodes?.[nid];
+                  return `${nid}(${n?.type || '?'})`;
+                });
+                console.warn(`[Embedded] Node ${id} not found in model. Total nodes: ${allNodeIds.length}`);
+                console.warn(`[Embedded] Sample node IDs: ${sampleNodes.join(', ')}${allNodeIds.length > 10 ? '...' : ''}`);
+                console.warn(`[Embedded] Model state:`, {
+                  hasModel: !!app.model,
+                  hasState: !!app.model?.state,
+                  hasNodes: !!app.model?.state?.nodes,
+                  nodeCount: allNodeIds.length
+                });
+                window._missingNodes.add(id);
+                
+                // If this keeps happening, it might indicate the project hasn't loaded yet
+                // or the mapping file references nodes that don't exist in the project
+                if (window._missingNodes.size > 5) {
+                  console.error(`[Embedded] ⚠️ Multiple nodes missing (${window._missingNodes.size}). This might indicate:`);
+                  console.error(`[Embedded] 1. Project not fully loaded yet`);
+                  console.error(`[Embedded] 2. Mapping file references wrong node IDs`);
+                  console.error(`[Embedded] 3. Project file mismatch`);
+                }
+              }
+              skippedCount++;
               return;
             }
+            if (!node.params || !(paramName in node.params)) {
+              // Log missing params (throttled)
+              if (!window._missingParams) window._missingParams = new Set();
+              const key = `${id}.${paramName}`;
+              if (!window._missingParams.has(key)) {
+                console.warn(`[Embedded] Param ${paramName} not found in node ${id} (type: ${node.type})`);
+                console.warn(`[Embedded] Available params:`, Object.keys(node.params || {}));
+                window._missingParams.add(key);
+              }
+              skippedCount++;
+              return;
+            }
+            const oldValue = node.params[paramName];
+            // updateParam calls model.update which triggers model.broadcast
+            // This automatically calls editor.update, which updates the UI
             app.updateParam(id, paramName, Number(param.value));
+            updatedCount++;
+            
+            // Log value changes for first few updates (throttled)
+            if (updatedCount <= 3 && (!window._lastValueLog || Date.now() - window._lastValueLog > 1000)) {
+              console.log(`[Embedded] Updated ${id}.${paramName}: ${oldValue?.toFixed(3)} → ${param.value.toFixed(3)}`);
+              window._lastValueLog = Date.now();
+            }
           });
+          
+          // Log summary (throttled)
+          if (!window._lastSummaryLog || Date.now() - window._lastSummaryLog > 3000) {
+            if (updatedCount > 0 || skippedCount > 0) {
+              console.log(`[Embedded] Params update: ${updatedCount} updated, ${skippedCount} skipped`);
+            }
+            window._lastSummaryLog = Date.now();
+          }
         } else if (data.type === "noiseCraft:toggleCell") {
           // Support for pattern cell updates (for tone assignment)
           const { nodeId, patIdx, stepIdx, rowIdx, value } = data;
@@ -997,14 +1115,22 @@
           ) {
             try {
               const node = app.model?.state?.nodes?.[String(nodeId)];
+              if (!node) {
+                if (!window._lastToggleCellWarning || Date.now() - window._lastToggleCellWarning > 5000) {
+                  console.warn(`[Embedded] Node ${nodeId} not found for toggleCell`);
+                  window._lastToggleCellWarning = Date.now();
+                }
+                return;
+              }
+              
               if (
-                node &&
                 node.patterns &&
                 node.patterns[patIdx] &&
                 node.patterns[patIdx][stepIdx]
               ) {
-                // For MonoSeq, clear all rows first, then set the target row
-                if (node.type === "MonoSeq") {
+                // For MonoSeq, clear all rows first only if setting a new value (value === 1)
+                // If clearing (value === 0), just clear the specific row
+                if (node.type === "MonoSeq" && value === 1) {
                   const numRows = node.patterns[patIdx][stepIdx].length;
                   for (let i = 0; i < numRows; i++) {
                     node.patterns[patIdx][stepIdx][i] = 0;
@@ -1013,7 +1139,11 @@
                 // Set the target row
                 const targetValue = value !== undefined ? value : 1;
                 node.patterns[patIdx][stepIdx][rowIdx] = targetValue;
-                // Broadcast the change
+                
+                // Broadcast the change (this doesn't trigger model.update, so no auto-save)
+                // External updates via postMessage don't go through model.update,
+                // so they won't trigger auto-save. Only user-initiated changes (clicking sequencer)
+                // go through model.update and will be saved.
                 app.model?.broadcast(app.model.state, {
                   type: "toggleCell",
                   nodeId: String(nodeId),
@@ -1022,6 +1152,11 @@
                   rowIdx,
                   value: targetValue,
                 });
+              } else {
+                if (!window._lastToggleCellPatternWarning || Date.now() - window._lastToggleCellPatternWarning > 5000) {
+                  console.warn(`[Embedded] Pattern not found for node ${nodeId}, patIdx ${patIdx}, stepIdx ${stepIdx}`);
+                  window._lastToggleCellPatternWarning = Date.now();
+                }
               }
             } catch (e) {
               console.warn("Failed to toggle cell:", e);
@@ -1049,6 +1184,27 @@
       // 3) 초기 프로젝트 로드
       const initialState = await loadInitialProject();
       app.setState(initialState);
+      projectLoaded = true; // Mark as loaded to prevent cache-busting on subsequent loads
+      
+      // Wait for model state to be fully initialized
+      // This ensures nodes are available before parameter updates are processed
+      let stateCheckAttempts = 0;
+      const maxStateCheckAttempts = 50; // 5 seconds max wait
+      const checkStateReady = setInterval(() => {
+        stateCheckAttempts++;
+        const hasModel = !!app.model;
+        const hasState = !!app.model?.state;
+        const hasNodes = !!app.model?.state?.nodes;
+        const nodeCount = hasNodes ? Object.keys(app.model.state.nodes).length : 0;
+        
+        if (hasModel && hasState && hasNodes && nodeCount > 0) {
+          console.log(`[Embedded] Project fully loaded: ${nodeCount} nodes available`);
+          clearInterval(checkStateReady);
+        } else if (stateCheckAttempts >= maxStateCheckAttempts) {
+          console.warn(`[Embedded] Project state check timeout after ${maxStateCheckAttempts} attempts`);
+          clearInterval(checkStateReady);
+        }
+      }, 100);
       
       // Extract and set filename from URL for save functionality
       const loadUrl = new URL(window.location.href);
