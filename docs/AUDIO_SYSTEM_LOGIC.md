@@ -52,14 +52,19 @@
 - 어떤 파티클이 나에 대해 **In Outer**이거나 **In Inner**라면
 
 **처리**:
-- 그 파티클의 조종자가 듣고 있을 소리 output을 **post-processing**을 거쳐 나에게 배경음으로 들리게 합니다
+- **변경사항**: 그 파티클의 조종자가 듣고 있을 소리 output을 spatialize 하는 대신
+- **노이즈 기반 필터링된 사운드**를 생성합니다:
+  - **노이즈 소스**: 화이트 노이즈 또는 다른 노이즈 타입
+  - **주파수 필터**: 해당 입자의 음(note)에 해당하는 주파수역대에 대한 밴드패스/피크 필터 적용
+  - 예시: 입자의 고유 음이 솔(G, 약 392Hz)인 경우, 해당 주파수역대(예: 350-450Hz)를 통과시키는 필터 적용
 - 적용되는 효과:
   - **Panning**: 좌우 위치에 따른 공간 배치
-  - **Spatialization**: 3D 공간 오디오 효과
+  - **Spatialization**: 3D 공간 오디오 효과 (노이즈 + 필터된 사운드)
+  - **Localization**: 공간적 위치 인식 (거리, 방향)
   - **Pre-delay**: 거리 기반 딜레이
   - **Reverb**: 공간감을 위한 리버브
 - 이 효과들은 **`.ncft` 맵과는 무관하게** 후처리로 적용됩니다
-- 목적: "나"에게 인터랙션에 대한 **오디오 큐**를 제공
+- 목적: "나"에게 인터랙션에 대한 **오디오 큐**를 제공 (실제 오디오 출력이 아닌 필터된 노이즈로 위치/음 정보 전달)
 
 **제한**:
 - 배경음으로 사용하는 **maximum particle 수**: 나를 제외하고 **최대 2개**
@@ -67,10 +72,13 @@
 ### 4. In Inner 시퀀서 패턴 합치기
 
 **조건**:
-- 어떤 파티클이 **In Inner**라면
+- 어떤 파티클이 **In Inner**라면 (상호작용 가능한 범위 내로 들어온 경우)
 
 **처리**:
-- 배경음을 넘어서, 그 파티클 조종자의 **시퀀서 패턴을 나의 시퀀서 패턴에 합칩니다**
+- 배경음을 넘어서, 그 파티클의 **고유 패턴을 받아서 sequencer 패턴을 만드는 소스로 함께 사용하기 시작**합니다
+- **입자의 고유 패턴 형식**: `(0,0,0,...,0,1,0,0,0)` - 12-tone 배열에서 해당 음만 1, 나머지는 0
+  - 예: 솔(G)의 경우 `(0,0,0,0,0,0,0,1,0,0,0,0)` (7번째 인덱스가 1)
+- 이 패턴은 내 sequencer 패턴 생성의 **소스(source)로 합쳐집니다**
 - **제한**: 나를 제외한, 가장 가까운 **최대 2개**까지
 
 **결과**:
@@ -87,6 +95,7 @@
 
 **In Outer로 떨어질 때**:
 - 시퀀서는 다시 내 **고유음만**을 사용합니다
+- 해당 파티클의 고유 패턴을 더 이상 sequencer 소스로 사용하지 않습니다
 
 ### 5. In Outer 거리 기반 Fade Out
 
@@ -110,9 +119,9 @@
 
 **구조**:
 - Global window는 **아예 따로 열고 관람**하는 것입니다
-- Individual pipeline 속에 있는 파일들을 **duplicate**해서
-- **완전히 새로운 워크스페이스 서버**를 만듭니다
-- 에디터는 이 요청 후 따로 adjust 할 것입니다
+- Individual workspace (`indiv-workspace.html`)와 분리된 **독립적인 워크스페이스**입니다
+- 파일: `global-workspace.html`
+- 에디터는 별도로 adjust 합니다
 
 ### 8. Global용 `.ncft` 파일
 
@@ -123,13 +132,58 @@
 - Individual이 시퀀서 정보만 다르고 같은 구조의 NoiseCraft 맵을 쓴다면
 - Global은 **그냥 다른 파일**을 사용합니다
 
-### 9. Global Sequencer Pattern
+### 9. Global Workspace UI 및 기능
+
+**UI 구조**:
+- **파티클 추가/제거 기능**: +1/-1 버튼으로 동적 관리
+- **개인 컨트롤 제거**: 개별 파티클 제어 불필요 (관람 모드)
+- **Global 스트림 표시**: 시스템 전역 메트릭만 표시
+
+### 10. Global Stream 계산
+
+**스트림 종류** (Individual과 완전히 다름):
+
+1. **엔트로피 (Entropy)**
+   - 파티클 시스템의 속도 다양성 측정
+   - Shannon entropy 기반 계산
+   - 범위: 0 ~ log2(12) ≈ 3.58
+
+2. **평균제곱근속력 (RMS Velocity)**
+   - 모든 파티클의 속도의 평균제곱근 (Root Mean Square)
+   - 계산: `sqrt(sum(vx² + vy²) / N)` where N = 파티클 수
+   - 시스템 전체의 운동 에너지 지표
+
+3. **파티클 개수 (Particle Count)**
+   - 현재 활성 파티클 수
+   - 동적 추가/제거 반영
+
+4. **클러스터 개수 (Cluster Count)**
+   - In Inner 반경 내에서 연결된 파티클 그룹의 수
+   - DFS (Depth-First Search) 알고리즘으로 계산
+   - 범위: 0 ~ 파티클 수
+
+5. **Is Inner 생성 Pulsar**
+   - Is Inner 관계가 **새로 생성**될 때마다 일정 시간 동안 1, 그 외 0
+   - 펄스 지속 시간: 설정 가능 (기본값 예: 0.5초)
+   - 이벤트 기반 트리거
+
+6. **Is Inner 소멸 Pulsar**
+   - Is Inner 관계가 **사라질** 때마다 일정 시간 동안 1, 그 외 0
+   - 펄스 지속 시간: 설정 가능 (기본값 예: 0.5초)
+   - 이벤트 기반 트리거
+
+**계산 알고리즘**:
+- 각 프레임마다 파티클 상태 업데이트
+- 이전 프레임과 비교하여 In Inner 상태 변화 감지
+- Pulsar는 타이머 기반으로 감쇠 (exponential decay)
+
+### 11. Global Sequencer Pattern
 
 **구조**:
 - Global에서도 각 유저의 **(0,0,...,0) 고유 정보를 쓰는 것은 같습니다**
-- 하지만 `bass`, `baritone`, `tenor`는 각각 **12개의 column**을 가집니다
+- 하지만 `bass`, `baritone`, `tenor`는 각각 **16개의 column**을 가집니다 (최근 변경)
 - 한 유저는 그 **36개의 column 중 하나의 위치만** 차지할 수 있습니다
-- 위치 지정: **순서 무관, 랜덤 지정**
+- 위치 지정: **Harmonic Progression 알고리즘** 기반 (랜덤 + 음악적 논리)
 
 **예시**:
 - 유저 A (도, C): `bass` column 3에 배치
@@ -137,6 +191,22 @@
 - 유저 C (미, E): `tenor` column 1에 배치
 - 유저 D (라, A): `bass` column 11에 배치
 - ...
+
+### 12. Harmonic Progression 알고리즘 (향후 구현)
+
+**목표**:
+- Final result는 **harmonic progression**이 들려야 합니다
+- 유저가 적으면: 금방 **tonic**으로 돌아오는 단순한 패턴
+- 유저가 늘수록, 엔트로피가 클수록: progression이 **멀리** 되었으면 좋겠습니다
+- **Global 스트림** (엔트로피, RMS 속도, 클러스터 수)을 harmonic progression에 반영
+
+**구현 방식**:
+- **Tonal.js**를 사용하여 최초 접속자가 배당받은 음에 대한 **instability**를 계산합니다
+- 새로운 유저가 들어올 때마다:
+  - 예: '도'에 대해서는 '시'가 '솔'보다 더 불안정합니다
+  - 따라서, 사이클이 끝나기 전 마지막 '시'는 무조건 '솔' 전에 위치해야 합니다
+- 약간은 랜덤하게 **48개의 포지션 중 하나**에 지정되었으면 합니다
+- **Per-user note (0,0,...,0) assignment**: 각 파티클의 고유 패턴을 sequencer pattern maker 알고리즘과 연결
 
 ### 10. Harmonic Progression 알고리즘
 
@@ -172,18 +242,18 @@
 ```javascript
 // 각 음의 instability score (C major 기준)
 const instabilityMap = {
-  0: 0,   // C (Tonic) - 가장 안정
-  1: 2,   // C#/Db
-  2: 1,   // D (Supertonic)
-  3: 1.5, // D#/Eb
-  4: 2,   // E (Mediant)
-  5: 3,   // F (Subdominant)
-  6: 3.5, // F#/Gb (Tritone)
-  7: 4,   // G (Dominant) - 불안정
-  8: 5,   // G#/Ab
-  9: 5.5, // A (Submediant)
-  10: 6,  // A#/Bb
-  11: 7,  // B (Leading tone) - 가장 불안정, C로 해결 필요
+  0: 0,    // Unison - 매우 높은 dissonance (그래프 시작점)
+    1: 9,    // Minor 2nd - 매우 높은 dissonance
+    2: 3,    // Major 2nd - 중간 dissonance
+    3: 2,    // Minor 3rd - consonant
+    4: 1.5,  // Major 3rd - consonant
+    5: 2.5,  // Perfect 4th - consonant
+    6: 8,    // Tritone - 매우 높은 dissonance
+    7: 0.5,  // Perfect 5th - 가장 consonant (deepest dip)
+    8: 4,    // Minor 6th - 중간 dissonance
+    9: 2,    // Major 6th - consonant
+    10: 4.5, // Minor 7th - 중간-높은 dissonance
+    11: 7,   // Major 7th - 높은 dissonance
 };
 
 // 현재 progression의 총 instability
@@ -455,7 +525,7 @@ function calculateTargetDistance(userCount) {
 
 ### 4. Global 전용
 - ✅ Harmonic progression 알고리즘
-- ✅ 36-column sequencer 구조
+- ✅ 48-column sequencer 구조
 - ✅ Tonal.js 기반 instability 계산
 
 ---
@@ -479,7 +549,7 @@ function calculateTargetDistance(userCount) {
 |------|------|-----------|------|
 | **7. Global Window 분리** | ⚠️ 부분 구현 | `global-workspace.html` | 파일은 있으나 별도 서버/워크스페이스 미구현 |
 | **8. Global용 `.ncft` 파일** | ✅ 파일 생성됨 | `glb_audio_map.ncft` | 파일은 존재하나 설정/통합 미구현 |
-| **9. Global Sequencer Pattern** | ❌ 미구현 | - | 12 columns per voice, 36개 위치 배치 로직 없음 |
+| **9. Global Sequencer Pattern** | ❌ 미구현 | - | 16 columns per voice, 48개 위치 배치 로직 없음 |
 | **10. Harmonic Progression 알고리즘** | ❌ 미구현 | - | 알고리즘 문서화만 완료, 실제 구현 없음 |
 
 ### 공통/기타

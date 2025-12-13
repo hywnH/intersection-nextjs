@@ -130,11 +130,16 @@
       #noisecraft-container {
         flex: 1;
         overflow: hidden;
+        min-height: 0; /* Allow flex item to shrink below content size */
+        position: relative;
+        background: #111;
       }
       #noisecraft-iframe {
         width: 100%;
         height: 100%;
         border: none;
+        display: block; /* Ensure iframe is displayed */
+        min-height: 400px; /* Minimum visible height */
       }
       .slider-group {
         margin: 12px 0;
@@ -494,7 +499,7 @@
         <div id="noisecraft-container">
           <iframe
             id="noisecraft-iframe"
-            src="/public/embedded.html?src=/examples/indiv_audio_map.ncft"
+            src="/public/embedded.html?src=/public/examples/indiv_audio_map.ncft"
           ></iframe>
         </div>
       </div>
@@ -502,14 +507,63 @@
 
     <script type="module">
       // Import particle system module
+      // Import particle system module
       import { VirtualParticle, SignalGenerator, ParticleSystem } from '/public/particle-system.js';
       import { SequencerLogic, convertNotePatternToNoiseCraft, updateMonoSeqSequencer } from '/public/sequencer-logic.js';
       import { generateHarmoniousPattern, generateHarmonizingPattern, generateChordPatterns, SCALES, CHORD_TONES, getRandomScale } from '/public/music-theory.js';
-      
       // Import new modular components
-      import { createPatternGenerator } from '/public/sequencer-pattern-generator.js';
-      import { createNcftFileManager } from '/public/ncft-file-manager.js';
-      import { createMappingPresetManager } from '/public/mapping-preset-manager.js';
+      import { createPatternAssignmentManager } from '/public/pattern-assignment.js';
+      import { createMappingStorage } from '/public/mapping-storage.js';
+      
+      // Prevent browser back navigation (swipe gestures) from reloading the page
+      // This fixes the issue where touchpad swipe-left gestures cause page reloads
+      (function preventBackNavigation() {
+        // Push a state to the history stack so we can intercept back navigation
+        history.pushState(null, null, location.href);
+        
+        // Listen for popstate events (triggered by back/forward navigation or swipe gestures)
+        window.addEventListener('popstate', function(event) {
+          console.log('[Navigation] Back navigation detected, preventing reload...');
+          // Push the state back to prevent navigation
+          history.pushState(null, null, location.href);
+          // Optionally show a message to the user
+          const statusEl = document.getElementById('status');
+          if (statusEl) {
+            const originalText = statusEl.textContent;
+            statusEl.textContent = 'Back navigation prevented (use browser controls instead)';
+            statusEl.style.color = '#ffa';
+            setTimeout(() => {
+              statusEl.textContent = originalText;
+              statusEl.style.color = '';
+            }, 2000);
+          }
+        });
+        
+        // Also prevent swipe gestures on touch devices
+        let touchStartX = 0;
+        let touchStartY = 0;
+        document.addEventListener('touchstart', function(e) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        
+        document.addEventListener('touchmove', function(e) {
+          if (!touchStartX || !touchStartY) return;
+          
+          const touchEndX = e.touches[0].clientX;
+          const touchEndY = e.touches[0].clientY;
+          const deltaX = touchEndX - touchStartX;
+          const deltaY = touchEndY - touchStartY;
+          
+          // If horizontal swipe is much larger than vertical, prevent it
+          if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+            // This is a horizontal swipe - prevent default browser behavior
+            e.preventDefault();
+          }
+        }, { passive: false });
+        
+        console.log('[Navigation] Back navigation prevention enabled');
+      })();
       
       // Wrap main code in try-catch to catch initialization errors
       try {
@@ -544,19 +598,46 @@
         constructor(storageKey = "noisecraftStreamMappings") {
           this.storageKey = storageKey;
           this.mappings = [];
-          this.loadFromStorage();
+          this.loadMappings();
         }
 
-        loadFromStorage() {
+        async loadMappings() {
+          // First try localStorage
           const stored = localStorage.getItem(this.storageKey);
           if (stored) {
             try {
               this.mappings = JSON.parse(stored);
+              if (this.mappings.length > 0) {
+                console.log(`[MappingStorage] Loaded ${this.mappings.length} mappings from localStorage`);
+                return;
+              }
             } catch (e) {
               console.warn("Failed to load mappings from storage", e);
               this.mappings = [];
             }
           }
+          
+          // If no mappings in localStorage, load default individual workspace mappings file
+          if (this.mappings.length === 0) {
+            try {
+              const response = await fetch('/public/individual-workspace-mappings.json');
+              if (response.ok) {
+                const defaultMappings = await response.json();
+                if (Array.isArray(defaultMappings) && defaultMappings.length > 0) {
+                  this.mappings = defaultMappings;
+                  this.saveToStorage();
+                  console.log(`[MappingStorage] Loaded ${this.mappings.length} default mappings from individual-workspace-mappings.json`);
+                }
+              }
+            } catch (e) {
+              console.warn("Failed to load default mappings file:", e);
+            }
+          }
+        }
+        
+        loadFromStorage() {
+          // Deprecated: use loadMappings() instead
+          return this.loadMappings();
         }
 
         saveToStorage() {
@@ -703,12 +784,6 @@
       window.generateHarmoniousPattern = generateHarmoniousPattern;
       window.generateHarmonizingPattern = generateHarmonizingPattern;
 
-      // Initialize pattern generator FIRST (before using it)
-      const patternGenerator = createPatternGenerator({
-        numNotes: 12,
-        useMusicTheory: true
-      });
-
       // Create a stable 3-body system: One central particle with 2 orbiting moons
       // Using more realistic mass ratios so all particles stay visible
       const centerX = 575;
@@ -733,32 +808,16 @@
         return pattern;
       };
       
-      // Assign triad tones using pattern generator for unique patterns
-      // Get existing patterns to avoid duplicates
-      const existingPatterns = patternGenerator.getAllPatterns().map(p => p.pattern);
-      
-      particle0.sequencerPattern = patternGenerator.generateUniquePattern(
-        0, 
-        'C Major',
-        existingPatterns
-      ) || createPatternFromNote(chordTones[0]); // Fallback to C (root)
+      particle0.sequencerPattern = createPatternFromNote(chordTones[0]); // C (root)
       
       // Two "moon" particles with similar mass to central for visible interaction
       const moonMass = 50; // Closer to central mass ratio
       const moonDistance = 100; // Increased distance for better visibility
       const particle1 = particleSystem.addParticle(1, centerX + moonDistance, centerY, 4, moonMass);
-      particle1.sequencerPattern = patternGenerator.generateUniquePattern(
-        1,
-        'C Major',
-        patternGenerator.getAllPatterns().map(p => p.pattern)
-      ) || createPatternFromNote(chordTones[1]); // Fallback to E (third)
+      particle1.sequencerPattern = createPatternFromNote(chordTones[1]); // E (third)
       
       const particle2 = particleSystem.addParticle(2, centerX, centerY - moonDistance, 7, moonMass);
-      particle2.sequencerPattern = patternGenerator.generateUniquePattern(
-        2,
-        'C Major',
-        patternGenerator.getAllPatterns().map(p => p.pattern)
-      ) || createPatternFromNote(chordTones[2]); // Fallback to G (fifth)
+      particle2.sequencerPattern = createPatternFromNote(chordTones[2]); // G (fifth)
       
       // Verify the triad was assigned correctly
       const assignedNotes = {
@@ -800,20 +859,6 @@
       
       // Initialize sequencer logic
       const sequencerLogic = new SequencerLogic();
-      
-      // Pattern generator already initialized above
-      
-      // Initialize NCFT file manager for individual audio files
-      const fileManager = createNcftFileManager({
-        basePath: '/examples',
-        individualFile: 'indiv_audio_map.ncft',
-        globalFile: 'global_audio_map.ncft' // Not used in individual workspace
-      });
-      
-      // Initialize mapping preset manager for individual workspace only
-      const individualMappings = createMappingPresetManager({
-        storageKey: 'noisecraftIndividualMappings'
-      });
       
       // Sequencer node IDs from indiv_audio_map.ncft
       const SEQUENCER_NODES = {
@@ -965,7 +1010,9 @@
 
       // Tab switching
       document.querySelectorAll(".tab").forEach((tab) => {
-        tab.addEventListener("click", () => {
+        tab.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
           const targetTab = tab.dataset.tab;
           document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
           document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
@@ -1362,6 +1409,17 @@
 
       // NoiseCraft integration - declare iframe and ready flag early
       const iframe = document.getElementById("noisecraft-iframe");
+      if (!iframe) {
+        console.error("[Init] NoiseCraft iframe not found in DOM!");
+      } else {
+        console.log("[Init] NoiseCraft iframe found:", iframe);
+        console.log("[Init] Iframe src:", iframe.src);
+        console.log("[Init] Container dimensions:", {
+          width: iframe.offsetWidth,
+          height: iframe.offsetHeight,
+          parent: iframe.parentElement?.id
+        });
+      }
       let noisecraftReady = false;
       
       // Initialize animation variables early
@@ -1443,7 +1501,20 @@
       }
       
       function sendToNoiseCraft(params) {
-        if (!iframe || !noisecraftReady || !params.length) return;
+        // Debug logging to identify why params aren't being sent
+        if (!iframe) {
+          console.warn('[sendToNoiseCraft] Iframe not available');
+          return;
+        }
+        if (!noisecraftReady) {
+          console.warn('[sendToNoiseCraft] NoiseCraft not ready (noisecraftReady =', noisecraftReady, ')');
+          return;
+        }
+        if (!params.length) {
+          console.warn('[sendToNoiseCraft] No params to send. Mappings:', streamMapper.mappings.length, 
+                       'Enabled:', streamMapper.mappings.filter(m => m.enabled).length);
+          return;
+        }
         
         // Apply smoothing to all parameters to prevent clicks/pops
         const smoothedParams = params.map(param => {
@@ -1453,6 +1524,13 @@
             value: smoothedValue
           };
         });
+        
+        // Debug: Log first few params being sent (throttled to avoid spam)
+        if (!window._lastParamLogTime || Date.now() - window._lastParamLogTime > 2000) {
+          console.log('[sendToNoiseCraft] Sending', smoothedParams.length, 'params:', 
+                     smoothedParams.slice(0, 3).map(p => `${p.nodeId}.${p.paramName}=${p.value.toFixed(3)}`));
+          window._lastParamLogTime = Date.now();
+        }
         
         iframe.contentWindow?.postMessage(
           { type: "noiseCraft:setParams", params: smoothedParams },
@@ -1605,6 +1683,17 @@
           const signals0 = particleSystem.generateSignals(0);
           if (signals0) {
             const params = streamMapper.generateParams(signals0);
+            
+            // Debug: Log params generation (throttled)
+            if (!window._lastParamGenLogTime || Date.now() - window._lastParamGenLogTime > 5000) {
+              console.log('[Update] Generated', params.length, 'params from', 
+                         streamMapper.mappings.length, 'mappings',
+                         '(' + streamMapper.mappings.filter(m => m.enabled).length + ' enabled)');
+              if (params.length > 0) {
+                console.log('[Update] Sample params:', params.slice(0, 2));
+              }
+              window._lastParamGenLogTime = Date.now();
+            }
             
             // Distance-based volume control: fade out other particles as they get far
             // When particles are beyond outerRadius, only self is audible
@@ -2127,11 +2216,82 @@
       
       // NoiseCraft iframe setup (iframe already declared above)
       if (iframe) {
-        iframe.addEventListener("load", async () => {
-          statusEl.textContent = "Ready. Click Start to begin.";
-          noisecraftReady = true;
-          await loadProjectNodes();
-          renderMappings();
+        // Function to initialize NoiseCraft when iframe is ready
+        const initializeNoiseCraft = async () => {
+          try {
+            console.log('[Iframe] Initializing NoiseCraft...');
+            console.log('[Iframe] Iframe dimensions:', {
+              width: iframe.offsetWidth,
+              height: iframe.offsetHeight,
+              clientWidth: iframe.clientWidth,
+              clientHeight: iframe.clientHeight
+            });
+            statusEl.textContent = "Ready. Click Start to begin.";
+            noisecraftReady = true;
+            console.log('[Iframe] noisecraftReady set to true');
+            await loadProjectNodes();
+            renderMappings();
+            
+            // Enable auto-save for indiv_audio_map.ncft when iframe is ready
+            if (iframe.contentWindow) {
+              // Small delay to ensure iframe message handler is ready
+              setTimeout(() => {
+                iframe.contentWindow.postMessage({
+                  type: "noiseCraft:enableAutoSave",
+                  enabled: true,
+                  filename: "indiv_audio_map.ncft"
+                }, "*");
+                console.log("Auto-save enabled for indiv_audio_map.ncft");
+              }, 500);
+            }
+          } catch (err) {
+            console.error('[Iframe] Error during initialization:', err);
+            // Still set ready flag even if there's an error, so params can be sent
+            noisecraftReady = true;
+          }
+        };
+        
+        // Add error handler for iframe loading
+        iframe.addEventListener("error", (e) => {
+          console.error('[Iframe] Error loading iframe:', e);
+        });
+        
+        // Check if iframe is already loaded (might load before event listener is attached)
+        try {
+          if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+            console.log('[Iframe] Iframe already loaded, initializing immediately');
+            initializeNoiseCraft();
+          } else {
+            // Wait for load event
+            iframe.addEventListener("load", async () => {
+              console.log('[Iframe] Load event fired');
+              await initializeNoiseCraft();
+            });
+            
+            // Fallback: if load event doesn't fire within 5 seconds, set ready anyway
+            setTimeout(() => {
+              if (!noisecraftReady) {
+                console.warn('[Iframe] Load event did not fire, setting ready flag anyway');
+                noisecraftReady = true;
+              }
+            }, 5000);
+          }
+        } catch (e) {
+          // Cross-origin or other error accessing contentDocument
+          console.warn('[Iframe] Cannot access contentDocument, using load event only:', e);
+          iframe.addEventListener("load", async () => {
+            console.log('[Iframe] Load event fired');
+            await initializeNoiseCraft();
+          });
+          
+          // Fallback timeout
+          setTimeout(() => {
+            if (!noisecraftReady) {
+              console.warn('[Iframe] Load event did not fire, setting ready flag anyway');
+              noisecraftReady = true;
+            }
+          }, 5000);
+        }
           
           // Enable auto-save for indiv_audio_map.ncft when iframe is ready
           if (iframe.contentWindow) {

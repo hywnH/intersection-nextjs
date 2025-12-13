@@ -53,7 +53,7 @@ export class GlobalHarmonicPlacer {
    * @param {Number} totalUsers - Total number of users (for entropy-based complexity)
    * @returns {Number} Position index (0-35)
    */
-  assignNewUser(userNote, totalUsers) {
+  assignNewUser(userNote, totalUsers, verbose = false) {
     const availablePositions = this.getAvailablePositions();
     
     if (availablePositions.length === 0) {
@@ -68,8 +68,17 @@ export class GlobalHarmonicPlacer {
 
     if (validPositions.length === 0) {
       // If constraints too strict, use random fallback
-      console.warn('[HarmonicPlacer] No valid positions after constraint filtering, using random');
-      return availablePositions[Math.floor(Math.random() * availablePositions.length)];
+      if (verbose) {
+        console.warn(`[HarmonicPlacer] No valid positions after constraint filtering (note: ${userNote}, available: ${availablePositions.length}), using random`);
+      }
+      const selected = availablePositions[Math.floor(Math.random() * availablePositions.length)];
+      if (verbose) {
+        const voice = Math.floor(selected / 12);
+        const step = selected % 12;
+        const voiceName = voice === 0 ? 'bass' : voice === 1 ? 'baritone' : 'tenor';
+        console.log(`[HarmonicPlacer] Selected random position: ${selected} (${voiceName} step ${step})`);
+      }
+      return selected;
     }
 
     // Phase 2: Harmonic distance optimization
@@ -83,11 +92,29 @@ export class GlobalHarmonicPlacer {
     const validScored = scored.filter(c => c.score > 0);
     if (validScored.length === 0) {
       // Fallback to random if all scores are 0
-      return validPositions[Math.floor(Math.random() * validPositions.length)];
+      if (verbose) {
+        console.warn(`[HarmonicPlacer] All scores are 0 (note: ${userNote}), using random from ${validPositions.length} valid positions`);
+      }
+      const selected = validPositions[Math.floor(Math.random() * validPositions.length)];
+      if (verbose) {
+        const voice = Math.floor(selected / 12);
+        const step = selected % 12;
+        const voiceName = voice === 0 ? 'bass' : voice === 1 ? 'baritone' : 'tenor';
+        console.log(`[HarmonicPlacer] Selected random position: ${selected} (${voiceName} step ${step})`);
+      }
+      return selected;
     }
 
     // Phase 3: Weighted random selection (maintains randomness while preferring better positions)
-    return this.weightedRandomSelect(validScored);
+    const selected = this.weightedRandomSelect(validScored);
+    if (verbose) {
+      const voice = Math.floor(selected / 12);
+      const step = selected % 12;
+      const voiceName = voice === 0 ? 'bass' : voice === 1 ? 'baritone' : 'tenor';
+      const selectedScore = validScored.find(c => c.position === selected)?.score || 0;
+      console.log(`[HarmonicPlacer] ✓ Assigned note ${userNote} to ${voiceName} step ${step} (position: ${selected}, score: ${selectedScore.toFixed(3)}, targetDistance: ${targetDistance.toFixed(2)})`);
+    }
+    return selected;
   }
 
   /**
@@ -308,9 +335,30 @@ export class GlobalHarmonicPlacer {
   /**
    * Update assignments from existing assignments map
    * @param {Object} assignments - Map of { particleId: { voice, column } }
+   * @param {Boolean} clearFirst - If true, clear existing assignments first (default: false)
    */
-  updateAssignmentsFromMap(assignments, particles) {
-    this.assignedPositions = [];
+  updateAssignmentsFromMap(assignments, particles, clearFirst = false) {
+    if (clearFirst) {
+      this.assignedPositions = [];
+    }
+    
+    // Remove assignments for particles that are no longer in the assignments map
+    const currentParticleIds = new Set(Object.keys(assignments).map(id => parseInt(id)));
+    this.assignedPositions = this.assignedPositions.filter(assignment => {
+      // Keep assignments that match current particles
+      const particle = particles.find(p => {
+        const note = p.getActiveNoteIndex();
+        const voiceIndex = Math.floor(assignment.position / 12);
+        const step = assignment.position % 12;
+        const voice = voiceIndex === 0 ? 'bass' : voiceIndex === 1 ? 'baritone' : 'tenor';
+        return note === assignment.note && 
+               assignments[p.id]?.voice === voice &&
+               assignments[p.id]?.column === step;
+      });
+      return particle && currentParticleIds.has(particle.id);
+    });
+    
+    // Add or update assignments from map
     Object.entries(assignments).forEach(([particleIdStr, assignment]) => {
       const particleId = parseInt(particleIdStr);
       const particle = particles.find(p => p.id === particleId);
@@ -323,7 +371,15 @@ export class GlobalHarmonicPlacer {
                         assignment.voice === 'baritone' ? 1 : 2;
       const position = voiceIndex * 12 + assignment.column;
 
-      this.addAssignment(note, position);
+      // Check if assignment already exists
+      const existingIndex = this.assignedPositions.findIndex(a => 
+        a.note === note && a.position === position
+      );
+      
+      if (existingIndex === -1) {
+        // Add new assignment
+        this.addAssignment(note, position);
+      }
     });
   }
 

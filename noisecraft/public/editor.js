@@ -182,7 +182,22 @@ export class Editor {
     // Set a parameter on a node
     if (action instanceof model.SetParam) {
       if (action.paramName == "value") {
-        node.setValue(action.value);
+        // Ensure node exists before calling setValue
+        if (node) {
+          node.setValue(action.value);
+        } else {
+          // Node not found - might not be created yet, try to find it
+          node = this.nodes.get(action.nodeId);
+          if (node) {
+            node.setValue(action.value);
+          } else {
+            // Log warning only occasionally to reduce spam
+            if (!window._missingNodeForSetValue || Date.now() - window._missingNodeForSetValue > 5000) {
+              console.warn(`[Editor] Node ${action.nodeId} not found for SetParam(value=${action.value})`);
+              window._missingNodeForSetValue = Date.now();
+            }
+          }
+        }
         return;
       }
 
@@ -253,7 +268,11 @@ export class Editor {
       this.selected = action.pastedIds;
     }
 
-    console.log("recreating UI nodes");
+    // Log only occasionally to reduce console spam
+    if (!window._lastRecreateLog || Date.now() - window._lastRecreateLog > 5000) {
+      console.log("recreating UI nodes");
+      window._lastRecreateLog = Date.now();
+    }
 
     // Release resource for all UI nodes
     for (let node of this.nodes.values()) {
@@ -380,7 +399,11 @@ export class Editor {
   // Select a given set of nodes
   selectNodes(nodeIds) {
     nodeIds = Array.from(nodeIds);
-    console.log(`selecting ${nodeIds.length} nodes`);
+    // Log only occasionally to reduce console spam
+    if (!window._lastSelectLog || Date.now() - window._lastSelectLog > 5000) {
+      console.log(`selecting ${nodeIds.length} nodes`);
+      window._lastSelectLog = Date.now();
+    }
     if (nodeIds.length) {
       console.log("[NoiseCraft Editor] selected nodeIds:", nodeIds);
     }
@@ -1363,8 +1386,15 @@ class KnobNode extends UINode {
   }
 
   setValue(value) {
+    // Update knob value and redraw
     this.knob.value = value;
     this.knob.drawKnob();
+    // Also update the value display text
+    // drawKnob() already updates valDiv, but ensure it's called
+    if (this.knob.valDiv) {
+      const valStr = value.toFixed(2);
+      this.knob.valDiv.textContent = valStr;
+    }
   }
 }
 
