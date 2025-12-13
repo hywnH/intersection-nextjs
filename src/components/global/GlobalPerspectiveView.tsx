@@ -234,16 +234,10 @@ const PlayerParticleSphere = ({
 
   return (
     <group position={position}>
-      {/* 중앙 solid 구 (항상 하얗고 살짝 빛나게) */}
+      {/* 중앙 solid 구 */}
       <mesh>
         <sphereGeometry args={[radius * 0.55, 28, 28]} />
-        <meshStandardMaterial
-          color="#ffffff"
-          emissive="#ffffff"
-          emissiveIntensity={isSelf ? 2.0 : 1.2}
-          metalness={0.15}
-          roughness={0.25}
-        />
+        <meshBasicMaterial color="#ffffff" />
       </mesh>
       {/* 반지름 주변의 파티클 껍질 */}
       <points ref={pointsRef} geometry={geometry}>
