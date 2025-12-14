@@ -143,15 +143,18 @@
       // If you ever need the full embedded editor for debugging, append:
       //   ?ui=full
       // Also respect parent-driven flags:
-      //   ?editor=full   (used by /mobile/debug)
-      //   ?view=mobile-debug
+      //   ?editor=full   (used by /mobile/debug, /global/debug)
+      //   ?view=mobile-debug | global-debug
       try {
         const qs = new URLSearchParams(window.location.search);
         const ui = qs.get("ui");
         const editor = qs.get("editor");
         const view = qs.get("view");
         const wantsFull =
-          ui === "full" || editor === "full" || view === "mobile-debug";
+          ui === "full" ||
+          editor === "full" ||
+          view === "mobile-debug" ||
+          view === "global-debug";
         if (!wantsFull) {
           document.body.classList.add("minimal");
         }

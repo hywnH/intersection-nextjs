@@ -1,5 +1,7 @@
 import http from "node:http";
 import { Server } from "socket.io";
+import { GlobalAudioV2Engine } from "./globalAudioV2/engine.js";
+import type { PlayerLike } from "./globalAudioV2/types.js";
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -15,6 +17,7 @@ const SELF_UPDATE_HZ = 30; // 자기 플레이어 전용 보간용 업데이트
 const CLUSTER_RADIUS = 420;
 const CLUSTER_REFRESH_INTERVAL_MS = 200;
 const BASE_CHORD = [261.63, 329.63, 392];
+const GLOBAL_AUDIO_V2_HZ = 12; // server-side global signals + sequencer cadence
 
 type Vec2 = { x: number; y: number };
 
@@ -53,6 +56,14 @@ interface ClusterInfo {
 
 const players = new Map<string, Player>();
 const spectators = new Set<string>();
+
+const globalAudioV2Engine = new GlobalAudioV2Engine({
+  world: { width: GAME_WIDTH, height: GAME_HEIGHT },
+  innerRadius: 80,
+  pulsarDurationSec: 0.5,
+  // Keep parity with global-workspace entropy normalization
+  entropyMaxSpeed: 100,
+});
 // 봇의 간단한 상태 (움직이는 방향, 방향 전환 시점 등)
 const botState = new Map<string, { angle: number; nextTurnAt: number }>();
 const collisionLines = new Map<
@@ -917,6 +928,25 @@ setInterval(() => {
     emitAudioForPlayer(p);
   }
 }, 1000 / SELF_UPDATE_HZ);
+
+// Global Audio V2 (signals + mapping params + MonoSeq grids) broadcast to spectators.
+setInterval(() => {
+  if (spectators.size === 0) return;
+  const now = Date.now();
+  const list: PlayerLike[] = Array.from(players.values()).map((p) => ({
+    id: p.id,
+    x: p.x,
+    y: p.y,
+    vx: p.vx,
+    vy: p.vy,
+  }));
+  const payload = globalAudioV2Engine.step(list, now);
+  for (const id of spectators) {
+    const s = io.sockets.sockets.get(id);
+    if (!s) continue;
+    s.emit("audioGlobalV2", payload);
+  }
+}, 1000 / GLOBAL_AUDIO_V2_HZ);
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Realtime on http://${HOST}:${PORT}`);

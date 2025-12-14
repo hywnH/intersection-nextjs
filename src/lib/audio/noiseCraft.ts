@@ -26,7 +26,9 @@ export const postNoiseCraftParams = (
   );
 };
 
-export const resolveNoiseCraftEmbed = () => {
+export const resolveNoiseCraftEmbed = (opts?: {
+  pathnameOverride?: string;
+}) => {
   if (typeof window === "undefined") {
     return { src: "about:blank", origin: null };
   }
@@ -97,7 +99,7 @@ export const resolveNoiseCraftEmbed = () => {
     return raw;
   };
 
-  const path = window.location.pathname || "";
+  const path = opts?.pathnameOverride ?? window.location.pathname ?? "";
 
   // 페이지 별로 다른 기본 패치를 쓸 수 있게 분기
   // - /mobile: 개인 오디오 패치(v2)
@@ -129,13 +131,18 @@ export const resolveNoiseCraftEmbed = () => {
   } else {
     embedSearch.set("src", `${normalizedNcBase}/current-project`);
   }
-  // /mobile 과 /mobile/debug 에서 iframe 모드를 구분하기 위한 view 쿼리
+  // /mobile, /global 디버그 뷰에서는 NoiseCraft 전체 패널을 보이도록 강제
   if (path.startsWith("/mobile/debug")) {
     embedSearch.set("view", "mobile-debug");
     // /mobile/debug에서는 NoiseCraft 전체 패널을 보이도록 강제
     embedSearch.set("editor", "full");
+  } else if (path.startsWith("/global/debug")) {
+    embedSearch.set("view", "global-debug");
+    embedSearch.set("editor", "full");
   } else if (path.startsWith("/mobile")) {
     embedSearch.set("view", "mobile");
+  } else if (path.startsWith("/global")) {
+    embedSearch.set("view", "global");
   }
   const src = `${normalizedNcBase}/public/embedded.html?${embedSearch.toString()}`;
   const embedOrigin = new URL(src, pageOrigin).origin;

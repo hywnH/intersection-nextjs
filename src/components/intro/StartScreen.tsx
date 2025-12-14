@@ -1,19 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameContext } from "@/context/GameContext";
-import type { Mode } from "@/types/game";
+import { usePersonalRuntime } from "@/lib/runtime/PersonalRuntimeProvider";
 
 const StartScreen = () => {
   const router = useRouter();
   const { setMode, setDisplayName } = useGameContext();
+  const runtime = usePersonalRuntime();
   const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [entering, setEntering] = useState(false);
 
-  const handleEnter = (mode: Mode) => {
-    setMode(mode);
-    setDisplayName(name.trim());
-    router.push(mode === "personal" ? "/mobile" : "/global");
+  const trimmedName = useMemo(() => name.trim(), [name]);
+
+  const handleEnter = async () => {
+    setError(null);
+    setEntering(true);
+    try {
+      setMode("personal");
+      setDisplayName(trimmedName);
+      const ok = await runtime.enableAudioAndTilt({ displayName: trimmedName });
+      if (!ok) {
+        setError(
+          "Failed to enable audio + tilt. If you're on iOS, allow Motion & Orientation access, then try again."
+        );
+        return;
+      }
+      router.push("/mobile");
+    } finally {
+      setEntering(false);
+    }
   };
 
   return (
@@ -57,12 +75,29 @@ const StartScreen = () => {
           />
         </div>
 
+        <div className="w-[200px] text-xs text-white/50">
+          <div className="flex items-center justify-between">
+            <span>socket</span>
+            <span>{runtime.ready.socketReady ? "ready" : "loading"}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>noisecraft</span>
+            <span>{runtime.ready.noiseCraftReady ? "ready" : "loading"}</span>
+          </div>
+        </div>
+
         <button
-          className="rounded-lg border border-white bg-transparent px-12 py-3 text-sm font-normal text-white transition-all duration-300 hover:border-white/80 hover:text-white/90 active:scale-[0.98] vintage-serif w-[200px]"
-          onClick={() => handleEnter("personal")}
+          className="rounded-lg border border-white bg-transparent px-12 py-3 text-sm font-normal text-white transition-all duration-300 hover:border-white/80 hover:text-white/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed vintage-serif w-[200px]"
+          onClick={handleEnter}
+          disabled={!runtime.ready.ready || entering}
         >
-          Enter the space
+          {entering ? "Enabling…" : "Enter the space"}
         </button>
+        {error && (
+          <div className="w-[260px] text-center text-xs text-red-300">
+            {error}
+          </div>
+        )}
       </div>
 
       <div className="mt-auto pt-8">

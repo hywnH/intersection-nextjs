@@ -21,7 +21,11 @@ import {
   postNoiseCraftParams,
   resolveNoiseCraftEmbed,
 } from "@/lib/audio/noiseCraft";
-import type { NoiseCraftParam } from "@/lib/audio/noiseCraftCore";
+import type { ServerAudioGlobalV2 } from "@/types/server";
+import {
+  postMonoSeqGridDiff,
+  resetNoiseCraftSequencerCache,
+} from "@/lib/audio/noiseCraftSequencer";
 import PerfOverlay from "@/components/shared/PerfOverlay";
 
 const PLANE_SCALE = 0.03;
@@ -395,7 +399,7 @@ const GlobalPerspectiveView = ({
   showHud = true,
   showModeToggle = true,
 }: GlobalPerspectiveViewProps) => {
-  const { state, players } = useGameClient("global");
+  const { state, players, socket } = useGameClient("global");
   const audioIframeRef = useRef<HTMLIFrameElement | null>(null);
   // Hydration-safe: 서버/클라 첫 렌더는 about:blank로 맞추고,
   // 마운트 이후에만 실제 src/origin을 계산해 주입한다.
@@ -405,13 +409,6 @@ const GlobalPerspectiveView = ({
   }>({ src: "about:blank", origin: null });
   const noiseCraftOrigin = noiseCraftConfig.origin ?? null;
   const noiseCraftSrc = noiseCraftConfig.src ?? "about:blank";
-  const lastParamUpdateRef = useRef(0);
-  const clusterPresenceRef = useRef<
-    Map<string, { value: number; lastSeen: number }>
-  >(new Map());
-  const paramSmoothingRef = useRef<
-    Map<string, { current: number; target: number }>
-  >(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>("front");
   const { clusters, assignments } = useMemo(
     () => analyzeClusters(players, undefined, state.gameSize),
@@ -427,159 +424,92 @@ const GlobalPerspectiveView = ({
     const sp = new URLSearchParams(window.location.search);
     return sp.get("perf") === "1";
   }, []);
+  const [isGlobalDebugView, setIsGlobalDebugView] = useState(false);
 
   useEffect(() => {
-    setNoiseCraftConfig(resolveNoiseCraftEmbed());
+    // eslint(react-hooks/set-state-in-effect): defer state update to avoid sync cascades
+    const id = window.setTimeout(() => {
+      setNoiseCraftConfig(resolveNoiseCraftEmbed());
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const path = window.location.pathname || "";
+    // eslint(react-hooks/set-state-in-effect): defer state update to avoid sync cascades
+    const id = window.setTimeout(() => {
+      setIsGlobalDebugView(path.startsWith("/global/debug"));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   useEffect(() => {
     if (!audioIframeRef.current) return;
+    // When swapping/reloading the NoiseCraft iframe, drop any cached MonoSeq grids
+    // so the next update can do a clean sync.
+    resetNoiseCraftSequencerCache();
     audioIframeRef.current.src = noiseCraftSrc;
   }, [noiseCraftSrc]);
 
-  // 글로벌 퍼스펙티브 뷰용 오디오 파라미터:
-  // - node 220: 가장 큰 클러스터의 "지속 강도" (0~1)
-  // - node 221: 두 번째 클러스터의 "지속 강도"
-  // - node 233: 가장 큰 클러스터의 위치 기반 패닝 (0~1)
-  // - node 240: 두 번째 클러스터의 위치 기반 패닝
   useEffect(() => {
-    if (!noiseCraftOrigin) return;
-    if (!audioIframeRef.current) return;
+    if (!socket) return;
+    const iframe = audioIframeRef.current;
+    if (!iframe) return;
 
-    const now = Date.now();
-    const INTERVAL_MS = 500;
-    const last = lastParamUpdateRef.current;
-    if (last && now - last < INTERVAL_MS) {
-      return;
-    }
-    const dtSeconds = last ? (now - last) / 1000 : INTERVAL_MS / 1000;
-    lastParamUpdateRef.current = now;
+    const handleAudioGlobalV2 = (...args: unknown[]) => {
+      const payload = args[0] as ServerAudioGlobalV2 | undefined;
+      if (!payload || payload.version !== 1) return;
 
-    if (!clusters.length) {
-      return;
-    }
+      const params = Array.isArray(payload.params)
+        ? payload.params.map((p) => ({
+            nodeId: String(p.nodeId),
+            paramName: p.paramName || "value",
+            value: Number(p.value),
+          }))
+        : [];
 
-    // 사람 수가 많은 순으로 상위 2개 클러스터만 사용
-    const sorted = [...clusters].sort((a, b) => a.rank - b.rank);
-    const top = sorted.filter((c) => c.isMulti).slice(0, 2);
-    if (!top.length) {
-      return;
-    }
-
-    const presenceMap = clusterPresenceRef.current;
-    const activeIds = new Set(top.map((c) => c.id));
-
-    // 존재하는 클러스터는 서서히 1로, 사라진 클러스터는 서서히 0으로
-    const GROW_SECONDS = 8;
-    const DECAY_SECONDS = 16;
-    presenceMap.forEach((entry, id) => {
-      const isActive = activeIds.has(id);
-      const rate = isActive ? 1 / GROW_SECONDS : -1 / DECAY_SECONDS;
-      entry.value = clamp01(entry.value + rate * dtSeconds);
-      entry.lastSeen = now;
-      if (!isActive && entry.value <= 0.0001) {
-        presenceMap.delete(id);
+      if (params.length) {
+        postNoiseCraftParams(iframe, noiseCraftOrigin, params);
       }
-    });
 
-    top.forEach((cluster) => {
-      if (!presenceMap.has(cluster.id)) {
-        presenceMap.set(cluster.id, { value: 0, lastSeen: now });
-      }
-    });
-
-    const first = top[0];
-    const second = top[1];
-
-    const firstPresence = first ? presenceMap.get(first.id)?.value ?? 0 : 0;
-    const secondPresence = second ? presenceMap.get(second.id)?.value ?? 0 : 0;
-
-    const toPan = (x: number | undefined | null, width: number) => {
-      if (!Number.isFinite(x) || width <= 0) return 0.5;
-      const n = clamp01((x as number) / width);
-      // 양 끝을 살짝 줄여 0.1~0.9 안에서만 움직이게
-      return 0.1 + n * 0.8;
-    };
-
-    const firstPan = first
-      ? toPan(first.centroid.x, state.gameSize.width)
-      : 0.5;
-    const secondPan = second
-      ? toPan(second.centroid.x, state.gameSize.width)
-      : 0.5;
-
-    const rawParams: NoiseCraftParam[] = [];
-    if (first) {
-      rawParams.push(
-        {
-          nodeId: "220",
-          paramName: "value",
-          value: firstPresence,
-        },
-        {
-          nodeId: "233",
-          paramName: "value",
-          value: firstPan,
-        }
-      );
-    }
-    if (second) {
-      rawParams.push(
-        {
-          nodeId: "221",
-          paramName: "value",
-          value: secondPresence,
-        },
-        {
-          nodeId: "240",
-          paramName: "value",
-          value: secondPan,
-        }
-      );
-    }
-
-    if (!rawParams.length) {
-      return;
-    }
-
-    // 파라미터 스무딩으로 팝/틱 노이즈 방지
-    const SMOOTHING = 0.04;
-    const smoothingMap = paramSmoothingRef.current;
-    const smooth = (nodeId: string, paramName: string, value: number) => {
-      const key = `${nodeId}:${paramName}`;
-      const existing = smoothingMap.get(key) || {
-        current: value,
-        target: value,
+      const sequencer = payload.sequencer;
+      const grids = sequencer?.grids;
+      const nodeIds = sequencer?.nodeIds || {
+        bass: "211",
+        baritone: "212",
+        tenor: "213",
       };
-      existing.target = value;
-      const prev = existing.current;
-      const diff = existing.target - prev;
-      const next = prev + diff * SMOOTHING;
-      existing.current = next;
-      smoothingMap.set(key, existing);
-      const changed = Math.abs(next - prev) > 1e-4;
-      return { value: next, changed };
+      if (grids) {
+        postMonoSeqGridDiff(
+          iframe,
+          noiseCraftOrigin,
+          nodeIds.bass,
+          0,
+          grids.bass
+        );
+        postMonoSeqGridDiff(
+          iframe,
+          noiseCraftOrigin,
+          nodeIds.baritone,
+          0,
+          grids.baritone
+        );
+        postMonoSeqGridDiff(
+          iframe,
+          noiseCraftOrigin,
+          nodeIds.tenor,
+          0,
+          grids.tenor
+        );
+      }
     };
 
-    const params: NoiseCraftParam[] = rawParams
-      .map((p): NoiseCraftParam | null => {
-        const nodeId = String(p.nodeId);
-        const paramName = p.paramName || "value";
-        const { value, changed } = smooth(nodeId, paramName, p.value);
-        if (!changed) return null;
-        return {
-          ...p,
-          nodeId,
-          paramName,
-          value,
-        };
-      })
-      .filter((p): p is NoiseCraftParam => p !== null);
-
-    if (!params.length) return;
-
-    postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
-  }, [clusters, state.gameSize.width, noiseCraftOrigin]);
+    socket.on("audioGlobalV2", handleAudioGlobalV2);
+    return () => {
+      socket.off("audioGlobalV2", handleAudioGlobalV2);
+    };
+  }, [socket, noiseCraftOrigin]);
 
   return (
     <div
@@ -597,19 +527,39 @@ const GlobalPerspectiveView = ({
       )}
       <GlobalSpace state={state} players={players} viewMode={viewMode} />
       {/* NoiseCraft Embedded (글로벌 퍼스펙티브용 오디오) */}
-      <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white">
-        <div className="mb-1 text-white/70">NoiseCraft · Global</div>
-        <iframe
-          ref={audioIframeRef}
-          src={noiseCraftSrc}
-          width={260}
-          height={64}
-          allow="autoplay"
-          title="NoiseCraft Global Perspective"
-          className="h-[64px] w-[260px]"
-          style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
-        />
-      </div>
+      {isGlobalDebugView ? (
+        <div className="pointer-events-auto absolute inset-4 rounded-xl bg-black/70 p-2 text-xs text-white">
+          <div className="mb-1 text-white/70">NoiseCraft · Global Debug</div>
+          <iframe
+            ref={audioIframeRef}
+            src={noiseCraftSrc}
+            allow="autoplay"
+            title="NoiseCraft Global Debug"
+            className="h-[calc(100%-20px)] w-full"
+            style={{
+              border: "1px solid rgba(255,255,255,0.2)",
+              borderRadius: 8,
+            }}
+          />
+        </div>
+      ) : (
+        <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white">
+          <div className="mb-1 text-white/70">NoiseCraft · Global</div>
+          <iframe
+            ref={audioIframeRef}
+            src={noiseCraftSrc}
+            width={260}
+            height={64}
+            allow="autoplay"
+            title="NoiseCraft Global Perspective"
+            className="h-[64px] w-[260px]"
+            style={{
+              border: "1px solid rgba(255,255,255,0.2)",
+              borderRadius: 8,
+            }}
+          />
+        </div>
+      )}
       {showModeToggle && (
         <ModeToggle viewMode={viewMode} onChange={setViewMode} />
       )}
@@ -924,19 +874,10 @@ const CollisionSprings3D = ({
         const a = lookup.get(line.players[0]);
         const b = lookup.get(line.players[1]);
         if (!a || !b) return null;
-        // 토러스 월드: 가장 가까운 경로로 연결되도록 b를 (±plane) 보정
-        let bx = b.worldX;
-        let by = b.worldY;
-        const dx = bx - a.worldX;
-        const dy = by - a.worldY;
-        if (planeWidth > 0 && Math.abs(dx) > planeWidth / 2) {
-          bx -= Math.sign(dx) * planeWidth;
-        }
-        if (planeHeight > 0 && Math.abs(dy) > planeHeight / 2) {
-          by -= Math.sign(dy) * planeHeight;
-        }
+        // 연결선은 항상 "월드 박스 내부" 표현으로만 그린다.
+        // (토러스의 가장 가까운 경로로 선을 이동/보정하지 않음)
 
-        // 월드 경계 근처에서는 연결선도 같이 페이드아웃
+        // 월드 경계 근처에서는 연결선도 같이 페이드아웃 (래핑 점프를 덜 거슬리게)
         const wrapFadeW = planeWidth * 0.12;
         const wrapFadeH = planeHeight * 0.12;
         const halfW = planeWidth / 2;
@@ -959,14 +900,14 @@ const CollisionSprings3D = ({
         };
         const opacityScale = Math.min(
           edgeFadeAt(a.worldX, a.worldY),
-          edgeFadeAt(bx, by)
+          edgeFadeAt(b.worldX, b.worldY)
         );
         return {
           id: line.id,
           startedAt: line.startedAt,
           lastEvent: line.lastEvent,
           from: new THREE.Vector3(a.worldX, a.worldY, a.depth + 0.05),
-          to: new THREE.Vector3(bx, by, b.depth + 0.05),
+          to: new THREE.Vector3(b.worldX, b.worldY, b.depth + 0.05),
           opacityScale,
         };
       })
@@ -1577,6 +1518,11 @@ const CollisionSpring3D = ({
     const a = fromRef.current;
     const b = toRef.current;
 
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dz = b.z - a.z;
+    const planarDist = Math.hypot(dx, dy);
+
     // 화면 가장자리 페이드 (두 끝 중 더 약한 값 사용)
     tmpA.set(a.x, a.y, a.z);
     tmpB.set(b.x, b.y, b.z);
@@ -1584,7 +1530,16 @@ const CollisionSpring3D = ({
     const fadeA = computeEdgeFadeNdc(tmpNdc.x, tmpNdc.y);
     tmpNdc.copy(tmpB).project(camera);
     const fadeB = computeEdgeFadeNdc(tmpNdc.x, tmpNdc.y);
-    const fade = Math.min(fadeA, fadeB) * opacityScale;
+    const edgeFade = Math.min(fadeA, fadeB) * opacityScale;
+
+    // 거리 기반 페이드: 멀수록 더 연하게
+    // (월드 좌표 단위 기준; 필요하면 튜닝)
+    const DIST_FADE_START = 18;
+    const DIST_FADE_END = 120;
+    const distT = smoothstep(DIST_FADE_START, DIST_FADE_END, planarDist);
+    const distFade = 1 - 0.75 * distT; // 가까우면 1, 멀면 0.25
+
+    const fade = edgeFade * distFade;
     if (lineMatRef.current) {
       lineMatRef.current.opacity = SPRING_LINE_OPACITY * fade;
     }
@@ -1594,11 +1549,6 @@ const CollisionSpring3D = ({
     if (toMatRef.current) {
       toMatRef.current.opacity = 0.6 * fade;
     }
-
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const dz = b.z - a.z;
-    const planarDist = Math.hypot(dx, dy);
     const nx = planarDist > 0 ? -dy / planarDist : 0;
     const ny = planarDist > 0 ? dx / planarDist : 0;
     const wallNow =
