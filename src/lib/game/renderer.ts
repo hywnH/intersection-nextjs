@@ -258,6 +258,25 @@ const renderPlayers = ({
       return age < 800 && mark.players?.includes(state.selfId as string);
     });
 
+  // 개인 뷰: "상대 만남" 시 상대 이름을 잠깐 띄우기 위한 최근 충돌 상대 찾기
+  const ENCOUNTER_LABEL_MS = 4000;
+  const encounter = (() => {
+    if (!isPersonal || !state.selfId) return null;
+    const selfId = state.selfId as string;
+    for (let i = state.collisionMarks.length - 1; i >= 0; i -= 1) {
+      const mark = state.collisionMarks[i];
+      if (!mark?.players?.includes(selfId)) continue;
+      const ageMs = Date.now() - mark.timestamp;
+      const [a, b] = mark.players;
+      const otherId = a === selfId ? b : a;
+      const otherName = (state.players[otherId]?.name || "").trim();
+      if (!otherName) return null;
+      if (ageMs > ENCOUNTER_LABEL_MS) return null;
+      return { otherName, ageMs };
+    }
+    return null;
+  })();
+
   // 글로벌 뷰에서는 plane용 가이드 라인 숨김
   if (blend > 0.01 && !isGlobal) {
     ctx.strokeStyle = `rgba(255,255,255,${0.15 * blend})`;
@@ -344,6 +363,36 @@ const renderPlayers = ({
         player.gravityDist, // 서버에서 계산된 거리
         1
       );
+
+      // 개인 뷰: 가운데 솔리드 "코어" 공 (단순 원)
+      {
+        const coreRadius = Math.max(2, radius * 1.2);
+        ctx.beginPath();
+        ctx.arc(screenPos.x, screenPos.y, coreRadius, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.fill();
+      }
+
+      // "상대 만남" 라벨: 상대 이름을 잠깐, 공 위치 위에 표시
+      if (encounter) {
+        const alpha = Math.max(0, 1 - encounter.ageMs / ENCOUNTER_LABEL_MS);
+        if (alpha > 0.02) {
+          const driftUp = 10 * (1 - alpha);
+          const labelY = screenPos.y - radius - 16 - driftUp;
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.font = "14px Geist, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "bottom";
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = "rgba(0,0,0,0.7)";
+          ctx.fillStyle = "rgba(255,255,255,0.95)";
+          ctx.strokeText(encounter.otherName, screenPos.x, labelY);
+          ctx.fillText(encounter.otherName, screenPos.x, labelY);
+          ctx.restore();
+        }
+      }
     } else if (isGlobal) {
       // 글로벌 뷰에서는 모든 플레이어를 개인 뷰와 동일한 파티클 스타일로 렌더하되,
       // 파티클 크기만 조금 더 크게
@@ -527,11 +576,17 @@ const renderCollisionConnections = ({
       const selfPos = isSelfA ? posA : posB;
       const otherPos = isSelfA ? posB : posA;
 
+      // 거리 기반 페이드: 멀수록 더 연하게 (스크린 공간 기준)
+      const DIST_FADE_START = 220;
+      const DIST_FADE_END = 1200;
+      const distT = smoothstep(DIST_FADE_START, DIST_FADE_END, len);
+      const distFade = 1 - 0.8 * distT; // 가까우면 1, 멀면 0.2
+
       // 부드러운 외곽 글로우 (단색 흰색 계열, 중앙 코어 라인 없이)
       const steps = 6;
       for (let i = 0; i < steps; i += 1) {
         const t = i / (steps - 1);
-        const alpha = 0.18 * (1 - t);
+        const alpha = 0.18 * (1 - t) * distFade;
         const width = 10 + 18 * t;
         const glowGrad = ctx.createLinearGradient(
           otherPos.x,

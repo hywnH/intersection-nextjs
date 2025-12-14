@@ -9,6 +9,19 @@ type PerfSnapshot = {
   globalMoveMaxMs?: number;
   globalMoveCount?: number;
   audioGlobalCount?: number;
+  personalMoveGapLastMs?: number;
+  personalMoveGapMaxMs?: number;
+  personalMoveMapLastMs?: number;
+  personalMoveMapMaxMs?: number;
+  personalMoveCount?: number;
+  personalMoveFastCount?: number;
+  personalMoveFullCount?: number;
+  personalMoveUserDataLenLast?: number;
+  personalMoveUserDataLenMax?: number;
+  renderSceneLastMs?: number;
+  renderSceneMaxMs?: number;
+  snapshotBufferLen?: number;
+  snapshotBufferAgeMs?: number;
 };
 
 const p95 = (values: number[]) => {
@@ -40,10 +53,11 @@ export default function PerfOverlay({
     frameMsP95: 0,
   });
 
-  const enableAutoDump = useMemo(() => {
-    if (typeof window === "undefined") return false;
+  // Hydration-safe: read query string after mount.
+  const [enableAutoDump, setEnableAutoDump] = useState(false);
+  useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
-    return sp.get("dump") === "1";
+    setEnableAutoDump(sp.get("dump") === "1");
   }, []);
 
   // FPS 측정 (메인 스레드 프레임 드랍 감지)
@@ -93,6 +107,21 @@ export default function PerfOverlay({
           globalMoveMaxMs: Number(perf?.globalMoveMaxMs ?? 0) || 0,
           globalMoveCount: Number(perf?.globalMoveCount ?? 0) || 0,
           audioGlobalCount: Number(perf?.audioGlobalCount ?? 0) || 0,
+          personalMoveGapLastMs: Number(perf?.personalMoveGapLastMs ?? 0) || 0,
+          personalMoveGapMaxMs: Number(perf?.personalMoveGapMaxMs ?? 0) || 0,
+          personalMoveMapLastMs: Number(perf?.personalMoveMapLastMs ?? 0) || 0,
+          personalMoveMapMaxMs: Number(perf?.personalMoveMapMaxMs ?? 0) || 0,
+          personalMoveCount: Number(perf?.personalMoveCount ?? 0) || 0,
+          personalMoveFastCount: Number(perf?.personalMoveFastCount ?? 0) || 0,
+          personalMoveFullCount: Number(perf?.personalMoveFullCount ?? 0) || 0,
+          personalMoveUserDataLenLast:
+            Number(perf?.personalMoveUserDataLenLast ?? 0) || 0,
+          personalMoveUserDataLenMax:
+            Number(perf?.personalMoveUserDataLenMax ?? 0) || 0,
+          renderSceneLastMs: Number(perf?.renderSceneLastMs ?? 0) || 0,
+          renderSceneMaxMs: Number(perf?.renderSceneMaxMs ?? 0) || 0,
+          snapshotBufferLen: Number(perf?.snapshotBufferLen ?? 0) || 0,
+          snapshotBufferAgeMs: Number(perf?.snapshotBufferAgeMs ?? 0) || 0,
           recentMoveSamples: recentMoves.length,
           moveMs: {
             p50: Number(p50(moveMs).toFixed(2)),
@@ -148,9 +177,15 @@ export default function PerfOverlay({
           }
         ).__intersectionPerf;
 
-        // serverTellPlayerMove 배치 처리 시간 샘플링 (값이 갱신된 경우만)
-        const moveAt = Number(perf?.globalMoveLastAt ?? 0) || 0;
-        const moveMs = Number(perf?.globalMoveLastMs ?? 0) || 0;
+        // serverTellPlayerMove 처리 시간 샘플링 (값이 갱신된 경우만)
+        const moveAt =
+          mode === "global"
+            ? Number(perf?.globalMoveLastAt ?? 0) || 0
+            : Number(perf?.personalMoveLastAt ?? 0) || 0;
+        const moveMs =
+          mode === "global"
+            ? Number(perf?.globalMoveLastMs ?? 0) || 0
+            : Number(perf?.personalMoveMapLastMs ?? 0) || 0;
         if (moveAt && moveAt !== lastSeenMoveAt) {
           lastSeenMoveAt = moveAt;
           moveSamples.push({ t: moveAt, ms: moveMs });
@@ -164,6 +199,21 @@ export default function PerfOverlay({
           globalMoveMaxMs: Number(perf?.globalMoveMaxMs ?? 0) || 0,
           globalMoveCount: Number(perf?.globalMoveCount ?? 0) || 0,
           audioGlobalCount: Number(perf?.audioGlobalCount ?? 0) || 0,
+          personalMoveGapLastMs: Number(perf?.personalMoveGapLastMs ?? 0) || 0,
+          personalMoveGapMaxMs: Number(perf?.personalMoveGapMaxMs ?? 0) || 0,
+          personalMoveMapLastMs: Number(perf?.personalMoveMapLastMs ?? 0) || 0,
+          personalMoveMapMaxMs: Number(perf?.personalMoveMapMaxMs ?? 0) || 0,
+          personalMoveCount: Number(perf?.personalMoveCount ?? 0) || 0,
+          personalMoveFastCount: Number(perf?.personalMoveFastCount ?? 0) || 0,
+          personalMoveFullCount: Number(perf?.personalMoveFullCount ?? 0) || 0,
+          personalMoveUserDataLenLast:
+            Number(perf?.personalMoveUserDataLenLast ?? 0) || 0,
+          personalMoveUserDataLenMax:
+            Number(perf?.personalMoveUserDataLenMax ?? 0) || 0,
+          renderSceneLastMs: Number(perf?.renderSceneLastMs ?? 0) || 0,
+          renderSceneMaxMs: Number(perf?.renderSceneMaxMs ?? 0) || 0,
+          snapshotBufferLen: Number(perf?.snapshotBufferLen ?? 0) || 0,
+          snapshotBufferAgeMs: Number(perf?.snapshotBufferAgeMs ?? 0) || 0,
         });
 
         // p95가 비정상적으로 올라가면(프레임 불안정) 한 번 덤프
@@ -196,6 +246,38 @@ export default function PerfOverlay({
         }`
       );
       arr.push(`audioGlobal(count): ${snapshot.audioGlobalCount}`);
+    }
+    if (mode === "personal") {
+      arr.push(
+        `socket gap(ms): last ${Number(snapshot.personalMoveGapLastMs).toFixed(
+          0
+        )} / max ${Number(snapshot.personalMoveGapMaxMs).toFixed(0)}`
+      );
+      arr.push(
+        `map(ms): last ${Number(snapshot.personalMoveMapLastMs).toFixed(
+          1
+        )} / max ${Number(snapshot.personalMoveMapMaxMs).toFixed(1)}`
+      );
+      arr.push(
+        `moves: total ${snapshot.personalMoveCount ?? 0} (fast ${
+          snapshot.personalMoveFastCount ?? 0
+        } / full ${snapshot.personalMoveFullCount ?? 0})`
+      );
+      arr.push(
+        `visiblePlayers: last ${
+          snapshot.personalMoveUserDataLenLast ?? 0
+        } / max ${snapshot.personalMoveUserDataLenMax ?? 0}`
+      );
+      arr.push(
+        `render(ms): last ${Number(snapshot.renderSceneLastMs ?? 0).toFixed(
+          1
+        )} / max ${Number(snapshot.renderSceneMaxMs ?? 0).toFixed(1)}`
+      );
+      arr.push(
+        `snapshots: len ${snapshot.snapshotBufferLen ?? 0} / age ${
+          snapshot.snapshotBufferAgeMs ?? 0
+        }ms`
+      );
     }
     if (enableAutoDump) {
       arr.push("dump: on");

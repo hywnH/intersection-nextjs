@@ -12,12 +12,20 @@ const GAME_WIDTH = 1920 * 4;
 const GAME_HEIGHT = 602 * 4;
 const MAX_HEARTBEAT_MS = 5000;
 const TICK_HZ = 120; // 이동 계산 더 촘촘히
-const UPDATE_HZ = 30; // 기본 브로드캐스트 빈도 (모든 클라이언트)
+const UPDATE_HZ = 15; // 기본 브로드캐스트 빈도 (모든 클라이언트) - 낮춰서 네트워크/클라 부하 완화
 const SELF_UPDATE_HZ = 30; // 자기 플레이어 전용 보간용 업데이트
 const CLUSTER_RADIUS = 420;
 const CLUSTER_REFRESH_INTERVAL_MS = 200;
 const BASE_CHORD = [261.63, 329.63, 392];
 const GLOBAL_AUDIO_V2_HZ = 12; // server-side global signals + sequencer cadence
+
+// Personal mode optimization:
+// - Sending "all players" to each player scales poorly (payload + client mapping).
+// - Personal view only needs nearby players for interaction + audio mapping.
+const VISIBLE_PLAYERS_MAX = Number(process.env.VISIBLE_PLAYERS_MAX || 24);
+const VISIBLE_PLAYERS_MAX_DIST = Number(
+  process.env.VISIBLE_PLAYERS_MAX_DIST || 1800
+);
 
 type Vec2 = { x: number; y: number };
 
@@ -84,13 +92,13 @@ const collisionEvents: Array<{
 }> = [];
 // 현재 프레임에서 실제로 충돌한 플레이어 id 집합 (isColliding 플래그용)
 const collidingNow = new Set<string>();
-const COLLISION_DISTANCE = 80;
-const MIN_GRAVITY_DISTANCE = 80;
+const COLLISION_DISTANCE = 160;
+const MIN_GRAVITY_DISTANCE = 200;
 const MAX_SPEED = 320;
 const PLAYER_BASE_MASS = 5000;
 const INPUT_SMOOTH = 0.02;
 // 중력 세기: 실제 이동에는 너무 세지 않도록 절반 정도로 줄임
-const GRAVITY_TARGET_SPEED_RATIO = 0.4;
+const GRAVITY_TARGET_SPEED_RATIO = 1;
 const TARGET_GRAVITY_VELOCITY = MAX_SPEED * GRAVITY_TARGET_SPEED_RATIO;
 const MAX_GRAVITY_ACCEL = TARGET_GRAVITY_VELOCITY * INPUT_SMOOTH * TICK_HZ; // accel so steady-state ≈ 0.5 user max
 const GRAVITY_G =
@@ -338,15 +346,30 @@ function visiblePlayers(forId: string) {
   const viewer = players.get(forId);
   const hideBotsForViewer = viewer && !viewer.isBot;
 
-  const list = Array.from(players.values())
-    .filter((u) => {
-      if (u.id === forId) return false;
-      if (hideBotsForViewer && u.isBot) return false;
-      return true;
-    })
-    .map(toServerPlayer);
+  if (!viewer) {
+    return Array.from(players.values())
+      .filter((u) => u.id !== forId)
+      .map(toServerPlayer)
+      .slice(0, Math.max(0, VISIBLE_PLAYERS_MAX));
+  }
 
-  return list;
+  const maxDistSq = VISIBLE_PLAYERS_MAX_DIST * VISIBLE_PLAYERS_MAX_DIST;
+  const candidates: Array<{ p: Player; d2: number }> = [];
+
+  for (const u of players.values()) {
+    if (u.id === forId) continue;
+    if (hideBotsForViewer && u.isBot) continue;
+    const dx = wrapDelta(u.x - viewer.x, GAME_WIDTH);
+    const dy = wrapDelta(u.y - viewer.y, GAME_HEIGHT);
+    const d2 = dx * dx + dy * dy;
+    if (d2 > maxDistSq) continue;
+    candidates.push({ p: u, d2 });
+  }
+
+  candidates.sort((a, b) => a.d2 - b.d2);
+  return candidates
+    .slice(0, Math.max(0, VISIBLE_PLAYERS_MAX))
+    .map((entry) => toServerPlayer(entry.p));
 }
 
 let clusterSnapshot: ClusterInfo[] = [];
@@ -578,7 +601,7 @@ function detectCollisions() {
             id: `${key}-${now}`,
             players: [pa.id, pb.id],
             position: mid,
-            radius: 80,
+            radius: COLLISION_DISTANCE,
             timestamp: now,
           });
         } else if (now - existing.lastEvent > EVENT_COOLDOWN_MS) {
@@ -588,7 +611,7 @@ function detectCollisions() {
             id: `${key}-${now}`,
             players: existing.players,
             position: mid,
-            radius: 80,
+            radius: COLLISION_DISTANCE,
             timestamp: now,
           });
         }
@@ -925,7 +948,6 @@ setInterval(() => {
       gravity,
       isCollidingSelf: isColliding,
     });
-    emitAudioForPlayer(p);
   }
 }, 1000 / SELF_UPDATE_HZ);
 

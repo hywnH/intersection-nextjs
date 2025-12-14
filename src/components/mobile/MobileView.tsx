@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { renderScene } from "@/lib/game/renderer";
 import CanvasSurface from "@/components/shared/CanvasSurface";
 import { usePersonalRuntime } from "@/lib/runtime/PersonalRuntimeProvider";
 import type { GameState, PlayerSnapshot } from "@/types/game";
+import PerfOverlay from "@/components/shared/PerfOverlay";
 
 const INTERPOLATION_LAG_MS = Number(
   process.env.NEXT_PUBLIC_INTERP_LAG_MS ?? 80
@@ -111,15 +112,58 @@ const buildInterpolatedState = (state: GameState): GameState => {
 };
 
 const MobileView = () => {
-  const { state, dispatch } = usePersonalRuntime();
+  const runtime = usePersonalRuntime();
+  const { state, dispatch } = runtime;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const latestState = useRef(state);
   const pointerDownRef = useRef(false);
 
+  // Hydration-safe: query params are only available client-side.
+  // Render "off" first, then enable after mount.
+  const [showPerf, setShowPerf] = useState(false);
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    setShowPerf(sp.get("perf") === "1");
+  }, []);
+
   useEffect(() => {
     latestState.current = state;
   }, [state]);
+
+  // Deep-link support:
+  // - `/` has StartScreen that performs the iOS-required user gesture to start audio.
+  // - `/mobile` can be opened directly, so we offer an in-page "Start audio" gate.
+  const [gateDismissed, setGateDismissed] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmedName = useMemo(() => name.trim(), [name]);
+
+  useEffect(() => {
+    // If audio is already playing (e.g. navigated from `/`), don't show gate.
+    if (runtime.audioStatus === "playing") {
+      setGateDismissed(true);
+    }
+  }, [runtime.audioStatus]);
+
+  const handleEnableAudio = async () => {
+    setError(null);
+    setEntering(true);
+    try {
+      const ok = await runtime.enableAudioAndTilt({ displayName: trimmedName });
+      if (!ok) {
+        setError(
+          "Failed to enable audio. If you're on iOS, allow Motion & Orientation access, then try again."
+        );
+        return;
+      }
+      setGateDismissed(true);
+    } finally {
+      setEntering(false);
+    }
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -155,12 +199,31 @@ const MobileView = () => {
           baseState.mode === "personal"
             ? buildInterpolatedState(baseState)
             : baseState;
+
+        // Lightweight runtime perf stats (read by PerfOverlay)
+        const g = globalThis as unknown as {
+          __intersectionPerf?: Record<string, unknown>;
+        };
+        if (!g.__intersectionPerf) g.__intersectionPerf = {};
+        const perf = g.__intersectionPerf;
+        perf.snapshotBufferLen = baseState.snapshotBuffer.length;
+        const oldest = baseState.snapshotBuffer[0]?.timestamp;
+        perf.snapshotBufferAgeMs =
+          typeof oldest === "number" ? Math.max(0, Date.now() - oldest) : 0;
+
+        const t0 = performance.now();
         renderScene({
           ctx,
           state: renderState,
           width: logicalWidth,
           height: logicalHeight,
         });
+        const renderMs = performance.now() - t0;
+        perf.renderSceneLastMs = renderMs;
+        perf.renderSceneMaxMs = Math.max(
+          Number(perf.renderSceneMaxMs ?? 0) || 0,
+          renderMs
+        );
       }
       animationRef.current = requestAnimationFrame(loop);
     };
@@ -242,6 +305,72 @@ const MobileView = () => {
 
   return (
     <div className="relative min-h-screen w-full bg-black">
+      {showPerf && (
+        <PerfOverlay mode="personal" population={state.ui.population} />
+      )}
+      {!gateDismissed && (
+        <div className="pointer-events-auto absolute inset-0 z-[9998] flex items-center justify-center bg-black/80 px-6 py-10 text-white">
+          <div className="w-full max-w-sm">
+            <div className="mb-6 space-y-2">
+              <div className="text-lg font-medium">Intersection</div>
+              <div className="text-sm text-white/70">
+                Tap once to start audio (required by mobile browsers).
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label
+                className="mb-2 block text-xs text-white/60"
+                htmlFor="mobileDisplayName"
+              >
+                your name (optional)
+              </label>
+              <input
+                id="mobileDisplayName"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Voyager-123"
+                className="w-full rounded-md border border-white/20 bg-black/40 px-3 py-2 text-sm outline-none focus:border-white/40"
+              />
+            </div>
+
+            <div className="mb-4 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+              <div className="flex items-center justify-between">
+                <span>socket</span>
+                <span>{runtime.ready.socketReady ? "ready" : "loading"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>noisecraft</span>
+                <span>
+                  {runtime.ready.noiseCraftReady ? "ready" : "loading"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>audio</span>
+                <span>{runtime.audioStatus}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleEnableAudio}
+                disabled={!runtime.ready.ready || entering}
+                className="flex-1 rounded-md border border-white/30 bg-transparent px-4 py-2 text-sm transition disabled:opacity-40"
+              >
+                {entering ? "Enabling…" : "Start audio"}
+              </button>
+              <button
+                onClick={() => setGateDismissed(true)}
+                className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
+              >
+                Skip
+              </button>
+            </div>
+
+            {error && <div className="mt-3 text-xs text-red-300">{error}</div>}
+          </div>
+        </div>
+      )}
       <CanvasSurface ref={canvasRef} />
     </div>
   );

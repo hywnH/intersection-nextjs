@@ -1,22 +1,5 @@
 [
   {
-    "nodeId": "183",
-    "paramName": "value",
-    "operation": "add",
-    "enabled": true,
-    "streams": [
-      {
-        "stream": "inInnerPulsar",
-        "interpolation": "logarithmic",
-        "inputMin": 0,
-        "inputMax": 1,
-        "outputMin": 0.2,
-        "outputMax": 1
-      }
-    ],
-    "id": "1765607315972"
-  },
-  {
     "nodeId": "206",
     "paramName": "value",
     "operation": "add",

@@ -217,6 +217,7 @@ export const PersonalRuntimeProvider = ({
   const closeGateTimerRef = useRef<number | null>(null);
   const lastVeryCloseRef = useRef(false);
   const lastParamUpdateRef = useRef(0);
+  const lastGridUpdateRef = useRef(0);
   const paramSmoothingRef = useRef<
     Map<string, { current: number; target: number }>
   >(new Map());
@@ -369,6 +370,19 @@ export const PersonalRuntimeProvider = ({
     if (!noiseCraftReady) return;
     if (!iframeRef.current) return;
 
+    // This effect used to run on every state update (~30Hz).
+    // Throttle to reduce main-thread work; audio grid changes don't need 30Hz.
+    const now = Date.now();
+    const GRID_UPDATE_INTERVAL_MS = 120;
+    const isFirstSend = lastV2InRadiusIdsRef.current === null;
+    if (
+      !isFirstSend &&
+      now - lastGridUpdateRef.current < GRID_UPDATE_INTERVAL_MS
+    ) {
+      return;
+    }
+    lastGridUpdateRef.current = now;
+
     const win = iframeRef.current.contentWindow;
     const targetOrigin =
       process.env.NODE_ENV === "development" ? "*" : noiseCraftOrigin || "*";
@@ -387,8 +401,6 @@ export const PersonalRuntimeProvider = ({
       prev.length !== v2.inRadiusIds.length ||
       prev.some((id) => !nextSet.has(id)) ||
       v2.inRadiusIds.some((id) => !prevSet.has(id));
-    const isFirstSend = lastV2InRadiusIdsRef.current === null;
-
     const sendGrid = (nodeId: string, grid: number[][]) => {
       for (
         let stepIdx = 0;
@@ -614,19 +626,23 @@ export const PersonalRuntimeProvider = ({
       const hasDeviceOrientation = "DeviceOrientationEvent" in window;
       if (!hasDeviceOrientation) {
         setMotionPermission("unsupported");
-        // keep audio playing even if tilt unsupported
-        return false;
+        // keep audio playing even if tilt unsupported (desktop, etc.)
+        // Continue to step (4) to confirm audio state; just don't enable tilt.
       }
-      setMotionPermission("unknown");
-      const ok = await requestMotionPermission();
-      setMotionPermission(ok ? "granted" : "denied");
-      if (!ok) {
-        // all-or-nothing: if tilt permission denied, stop audio too
-        iframeRef.current.contentWindow?.postMessage(
-          { type: "noiseCraft:stop" },
-          process.env.NODE_ENV === "development" ? "*" : noiseCraftOrigin || "*"
-        );
-        return false;
+      if (hasDeviceOrientation) {
+        setMotionPermission("unknown");
+        const ok = await requestMotionPermission();
+        setMotionPermission(ok ? "granted" : "denied");
+        if (!ok) {
+          // all-or-nothing: if tilt permission denied, stop audio too
+          iframeRef.current.contentWindow?.postMessage(
+            { type: "noiseCraft:stop" },
+            process.env.NODE_ENV === "development"
+              ? "*"
+              : noiseCraftOrigin || "*"
+          );
+          return false;
+        }
       }
 
       // 4) Confirm audio is actually playing (detect iOS blocked state)
@@ -639,7 +655,11 @@ export const PersonalRuntimeProvider = ({
         return false;
       }
 
-      setTiltEnabled(true);
+      if (hasDeviceOrientation) {
+        setTiltEnabled(true);
+      } else {
+        setTiltEnabled(false);
+      }
       return true;
     },
     [socket, noiseCraftOrigin, state.mode, waitForAudioState]

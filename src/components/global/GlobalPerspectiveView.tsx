@@ -114,6 +114,23 @@ const CameraAnimator = ({
   controlsRef,
   cameraRef,
 }: CameraAnimatorProps) => {
+  const orbitMotionRef = useRef<{
+    baseAzimuth: number;
+    basePolar: number;
+    radius: number;
+    startedAt: number;
+    lastViewMode: ViewMode | null;
+  }>({
+    baseAzimuth: 0,
+    basePolar: 0,
+    radius: 0,
+    startedAt: 0,
+    lastViewMode: null,
+  });
+
+  const tmpSpherical = useMemo(() => new THREE.Spherical(), []);
+  const tmpOffset = useMemo(() => new THREE.Vector3(), []);
+
   useEffect(() => {
     const camera = cameraRef.current;
     if (!camera) return;
@@ -150,9 +167,59 @@ const CameraAnimator = ({
       }
       return;
     }
-    controls.autoRotate = viewMode === "perspective";
+    // Auto-rotation is driven manually below (to allow polar wobble).
+    controls.autoRotate = false;
     controls.enableRotate = viewMode === "perspective";
     controls.enablePan = viewMode === "perspective";
+
+    // Orbit 뷰: autoRotate는 유지하되, 고정된 고도(Polar angle)로만 도는 느낌을 줄이기 위해
+    // 살짝 위/아래로 흔들어 다양한 각도로 보이게 만든다.
+    if (viewMode === "perspective") {
+      const now = performance.now();
+      const motion = orbitMotionRef.current;
+      if (motion.lastViewMode !== "perspective") {
+        motion.baseAzimuth = controls.getAzimuthalAngle();
+        motion.basePolar = controls.getPolarAngle();
+        motion.radius = camera.position.distanceTo(controls.target);
+        motion.startedAt = now;
+        motion.lastViewMode = "perspective";
+      }
+
+      // controls의 min/max 범위 안에서만 움직이도록 clamp
+      const minPolar = (controls as unknown as { minPolarAngle: number })
+        .minPolarAngle;
+      const maxPolar = (controls as unknown as { maxPolarAngle: number })
+        .maxPolarAngle;
+      const guard = 0.06;
+      const safeMin = minPolar + guard;
+      const safeMax = maxPolar - guard;
+
+      const elapsed = now - motion.startedAt;
+      const wobble =
+        0.22 * Math.sin(elapsed * 0.00035) +
+        0.08 * Math.sin(elapsed * 0.0009 + 1.7);
+      const desired = Math.min(
+        safeMax,
+        Math.max(safeMin, motion.basePolar + wobble)
+      );
+
+      // 수평 회전은 시간 기반으로 계속 진행 (기존 autoRotateSpeed 0.25 대비 1.5배 느낌)
+      // rad/ms 단위. 0.00018 rad/ms ≈ 0.18 rad/s ≈ 10.3 deg/s
+      const azimuthSpeed = 0.00018;
+      const azimuth = motion.baseAzimuth + elapsed * azimuthSpeed;
+
+      // 카메라를 target 기준으로 구면좌표(spherical)로 배치
+      tmpSpherical.radius = Math.max(1e-3, motion.radius || 1);
+      tmpSpherical.phi = desired;
+      tmpSpherical.theta = azimuth;
+      tmpSpherical.makeSafe();
+      tmpOffset.setFromSpherical(tmpSpherical);
+      camera.position.copy(controls.target).add(tmpOffset);
+      camera.lookAt(controls.target);
+    } else {
+      orbitMotionRef.current.lastViewMode = viewMode;
+    }
+
     controls.update();
   });
 
@@ -171,6 +238,7 @@ interface PlayerPlaneProps {
   worldX: number;
   worldY: number;
   opacityScale?: number;
+  viewMode: ViewMode;
 }
 
 const PlayerParticleSphere = ({
@@ -279,6 +347,15 @@ const PlayerParticleSphere = ({
     return g;
   }, [radius, color, isSelf, gravityDir, gravityDist]);
 
+  // R3F does not reliably dispose externally-created geometries passed via
+  // `geometry={...}`. Explicitly dispose to avoid GPU memory growth when
+  // players/marks churn.
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
+
   useFrame((_, delta) => {
     if (!pointsRef.current) return;
     // 화면 가장자리 페이드: 현재 월드 위치를 NDC로 투영해 opacity에 반영
@@ -335,11 +412,46 @@ const PlayerPlane = ({
   worldX,
   worldY,
   opacityScale = 1,
+  viewMode,
 }: PlayerPlaneProps) => {
   // 글로벌 3D 뷰에서는 공을 조금 더 크게 표시
   const radius = 100 * PLANE_SCALE;
+  const showSlicePlane = viewMode === "perspective";
+  const sliceColor = useMemo(() => {
+    const base = new THREE.Color(player.cell.color || "#ffffff");
+    // 너무 튀지 않게 어둡게 눌러서 plane 느낌만 살짝
+    base.multiplyScalar(0.22);
+    return base.getStyle();
+  }, [player.cell.color]);
+  const sliceOpacity =
+    (player.isSelf ? 0.06 : 0.04) * (isFocused ? 1.15 : 1) * opacityScale;
+  const edgeOpacity =
+    (player.isSelf ? 0.14 : 0.1) * (isFocused ? 1.15 : 1) * opacityScale;
   return (
     <group position={[0, 0, depth]}>
+      {showSlicePlane && (
+        <mesh position={[0, 0, -0.06]} rotation={[0, 0, 0]} renderOrder={-5}>
+          <planeGeometry args={[planeWidth, planeHeight]} />
+          <meshBasicMaterial
+            color={sliceColor}
+            transparent
+            opacity={sliceOpacity}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+            polygonOffset
+            polygonOffsetFactor={1}
+            polygonOffsetUnits={1}
+          />
+          {/* <Edges>
+            <lineBasicMaterial
+              color={sliceColor}
+              transparent
+              opacity={edgeOpacity}
+              depthWrite={false}
+            />
+          </Edges> */}
+        </mesh>
+      )}
       <PlayerParticleSphere
         radius={radius}
         color={player.cell.color || "#ffffff"}
@@ -382,6 +494,11 @@ const PostProcessing = () => {
     composerRef.current = composer;
 
     return () => {
+      // Dispose post-processing GPU resources to prevent growth on remounts.
+      // UnrealBloomPass allocates internal render targets/textures.
+      if ("dispose" in bloomPass && typeof bloomPass.dispose === "function") {
+        bloomPass.dispose();
+      }
       composer.dispose();
       composerRef.current = null;
     };
@@ -415,7 +532,9 @@ const GlobalPerspectiveView = ({
   }>({ src: "about:blank", origin: null });
   const noiseCraftOrigin = noiseCraftConfig.origin ?? null;
   const noiseCraftSrc = noiseCraftConfig.src ?? "about:blank";
-  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode || "front");
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    initialViewMode || "front"
+  );
   const [iframeVisible, setIframeVisible] = useState(true);
   const { clusters, assignments } = useMemo(
     () => analyzeClusters(players, undefined, state.gameSize),
@@ -563,8 +682,14 @@ const GlobalPerspectiveView = ({
       {hideIframe ? null : (
         <>
           {isGlobalDebugView ? (
-            <div className={`pointer-events-auto absolute inset-4 rounded-xl bg-black/70 p-2 text-xs text-white ${!iframeVisible ? "opacity-0 pointer-events-none" : ""}`}>
-              <div className="mb-1 text-white/70">NoiseCraft · Global Debug</div>
+            <div
+              className={`pointer-events-auto absolute inset-4 rounded-xl bg-black/70 p-2 text-xs text-white ${
+                !iframeVisible ? "opacity-0 pointer-events-none" : ""
+              }`}
+            >
+              <div className="mb-1 text-white/70">
+                NoiseCraft · Global Debug
+              </div>
               <iframe
                 ref={audioIframeRef}
                 src={noiseCraftSrc}
@@ -578,7 +703,11 @@ const GlobalPerspectiveView = ({
               />
             </div>
           ) : (
-            <div className={`pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white ${!iframeVisible ? "opacity-0 pointer-events-none" : ""}`}>
+            <div
+              className={`pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white ${
+                !iframeVisible ? "opacity-0 pointer-events-none" : ""
+              }`}
+            >
               <div className="mb-1 text-white/70">NoiseCraft · Global</div>
               <iframe
                 ref={audioIframeRef}
@@ -789,8 +918,9 @@ const GlobalSpace = ({
               ref={controlsRef}
               enableDamping
               dampingFactor={0.08}
-              autoRotate={viewMode === "perspective"}
-              autoRotateSpeed={0.25}
+              // auto-rotate is driven manually in CameraAnimator (so we can vary polar angle)
+              autoRotate={false}
+              autoRotateSpeed={0}
               enableRotate={viewMode === "perspective"}
               enablePan={viewMode === "perspective"}
               enableZoom={false}
@@ -863,6 +993,7 @@ const GlobalSpace = ({
                   worldX={worldX}
                   worldY={worldY}
                   opacityScale={opacityScale}
+                  viewMode={viewMode}
                 />
               );
             })}
@@ -1141,6 +1272,12 @@ const CollisionGlowEffect = ({
     return geometry;
   }, [mark.id, mark.radius]);
 
+  useEffect(() => {
+    return () => {
+      sparkleGeometry.dispose();
+    };
+  }, [sparkleGeometry]);
+
   useFrame(() => {
     if (sparkleRef.current && mark.particleAge < 0.99) {
       // 스파클은 50초 안에서만 보이도록 (particleAge 기준)
@@ -1261,6 +1398,12 @@ const CollisionParticleBurst = ({
 
     return { geometry, velocities };
   }, [mark.id, mark.players, mark.radius]);
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
 
   useEffect(() => {
     velocitiesRef.current = velocities;
@@ -1448,6 +1591,12 @@ const CollisionObjectParticles = ({
     lookup,
     state.players,
   ]);
+
+  useEffect(() => {
+    return () => {
+      geometry?.dispose();
+    };
+  }, [geometry]);
 
   useEffect(() => {
     velocitiesRef.current = velocities;

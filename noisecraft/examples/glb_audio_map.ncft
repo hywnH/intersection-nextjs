@@ -1006,7 +1006,7 @@
       "y": 576,
       "ins": [
         [
-          "144",
+          "9214",
           0
         ],
         [
@@ -1030,7 +1030,7 @@
       "y": 666,
       "ins": [
         [
-          "158",
+          "9215",
           0
         ],
         [
@@ -1064,6 +1064,665 @@
         "deviceId": null,
         "controlId": null
       }
+    },
+    "9060": {
+      "type": "Knob",
+      "name": "CloseGate",
+      "x": 3180,
+      "y": 460,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "minVal": 0,
+        "maxVal": 1,
+        "value": 0,
+        "deviceId": null,
+        "controlId": null
+      }
+    },
+    "9061": {
+      "type": "ADSR",
+      "name": "CloseADSR",
+      "x": 3320,
+      "y": 460,
+      "ins": [
+        [
+          "9060",
+          0
+        ],
+        [
+          "9062",
+          0
+        ],
+        [
+          "9063",
+          0
+        ],
+        [
+          "9064",
+          0
+        ],
+        [
+          "9065",
+          0
+        ]
+      ],
+      "inNames": [
+        "gate",
+        "att",
+        "dec",
+        "sus",
+        "rel"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9062": {
+      "type": "Const",
+      "name": "Const",
+      "x": 3180,
+      "y": 440,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "value": 0.003
+      }
+    },
+    "9063": {
+      "type": "Const",
+      "name": "Const",
+      "x": 3180,
+      "y": 470,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "value": 0.22
+      }
+    },
+    "9064": {
+      "type": "Const",
+      "name": "Const",
+      "x": 3180,
+      "y": 500,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "value": 0
+      }
+    },
+    "9065": {
+      "type": "Const",
+      "name": "Const",
+      "x": 3180,
+      "y": 530,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "value": 0.18
+      }
+    },
+    "9066": {
+      "type": "Const",
+      "name": "HiMul",
+      "x": 3180,
+      "y": 610,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "value": 4
+      }
+    },
+    "9067": {
+      "type": "Mul",
+      "name": "HiB",
+      "x": 3320,
+      "y": 590,
+      "ins": [
+        [
+          "200",
+          0
+        ],
+        [
+          "9066",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9068": {
+      "type": "Mul",
+      "name": "HiBr",
+      "x": 3320,
+      "y": 630,
+      "ins": [
+        [
+          "201",
+          0
+        ],
+        [
+          "9066",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9069": {
+      "type": "Mul",
+      "name": "HiT",
+      "x": 3320,
+      "y": 670,
+      "ins": [
+        [
+          "202",
+          0
+        ],
+        [
+          "9066",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9070": {
+      "type": "Sine",
+      "name": "CloseS1",
+      "x": 3470,
+      "y": 590,
+      "ins": [
+        [
+          "9067",
+          0
+        ],
+        null
+      ],
+      "inNames": [
+        "freq",
+        "sync"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {
+        "minVal": -1,
+        "maxVal": 1
+      }
+    },
+    "9071": {
+      "type": "Sine",
+      "name": "CloseS2",
+      "x": 3470,
+      "y": 630,
+      "ins": [
+        [
+          "9068",
+          0
+        ],
+        null
+      ],
+      "inNames": [
+        "freq",
+        "sync"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {
+        "minVal": -1,
+        "maxVal": 1
+      }
+    },
+    "9072": {
+      "type": "Sine",
+      "name": "CloseS3",
+      "x": 3470,
+      "y": 670,
+      "ins": [
+        [
+          "9069",
+          0
+        ],
+        null
+      ],
+      "inNames": [
+        "freq",
+        "sync"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {
+        "minVal": -1,
+        "maxVal": 1
+      }
+    },
+    "9073": {
+      "type": "Add",
+      "name": "HiAdd1",
+      "x": 3610,
+      "y": 630,
+      "ins": [
+        [
+          "9070",
+          0
+        ],
+        [
+          "9071",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9074": {
+      "type": "Add",
+      "name": "HiAdd2",
+      "x": 3740,
+      "y": 650,
+      "ins": [
+        [
+          "9073",
+          0
+        ],
+        [
+          "9072",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9075": {
+      "type": "Mul",
+      "name": "HiEnv",
+      "x": 3880,
+      "y": 650,
+      "ins": [
+        [
+          "9074",
+          0
+        ],
+        [
+          "9061",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9076": {
+      "type": "Knob",
+      "name": "CloseVol",
+      "x": 3880,
+      "y": 710,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "minVal": 0,
+        "maxVal": 0.15,
+        "value": 0.08,
+        "deviceId": null,
+        "controlId": null
+      }
+    },
+    "9077": {
+      "type": "Mul",
+      "name": "CloseChime",
+      "x": 4020,
+      "y": 670,
+      "ins": [
+        [
+          "9075",
+          0
+        ],
+        [
+          "9076",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9200": {
+      "type": "Knob",
+      "name": "NoiseBed",
+      "x": 3180,
+      "y": 780,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "minVal": 0,
+        "maxVal": 0.05,
+        "value": 0.015,
+        "deviceId": null,
+        "controlId": null
+      }
+    },
+    "9201": {
+      "type": "Knob",
+      "name": "NAccGain",
+      "x": 3180,
+      "y": 820,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "minVal": 0,
+        "maxVal": 1,
+        "value": 0,
+        "deviceId": null,
+        "controlId": null
+      }
+    },
+    "9202": {
+      "type": "Knob",
+      "name": "NAccCut",
+      "x": 3180,
+      "y": 860,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "minVal": 0,
+        "maxVal": 1,
+        "value": 0.55,
+        "deviceId": null,
+        "controlId": null
+      }
+    },
+    "9203": {
+      "type": "Noise",
+      "name": "BgNoise",
+      "x": 3320,
+      "y": 820,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        "out"
+      ],
+      "params": {
+        "minVal": -1,
+        "maxVal": 1
+      }
+    },
+    "9204": {
+      "type": "Filter",
+      "name": "NoiseFilter",
+      "x": 3470,
+      "y": 820,
+      "ins": [
+        [
+          "9203",
+          0
+        ],
+        [
+          "9202",
+          0
+        ],
+        [
+          "9205",
+          0
+        ]
+      ],
+      "inNames": [
+        "in",
+        "cutoff",
+        "reso"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9205": {
+      "type": "Knob",
+      "name": "NReso",
+      "x": 3320,
+      "y": 860,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "minVal": 0,
+        "maxVal": 1,
+        "value": 0.1,
+        "deviceId": null,
+        "controlId": null
+      }
+    },
+    "9206": {
+      "type": "Const",
+      "name": "NAccMax",
+      "x": 3320,
+      "y": 900,
+      "ins": [],
+      "inNames": [],
+      "outNames": [
+        ""
+      ],
+      "params": {
+        "value": 0.02
+      }
+    },
+    "9207": {
+      "type": "Mul",
+      "name": "NAccScale",
+      "x": 3470,
+      "y": 880,
+      "ins": [
+        [
+          "9201",
+          0
+        ],
+        [
+          "9206",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9208": {
+      "type": "Add",
+      "name": "NoiseGain",
+      "x": 3610,
+      "y": 860,
+      "ins": [
+        [
+          "9200",
+          0
+        ],
+        [
+          "9207",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9209": {
+      "type": "Mul",
+      "name": "NoiseOut",
+      "x": 3740,
+      "y": 840,
+      "ins": [
+        [
+          "9204",
+          0
+        ],
+        [
+          "9208",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9213": {
+      "type": "Add",
+      "name": "GlbExtra",
+      "x": 4160,
+      "y": 760,
+      "ins": [
+        [
+          "9077",
+          0
+        ],
+        [
+          "9209",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9214": {
+      "type": "Add",
+      "name": "GlobalMixL",
+      "x": 4300,
+      "y": 740,
+      "ins": [
+        [
+          "144",
+          0
+        ],
+        [
+          "9213",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
+    },
+    "9215": {
+      "type": "Add",
+      "name": "GlobalMixR",
+      "x": 4300,
+      "y": 800,
+      "ins": [
+        [
+          "158",
+          0
+        ],
+        [
+          "9213",
+          0
+        ]
+      ],
+      "inNames": [
+        "in0",
+        "in1"
+      ],
+      "outNames": [
+        "out"
+      ],
+      "params": {}
     },
     "71": {
       "type": "Scope",

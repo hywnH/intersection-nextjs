@@ -235,6 +235,37 @@ export const registerSocketEvents = ({
       return;
     }
 
+    // ---- Perf instrumentation (personal) ----
+    // We track arrival gaps separately from frame stalls:
+    // - If gaps spike: network / server-loop lag / GC
+    // - If gaps are stable but frame dt spikes: rendering / main-thread overload
+    if (mode === "personal") {
+      const recvAt = Date.now();
+      const lastAt = Number(perf.personalMoveLastAt ?? 0) || 0;
+      const gap = lastAt ? recvAt - lastAt : 0;
+      perf.personalMoveLastAt = recvAt;
+      perf.personalMoveGapLastMs = gap;
+      perf.personalMoveGapMaxMs = Math.max(
+        Number(perf.personalMoveGapMaxMs ?? 0) || 0,
+        gap
+      );
+      perf.personalMoveCount = Number(perf.personalMoveCount ?? 0) + 1;
+      if (meta?.fast) {
+        perf.personalMoveFastCount =
+          Number(perf.personalMoveFastCount ?? 0) + 1;
+      } else {
+        perf.personalMoveFullCount =
+          Number(perf.personalMoveFullCount ?? 0) + 1;
+      }
+      perf.personalMoveUserDataLenLast = userData.length;
+      perf.personalMoveUserDataLenMax = Math.max(
+        Number(perf.personalMoveUserDataLenMax ?? 0) || 0,
+        userData.length
+      );
+      perf.personalMoveFastLast = Boolean(meta?.fast);
+    }
+
+    const mapT0 = nowMs();
     const effectivePlayerData = mode === "personal" ? playerData : undefined;
     const currentSelfId =
       getState().selfId ?? playerData.id ?? socket.id ?? undefined;
@@ -245,6 +276,16 @@ export const registerSocketEvents = ({
       selfId: currentSelfId,
       displayName,
     });
+    const mapDt = nowMs() - mapT0;
+    if (mode === "personal") {
+      perf.personalMoveMapLastMs = mapDt;
+      perf.personalMoveMapMaxMs = Math.max(
+        Number(perf.personalMoveMapMaxMs ?? 0) || 0,
+        mapDt
+      );
+      perf.personalMovePlayersLenLast = Object.keys(players).length;
+      perf.personalMoveOrderLenLast = order.length;
+    }
 
     if (mode === "personal" && currentSelfId) {
       const serverSelf = players[currentSelfId];

@@ -100,6 +100,7 @@ export const mapServerPayloadToSnapshots = (params: {
   const { playerData, userData = [], mode, selfId, displayName } = params;
   const players: Record<string, PlayerSnapshot> = {};
   const order: string[] = [];
+  const orderSet = new Set<string>();
 
   const pushSnapshot = (
     player: ServerPlayer,
@@ -108,7 +109,8 @@ export const mapServerPayloadToSnapshots = (params: {
     const snapshot = toPlayerSnapshot(player, options);
     if (!snapshot) return;
     players[snapshot.id] = snapshot;
-    if (!order.includes(snapshot.id)) {
+    if (!orderSet.has(snapshot.id)) {
+      orderSet.add(snapshot.id);
       order.push(snapshot.id);
     }
   };

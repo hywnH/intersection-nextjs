@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameContext } from "@/context/GameContext";
 import { usePersonalRuntime } from "@/lib/runtime/PersonalRuntimeProvider";
@@ -12,27 +12,54 @@ const StartScreen = () => {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [entering, setEntering] = useState(false);
+  const [enterRequested, setEnterRequested] = useState(false);
+  const enterNameRef = useRef("");
 
   const trimmedName = useMemo(() => name.trim(), [name]);
 
-  const handleEnter = async () => {
+  const handleEnter = () => {
     setError(null);
     setEntering(true);
-    try {
-      setMode("personal");
-      setDisplayName(trimmedName);
-      const ok = await runtime.enableAudioAndTilt({ displayName: trimmedName });
-      if (!ok) {
-        setError(
-          "Failed to enable audio + tilt. If you're on iOS, allow Motion & Orientation access, then try again."
-        );
-        return;
-      }
-      router.push("/mobile");
-    } finally {
-      setEntering(false);
-    }
+    setEnterRequested(true);
+    enterNameRef.current = trimmedName;
+    // Make sure providers use personal mode + name while we wait.
+    setMode("personal");
+    setDisplayName(trimmedName);
   };
+
+  // If user clicks before socket/noisecraft are ready, wait and then continue.
+  useEffect(() => {
+    if (!enterRequested) return;
+    if (!runtime.ready.ready) return;
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const ok = await runtime.enableAudioAndTilt({
+          displayName: enterNameRef.current,
+        });
+        if (cancelled) return;
+        if (!ok) {
+          setError(
+            "Failed to enable audio + tilt. If you're on iOS, allow Motion & Orientation access, then try again."
+          );
+          setEnterRequested(false);
+          setEntering(false);
+          return;
+        }
+        router.push("/mobile");
+      } finally {
+        if (!cancelled) {
+          setEntering(false);
+        }
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [enterRequested, runtime.ready.ready, runtime.enableAudioAndTilt, router]);
 
   return (
     <div className="flex flex-col gap-8 text-white">
@@ -75,24 +102,12 @@ const StartScreen = () => {
           />
         </div>
 
-        <div className="w-[200px] text-xs text-white/50">
-          <div className="flex items-center justify-between">
-            <span>socket</span>
-            <span>{runtime.ready.socketReady ? "ready" : "loading"}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>noisecraft</span>
-            <span>{runtime.ready.noiseCraftReady ? "ready" : "loading"}</span>
-          </div>
-        </div>
-
         <button
-          onClick={() => handleEnter("personal")}
           className="border border-white bg-transparent px-12 py-3 text-sm font-normal text-white transition-all duration-300 hover:border-white/80 hover:text-white/90 active:scale-[0.98] vintage-serif w-[200px]"
           onClick={handleEnter}
-          disabled={!runtime.ready.ready || entering}
+          disabled={entering}
         >
-          {entering ? "Enabling…" : "Enter the space"}
+          {entering ? "Loading…" : "Enter the space"}
         </button>
         {error && (
           <div className="w-[260px] text-center text-xs text-red-300">
