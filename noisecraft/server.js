@@ -441,55 +441,6 @@ app.post('/save-ncft/:filename', jsonParser, function (req, res) {
   }
 });
 
-// POST /save-json/:filename - Save JSON file to public directory
-app.post('/save-json/:filename', jsonParser, function (req, res) {
-  try {
-    const filename = req.params.filename;
-    
-    // Validate filename (only allow .json files, prevent path traversal)
-    if (!filename.endsWith('.json') || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-      return res.status(400).json({ error: 'Invalid filename' });
-    }
-    
-    let data = req.body;
-    if (typeof data === 'object') {
-      data = JSON.stringify(data, null, 2);
-    }
-    if (typeof data !== 'string') {
-      return res.status(400).json({ error: 'Invalid data format' });
-    }
-    
-    // Write to public directory (resolve relative to server.js location)
-    const filePath = path.resolve(__dirname, 'public', filename);
-    
-    // Ensure the public directory exists
-    const publicDir = path.dirname(filePath);
-    if (!fs.existsSync(publicDir)) {
-      fs.mkdirSync(publicDir, { recursive: true });
-    }
-    
-    // Write file synchronously
-    fs.writeFileSync(filePath, data, 'utf8');
-    
-    // Verify the file was written
-    if (!fs.existsSync(filePath)) {
-      throw new Error('File write verification failed');
-    }
-    
-    const stats = fs.statSync(filePath);
-    console.log(`✓ Saved ${filename} to ${filePath} (${stats.size} bytes)`);
-    res.json({ 
-      ok: true, 
-      path: filePath,
-      size: stats.size,
-      message: `Successfully saved ${filename}`
-    });
-  } catch (err) {
-    console.error('Failed to save JSON file:', err);
-    res.status(500).json({ error: 'Failed to save file: ' + err.message });
-  }
-});
-
 // Serve static file requests (after API routes)
 app.use('/public', express.static('public'));
 

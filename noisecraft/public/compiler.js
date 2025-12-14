@@ -247,11 +247,7 @@ export function compile(graph)
 
     // Produce a topological sort of the graph
     let order = topoSort(graph);
-    // Log only occasionally to reduce console spam
-    if (!window._lastTopoLog || Date.now() - window._lastTopoLog > 5000) {
-      console.log('num nodes in topo order: ', order.length);
-      window._lastTopoLog = Date.now();
-    }
+    console.log('num nodes in topo order: ', order.length);
 
     /*
     for (let node of order)

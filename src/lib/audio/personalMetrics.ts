@@ -30,25 +30,13 @@ export const computePersonalAudioMetrics = (
     };
   }
   const { position: selfPos, velocity: selfVel } = selfPlayer.cell;
-  const wrapDelta = (delta: number, size: number) => {
-    if (!Number.isFinite(delta) || !Number.isFinite(size) || size <= 0) {
-      return delta;
-    }
-    return ((((delta + size / 2) % size) + size) % size) - size / 2;
-  };
   let minDist = Number.POSITIVE_INFINITY;
   let nearestPlayer: PlayerSnapshot | null = null;
   let neighborCount = 0;
   for (const player of Object.values(state.players)) {
     if (player.id === selfId) continue;
-    const dx = wrapDelta(
-      player.cell.position.x - selfPos.x,
-      state.gameSize.width
-    );
-    const dy = wrapDelta(
-      player.cell.position.y - selfPos.y,
-      state.gameSize.height
-    );
+    const dx = player.cell.position.x - selfPos.x;
+    const dy = player.cell.position.y - selfPos.y;
     const dist = Math.hypot(dx, dy);
     if (dist < DENSITY_RADIUS) {
       neighborCount += 1;
@@ -62,16 +50,8 @@ export const computePersonalAudioMetrics = (
   let nearestProximity = 0;
   if (nearestPlayer && Number.isFinite(minDist)) {
     const safeDist = Math.max(minDist, 1e-3);
-    const dirX =
-      wrapDelta(
-        nearestPlayer.cell.position.x - selfPos.x,
-        state.gameSize.width
-      ) / safeDist;
-    const dirY =
-      wrapDelta(
-        nearestPlayer.cell.position.y - selfPos.y,
-        state.gameSize.height
-      ) / safeDist;
+    const dirX = (nearestPlayer.cell.position.x - selfPos.x) / safeDist;
+    const dirY = (nearestPlayer.cell.position.y - selfPos.y) / safeDist;
     const relVelX = selfVel.x - nearestPlayer.cell.velocity.x;
     const relVelY = selfVel.y - nearestPlayer.cell.velocity.y;
     const closingSpeed = Math.max(relVelX * dirX + relVelY * dirY, 0);
@@ -96,3 +76,5 @@ export const computePersonalAudioMetrics = (
     clusterEnergy,
   };
 };
+
+
