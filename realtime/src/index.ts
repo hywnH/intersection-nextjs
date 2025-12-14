@@ -1,5 +1,7 @@
 import http from "node:http";
 import { Server } from "socket.io";
+import { GlobalAudioV2Engine } from "./globalAudioV2/engine.js";
+import type { PlayerLike } from "./globalAudioV2/types.js";
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -15,6 +17,7 @@ const SELF_UPDATE_HZ = 30; // 자기 플레이어 전용 보간용 업데이트
 const CLUSTER_RADIUS = 420;
 const CLUSTER_REFRESH_INTERVAL_MS = 200;
 const BASE_CHORD = [261.63, 329.63, 392];
+const GLOBAL_AUDIO_V2_HZ = 12; // server-side global signals + sequencer cadence
 
 type Vec2 = { x: number; y: number };
 
@@ -53,6 +56,14 @@ interface ClusterInfo {
 
 const players = new Map<string, Player>();
 const spectators = new Set<string>();
+
+const globalAudioV2Engine = new GlobalAudioV2Engine({
+  world: { width: GAME_WIDTH, height: GAME_HEIGHT },
+  innerRadius: 80,
+  pulsarDurationSec: 0.5,
+  // Keep parity with global-workspace entropy normalization
+  entropyMaxSpeed: 100,
+});
 // 봇의 간단한 상태 (움직이는 방향, 방향 전환 시점 등)
 const botState = new Map<string, { angle: number; nextTurnAt: number }>();
 const collisionLines = new Map<
@@ -98,6 +109,36 @@ const BOT_TURN_INTERVAL_MIN_MS = 4000;
 const BOT_TURN_INTERVAL_MAX_MS = 12000;
 
 const rand = (min: number, max: number) => Math.random() * (max - min) + min;
+
+// ---- Toroidal world helpers (좌↔우/상↔하 무한 래핑) ----
+const wrapCoord = (value: number, size: number) => {
+  if (!Number.isFinite(value) || !Number.isFinite(size) || size <= 0)
+    return value;
+  // [0, size) 범위로 래핑
+  return ((value % size) + size) % size;
+};
+
+const wrapDelta = (delta: number, size: number) => {
+  if (!Number.isFinite(delta) || !Number.isFinite(size) || size <= 0)
+    return delta;
+  // [-size/2, size/2) 범위로 접어 "가장 가까운" 차이를 반환
+  return ((((delta + size / 2) % size) + size) % size) - size / 2;
+};
+
+const torusDx = (fromX: number, toX: number) =>
+  wrapDelta(toX - fromX, GAME_WIDTH);
+const torusDy = (fromY: number, toY: number) =>
+  wrapDelta(toY - fromY, GAME_HEIGHT);
+
+const torusMidpoint = (a: Vec2, b: Vec2): Vec2 => {
+  // a에서 b로 가는 "가장 가까운" 벡터를 반만 이동한 지점을 midpoint로 사용
+  const dx = wrapDelta(b.x - a.x, GAME_WIDTH);
+  const dy = wrapDelta(b.y - a.y, GAME_HEIGHT);
+  return {
+    x: wrapCoord(a.x + dx * 0.5, GAME_WIDTH),
+    y: wrapCoord(a.y + dy * 0.5, GAME_HEIGHT),
+  };
+};
 
 const randomDepth = () => {
   const base = rand(800, 2200);
@@ -186,22 +227,7 @@ function updateBotDesiredVelocity(p: Player, now: number) {
       now + rand(BOT_TURN_INTERVAL_MIN_MS, BOT_TURN_INTERVAL_MAX_MS);
   }
 
-  // 맵 가장자리 근처면 안쪽으로 살짝 방향 보정
-  const edgeMargin = 300;
-  let steerX = 0;
-  let steerY = 0;
-  if (p.x < edgeMargin) steerX += 1;
-  if (p.x > GAME_WIDTH - edgeMargin) steerX -= 1;
-  if (p.y < edgeMargin) steerY += 1;
-  if (p.y > GAME_HEIGHT - edgeMargin) steerY -= 1;
-  if (steerX !== 0 || steerY !== 0) {
-    const steerAngle = Math.atan2(steerY, steerX);
-    // 기존 각도와 보정 각도를 섞어서 부드럽게 회전
-    const mix = 0.4;
-    const a = state.angle;
-    const da = steerAngle - a;
-    state.angle = a + da * mix;
-  }
+  // 토러스 월드에서는 "가장자리 회피"가 필요 없다 (어디든 연결됨)
 
   const speed = rand(BOT_MIN_SPEED, BOT_MAX_SPEED);
   p.desiredVx = Math.cos(state.angle) * speed;
@@ -217,8 +243,9 @@ function moveTowards(p: Player, dt: number) {
   const desiredVy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.desiredVy));
   p.vx += (desiredVx - p.vx) * SMOOTH;
   p.vy += (desiredVy - p.vy) * SMOOTH;
-  p.x = Math.max(0, Math.min(GAME_WIDTH, p.x + p.vx * dt));
-  p.y = Math.max(0, Math.min(GAME_HEIGHT, p.y + p.vy * dt));
+  // clamp 대신 wrap: 왼쪽으로 나가면 오른쪽에서 등장 (상/하도 동일)
+  p.x = wrapCoord(p.x + p.vx * dt, GAME_WIDTH);
+  p.y = wrapCoord(p.y + p.vy * dt, GAME_HEIGHT);
 }
 
 function applyNearestGravity(p: Player, list: Player[], dt: number) {
@@ -233,8 +260,8 @@ function applyNearestGravity(p: Player, list: Player[], dt: number) {
   let nearestDistSq = Number.POSITIVE_INFINITY;
   for (const other of list) {
     if (other.id === p.id) continue;
-    const dx = other.x - p.x;
-    const dy = other.y - p.y;
+    const dx = torusDx(p.x, other.x);
+    const dy = torusDy(p.y, other.y);
     const distSq = dx * dx + dy * dy;
     if (distSq === 0) continue;
     if (distSq < nearestDistSq) {
@@ -249,8 +276,9 @@ function applyNearestGravity(p: Player, list: Player[], dt: number) {
     return;
   }
   const dist = Math.max(Math.sqrt(nearestDistSq), MIN_GRAVITY_DISTANCE);
-  const dirX = (nearest.x - p.x) / dist;
-  const dirY = (nearest.y - p.y) / dist;
+  // 토러스 기준 방향(가장 가까운 벡터)
+  const dirX = torusDx(p.x, nearest.x) / dist;
+  const dirY = torusDy(p.y, nearest.y) / dist;
   const denom = dist * dist;
   if (denom <= 0 || !Number.isFinite(denom)) {
     return;
@@ -390,6 +418,25 @@ function recomputeClusters() {
   const clusters: ClusterInfo[] = [];
   const radiusSq = CLUSTER_RADIUS * CLUSTER_RADIUS;
 
+  // 토러스 좌표에서 centroid를 자연스럽게 계산하기 위해 원형 평균(원형통계)을 사용
+  const circularMean = (values: number[], period: number) => {
+    if (!values.length || !Number.isFinite(period) || period <= 0) return 0;
+    let sinSum = 0;
+    let cosSum = 0;
+    for (const v of values) {
+      const angle = (2 * Math.PI * wrapCoord(v, period)) / period;
+      sinSum += Math.sin(angle);
+      cosSum += Math.cos(angle);
+    }
+    const meanAngle = Math.atan2(
+      sinSum / values.length,
+      cosSum / values.length
+    );
+    // atan2 결과는 [-π, π], 이를 [0, 2π)로 보정
+    const normalized = meanAngle < 0 ? meanAngle + 2 * Math.PI : meanAngle;
+    return (normalized / (2 * Math.PI)) * period;
+  };
+
   for (const player of arr) {
     if (visited.has(player.id)) continue;
     const queue: Player[] = [player];
@@ -401,8 +448,8 @@ function recomputeClusters() {
       members.push(current);
       for (const candidate of arr) {
         if (visited.has(candidate.id)) continue;
-        const dx = current.x - candidate.x;
-        const dy = current.y - candidate.y;
+        const dx = wrapDelta(candidate.x - current.x, GAME_WIDTH);
+        const dy = wrapDelta(candidate.y - current.y, GAME_HEIGHT);
         if (dx * dx + dy * dy <= radiusSq) {
           visited.add(candidate.id);
           queue.push(candidate);
@@ -412,17 +459,17 @@ function recomputeClusters() {
 
     const clusterId = members[0]?.id ?? `cluster-${clusters.length}`;
     members.forEach((member) => assignments.set(member.id, clusterId));
-    const centroid = members.reduce(
-      (acc, member) => {
-        acc.x += member.x;
-        acc.y += member.y;
-        return acc;
-      },
-      { x: 0, y: 0 }
-    );
     const memberCount = members.length || 1;
-    centroid.x /= memberCount;
-    centroid.y /= memberCount;
+    const centroid = {
+      x: circularMean(
+        members.map((m) => m.x),
+        GAME_WIDTH
+      ),
+      y: circularMean(
+        members.map((m) => m.y),
+        GAME_HEIGHT
+      ),
+    };
     const gain = clamp(memberCount / 4, 0.1, 1);
     const chord = BASE_CHORD.map((freq, idx) => ({
       freq: Number(
@@ -509,8 +556,8 @@ function detectCollisions() {
     for (let j = i + 1; j < arr.length; j += 1) {
       const pa = arr[i];
       const pb = arr[j];
-      const dx = pa.x - pb.x;
-      const dy = pa.y - pb.y;
+      const dx = wrapDelta(pb.x - pa.x, GAME_WIDTH);
+      const dy = wrapDelta(pb.y - pa.y, GAME_HEIGHT);
       const dist = Math.hypot(dx, dy);
       if (dist <= COLLISION_DISTANCE) {
         // 현재 충돌 중인 플레이어 기록
@@ -526,19 +573,21 @@ function detectCollisions() {
             startedAt: now,
             lastEvent: now,
           });
+          const mid = torusMidpoint({ x: pa.x, y: pa.y }, { x: pb.x, y: pb.y });
           collisionEvents.push({
             id: `${key}-${now}`,
             players: [pa.id, pb.id],
-            position: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 },
+            position: mid,
             radius: 80,
             timestamp: now,
           });
         } else if (now - existing.lastEvent > EVENT_COOLDOWN_MS) {
           existing.lastEvent = now;
+          const mid = torusMidpoint({ x: pa.x, y: pa.y }, { x: pb.x, y: pb.y });
           collisionEvents.push({
             id: `${key}-${now}`,
             players: existing.players,
-            position: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 },
+            position: mid,
             radius: 80,
             timestamp: now,
           });
@@ -879,6 +928,25 @@ setInterval(() => {
     emitAudioForPlayer(p);
   }
 }, 1000 / SELF_UPDATE_HZ);
+
+// Global Audio V2 (signals + mapping params + MonoSeq grids) broadcast to spectators.
+setInterval(() => {
+  if (spectators.size === 0) return;
+  const now = Date.now();
+  const list: PlayerLike[] = Array.from(players.values()).map((p) => ({
+    id: p.id,
+    x: p.x,
+    y: p.y,
+    vx: p.vx,
+    vy: p.vy,
+  }));
+  const payload = globalAudioV2Engine.step(list, now);
+  for (const id of spectators) {
+    const s = io.sockets.sockets.get(id);
+    if (!s) continue;
+    s.emit("audioGlobalV2", payload);
+  }
+}, 1000 / GLOBAL_AUDIO_V2_HZ);
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Realtime on http://${HOST}:${PORT}`);

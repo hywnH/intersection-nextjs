@@ -53,18 +53,25 @@ export const generateDistancePanParams = (
   if (!selfPlayer) return [];
 
   const { position: selfPos } = selfPlayer.cell;
+  const wrapDelta = (delta: number, size: number) => {
+    if (!Number.isFinite(delta) || !Number.isFinite(size) || size <= 0) {
+      return delta;
+    }
+    return ((((delta + size / 2) % size) + size) % size) - size / 2;
+  };
 
-  const others = Object.values(state.players).filter(
-    (p) => p.id !== selfId
-  );
+  const others = Object.values(state.players).filter((p) => p.id !== selfId);
   if (!others.length) {
     return [];
   }
 
   const withDistances = others
     .map((p) => {
-      const dx = p.cell.position.x - selfPos.x;
-      const dy = p.cell.position.y - selfPos.y;
+      const dx = wrapDelta(p.cell.position.x - selfPos.x, state.gameSize.width);
+      const dy = wrapDelta(
+        p.cell.position.y - selfPos.y,
+        state.gameSize.height
+      );
       const dist = Math.hypot(dx, dy);
       return { player: p, dx, dy, dist };
     })
@@ -79,13 +86,13 @@ export const generateDistancePanParams = (
 
   // 방향: -π~π → 0~1
   const nearestAngle = Math.atan2(nearest.dy, nearest.dx); // -π~π
-  const nearestDir = (nearestAngle / (2 * Math.PI)) + 0.5; // 0~1
+  const nearestDir = nearestAngle / (2 * Math.PI) + 0.5; // 0~1
   const nearestDirClamped = clamp01(nearestDir);
 
   let secondDirClamped = 0.5;
   if (second) {
     const angle2 = Math.atan2(second.dy, second.dx);
-    const dir2 = (angle2 / (2 * Math.PI)) + 0.5;
+    const dir2 = angle2 / (2 * Math.PI) + 0.5;
     secondDirClamped = clamp01(dir2);
   }
 

@@ -1,7 +1,11 @@
 {
   # 로컬 개발용 자체 CA(내부 인증서) 사용
   # 문제 발생 시 원인 파악을 위해 로그를 상세하게
-  debug
+  # 기본은 INFO로 조용하게, 필요하면 env로 조절:
+  #   CADDY_LOG_LEVEL=DEBUG docker compose up
+  log {
+    level {$CADDY_LOG_LEVEL:INFO}
+  }
 }
 
 :80 {
@@ -14,6 +18,13 @@
   tls internal {
     on_demand
   }
+
+  # 네트워크 로드 분석용: 접근 로그 + 응답 압축
+  log {
+    output stdout
+    format json
+  }
+  encode gzip zstd
 
   @socket path /socket*
   reverse_proxy @socket game:3001
@@ -32,7 +43,8 @@
   # prod 모드에서는 next build 중 잠시 3000이 열리지 않아
   # 초기 요청이 502로 떨어질 수 있으니, 잠깐 재시도한다.
   reverse_proxy web:3000 {
-    lb_try_duration 30s
+    # 로컬 개발에선 30s는 체감이 너무 느려서 짧게
+    lb_try_duration 5s
     lb_try_interval 500ms
   }
 }

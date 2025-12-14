@@ -26,7 +26,9 @@ export const postNoiseCraftParams = (
   );
 };
 
-export const resolveNoiseCraftEmbed = () => {
+export const resolveNoiseCraftEmbed = (opts?: {
+  pathnameOverride?: string;
+}) => {
   if (typeof window === "undefined") {
     return { src: "about:blank", origin: null };
   }
@@ -86,8 +88,38 @@ export const resolveNoiseCraftEmbed = () => {
     }
     return `${normalizedNcBase}/${raw}`;
   };
-  const patchSrcEnv =
+  // NOTE: NoiseCraft 서버는 examples/ 폴더를 /public/examples 로 서빙한다.
+  // docker-compose 등에서 /examples/... 로 설정되어 있으면 자동으로 보정한다.
+  const normalizeExamplesPath = (raw: string) => {
+    if (!raw) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (raw.startsWith("/public/examples/")) return raw;
+    if (raw.startsWith("/examples/")) return `/public${raw}`; // -> /public/examples/...
+    if (raw.startsWith("examples/")) return `public/${raw}`; // -> public/examples/...
+    return raw;
+  };
+
+  const path = opts?.pathnameOverride ?? window.location.pathname ?? "";
+
+  // 페이지 별로 다른 기본 패치를 쓸 수 있게 분기
+  // - /mobile: 개인 오디오 패치(v2)
+  // - /global: 글로벌 오디오 패치
+  const basePatchSrcEnv =
     process.env.NEXT_PUBLIC_NOISECRAFT_PATCH_SRC?.trim() || "";
+  const personalPatchSrcEnv =
+    process.env.NEXT_PUBLIC_NOISECRAFT_PERSONAL_PATCH_SRC?.trim() || "";
+  const globalPatchSrcEnv =
+    process.env.NEXT_PUBLIC_NOISECRAFT_GLOBAL_PATCH_SRC?.trim() || "";
+
+  const patchSrcEnvRaw = path.startsWith("/mobile")
+    ? personalPatchSrcEnv ||
+      basePatchSrcEnv ||
+      "/public/examples/indiv_audio_map_v2.ncft"
+    : path.startsWith("/global")
+    ? globalPatchSrcEnv || basePatchSrcEnv
+    : basePatchSrcEnv;
+
+  const patchSrcEnv = normalizeExamplesPath(patchSrcEnvRaw);
   const patchProjectId =
     process.env.NEXT_PUBLIC_NOISECRAFT_PATCH_PROJECT_ID?.trim() || "";
   const embedSearch = new URLSearchParams();
@@ -99,14 +131,18 @@ export const resolveNoiseCraftEmbed = () => {
   } else {
     embedSearch.set("src", `${normalizedNcBase}/current-project`);
   }
-  // /mobile 과 /mobile/debug 에서 iframe 모드를 구분하기 위한 view 쿼리
-  const path = window.location.pathname || "";
+  // /mobile, /global 디버그 뷰에서는 NoiseCraft 전체 패널을 보이도록 강제
   if (path.startsWith("/mobile/debug")) {
     embedSearch.set("view", "mobile-debug");
     // /mobile/debug에서는 NoiseCraft 전체 패널을 보이도록 강제
     embedSearch.set("editor", "full");
+  } else if (path.startsWith("/global/debug")) {
+    embedSearch.set("view", "global-debug");
+    embedSearch.set("editor", "full");
   } else if (path.startsWith("/mobile")) {
     embedSearch.set("view", "mobile");
+  } else if (path.startsWith("/global")) {
+    embedSearch.set("view", "global");
   }
   const src = `${normalizedNcBase}/public/embedded.html?${embedSearch.toString()}`;
   const embedOrigin = new URL(src, pageOrigin).origin;
