@@ -86,6 +86,9 @@ type PlayerEntry = GameState["players"][string];
 interface GlobalPerspectiveViewProps {
   showHud?: boolean;
   showModeToggle?: boolean;
+  initialViewMode?: ViewMode;
+  hideIframe?: boolean;
+  hideIframeOnStart?: boolean;
 }
 
 interface CameraAnimatorProps {
@@ -398,6 +401,9 @@ const PostProcessing = () => {
 const GlobalPerspectiveView = ({
   showHud = true,
   showModeToggle = true,
+  initialViewMode,
+  hideIframe = false,
+  hideIframeOnStart = false,
 }: GlobalPerspectiveViewProps) => {
   const { state, players, socket } = useGameClient("global");
   const audioIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -409,7 +415,8 @@ const GlobalPerspectiveView = ({
   }>({ src: "about:blank", origin: null });
   const noiseCraftOrigin = noiseCraftConfig.origin ?? null;
   const noiseCraftSrc = noiseCraftConfig.src ?? "about:blank";
-  const [viewMode, setViewMode] = useState<ViewMode>("front");
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode || "front");
+  const [iframeVisible, setIframeVisible] = useState(true);
   const { clusters, assignments } = useMemo(
     () => analyzeClusters(players, undefined, state.gameSize),
     [players, state.gameSize]
@@ -443,6 +450,13 @@ const GlobalPerspectiveView = ({
     }, 0);
     return () => window.clearTimeout(id);
   }, []);
+
+  // initialViewMode가 변경되면 viewMode 업데이트
+  useEffect(() => {
+    if (initialViewMode !== undefined) {
+      setViewMode(initialViewMode);
+    }
+  }, [initialViewMode]);
 
   useEffect(() => {
     if (!audioIframeRef.current) return;
@@ -511,6 +525,24 @@ const GlobalPerspectiveView = ({
     };
   }, [socket, noiseCraftOrigin]);
 
+  // iframe에서 오는 메시지 처리 (Start Audio 클릭 감지)
+  useEffect(() => {
+    if (!hideIframeOnStart) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "noiseCraft:audioState") {
+        if (event.data.status === "playing") {
+          setIframeVisible(false);
+        }
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [hideIframeOnStart]);
+
   return (
     <div
       className="fixed inset-0 overflow-hidden"
@@ -527,38 +559,43 @@ const GlobalPerspectiveView = ({
       )}
       <GlobalSpace state={state} players={players} viewMode={viewMode} />
       {/* NoiseCraft Embedded (글로벌 퍼스펙티브용 오디오) */}
-      {isGlobalDebugView ? (
-        <div className="pointer-events-auto absolute inset-4 rounded-xl bg-black/70 p-2 text-xs text-white">
-          <div className="mb-1 text-white/70">NoiseCraft · Global Debug</div>
-          <iframe
-            ref={audioIframeRef}
-            src={noiseCraftSrc}
-            allow="autoplay"
-            title="NoiseCraft Global Debug"
-            className="h-[calc(100%-20px)] w-full"
-            style={{
-              border: "1px solid rgba(255,255,255,0.2)",
-              borderRadius: 8,
-            }}
-          />
-        </div>
-      ) : (
-        <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white">
-          <div className="mb-1 text-white/70">NoiseCraft · Global</div>
-          <iframe
-            ref={audioIframeRef}
-            src={noiseCraftSrc}
-            width={260}
-            height={64}
-            allow="autoplay"
-            title="NoiseCraft Global Perspective"
-            className="h-[64px] w-[260px]"
-            style={{
-              border: "1px solid rgba(255,255,255,0.2)",
-              borderRadius: 8,
-            }}
-          />
-        </div>
+      {/* hideIframe이 true면 완전히 숨김, hideIframeOnStart가 true이고 iframeVisible이 false면 UI만 숨김 (오디오는 계속 작동) */}
+      {hideIframe ? null : (
+        <>
+          {isGlobalDebugView ? (
+            <div className={`pointer-events-auto absolute inset-4 rounded-xl bg-black/70 p-2 text-xs text-white ${!iframeVisible ? "opacity-0 pointer-events-none" : ""}`}>
+              <div className="mb-1 text-white/70">NoiseCraft · Global Debug</div>
+              <iframe
+                ref={audioIframeRef}
+                src={noiseCraftSrc}
+                allow="autoplay"
+                title="NoiseCraft Global Debug"
+                className="h-[calc(100%-20px)] w-full"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: 8,
+                }}
+              />
+            </div>
+          ) : (
+            <div className={`pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white ${!iframeVisible ? "opacity-0 pointer-events-none" : ""}`}>
+              <div className="mb-1 text-white/70">NoiseCraft · Global</div>
+              <iframe
+                ref={audioIframeRef}
+                src={noiseCraftSrc}
+                width={260}
+                height={64}
+                allow="autoplay"
+                title="NoiseCraft Global Perspective"
+                className="h-[64px] w-[260px]"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: 8,
+                }}
+              />
+            </div>
+          )}
+        </>
       )}
       {showModeToggle && (
         <ModeToggle viewMode={viewMode} onChange={setViewMode} />

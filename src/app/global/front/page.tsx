@@ -14,10 +14,11 @@ const GlobalPerspectiveView = dynamic(
   }
 );
 
-export default function GlobalPage() {
+export default function GlobalFrontPage() {
   return (
     <div className="h-screen w-full bg-slate-950 text-white">
-      <GlobalPerspectiveView showHud={false} showModeToggle={false} />
+      <GlobalPerspectiveView showHud={false} showModeToggle={false} initialViewMode="front" hideIframeOnStart={true} />
     </div>
   );
 }
+
