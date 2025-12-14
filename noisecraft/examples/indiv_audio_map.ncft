@@ -1,5 +1,5 @@
 {
-  "title": "Individual Audio v2",
+  "title": "Individual Audio",
   "nodes": {
     "0": {
       "type": "Noise",
@@ -290,9 +290,9 @@
         ""
       ],
       "params": {
-        "minVal": 60,
-        "maxVal": 140,
-        "value": 90,
+        "minVal": 120,
+        "maxVal": 120,
+        "value": 120,
         "deviceId": null,
         "controlId": null
       }
@@ -980,15 +980,15 @@
     "67": {
       "type": "AudioOut",
       "name": "AudioOut",
-      "x": 3609,
-      "y": 616,
+      "x": 4039,
+      "y": 590,
       "ins": [
         [
-          "68",
+          "219",
           0
         ],
         [
-          "69",
+          "220",
           0
         ]
       ],
@@ -1006,7 +1006,7 @@
       "y": 576,
       "ins": [
         [
-          "9010",
+          "144",
           0
         ],
         [
@@ -1030,7 +1030,7 @@
       "y": 666,
       "ins": [
         [
-          "9011",
+          "158",
           0
         ],
         [
@@ -2967,7 +2967,7 @@
       "params": {
         "minVal": 0,
         "maxVal": 2,
-        "value": 0.8544277004313782,
+        "value": 2.613228673736887e-72,
         "deviceId": null,
         "controlId": null
       }
@@ -3141,7 +3141,7 @@
       "params": {
         "minVal": 0,
         "maxVal": 1,
-        "value": 0.1,
+        "value": 0.14805024997975855,
         "deviceId": null,
         "controlId": null
       }
@@ -3279,7 +3279,7 @@
       "params": {
         "minVal": 0,
         "maxVal": 1,
-        "value": 0.05307614890275266,
+        "value": 3.2665358421711076e-75,
         "deviceId": null,
         "controlId": null
       }
@@ -3436,6 +3436,18 @@
       ],
       "params": {}
     },
+    "192": {
+      "type": "Notes",
+      "name": "Hello World",
+      "x": 34,
+      "y": 25,
+      "ins": [],
+      "inNames": [],
+      "outNames": [],
+      "params": {
+        "text": "Falling in Love With Waterfalls\n-------------------------------\n\nHere playing with the probability for a note from a chord to be played in some rhythmic ratio, adding delays, a big reverb and some detune.\n\nEnjoy, \n\n(a or not b)"
+      }
+    },
     "193": {
       "type": "Pulse",
       "name": "Pulse",
@@ -3471,7 +3483,7 @@
         ""
       ],
       "params": {
-        "value": 0.15935
+        "value": 0.05000000000000003
       }
     },
     "195": {
@@ -3481,7 +3493,7 @@
       "y": 980,
       "ins": [
         [
-          "9008",
+          "193",
           0
         ],
         [
@@ -3705,7 +3717,7 @@
       "params": {
         "minVal": 0,
         "maxVal": 0.1,
-        "value": 0.008132716005981842,
+        "value": 0.011463395200051248,
         "deviceId": null,
         "controlId": null
       }
@@ -3751,10 +3763,66 @@
       "curPattern": 0,
       "patterns": [
         [
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0]
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
         ]
       ]
     },
@@ -3785,10 +3853,66 @@
       "curPattern": 0,
       "patterns": [
         [
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0]
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
         ]
       ]
     },
@@ -3819,327 +3943,74 @@
       "curPattern": 0,
       "patterns": [
         [
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0],
-          [0,0,0,0,0,0,0,0,0,0,0,0,0]
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
         ]
       ]
     },
-    "9000": {
-      "type": "Noise",
-      "name": "TonalNoise",
-      "x": 2600,
-      "y": 250,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        "out"
-      ],
-      "params": {
-        "minVal": -1,
-        "maxVal": 1
-      }
-    },
-    "9050": {
-      "type": "Const",
-      "name": "CutScale1",
-      "x": 2580,
-      "y": 120,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.0015
-      }
-    },
-    "9051": {
-      "type": "Mul",
-      "name": "CutMul1",
-      "x": 2670,
-      "y": 120,
-      "ins": [
-        [
-          "212",
-          0
-        ],
-        [
-          "9050",
-            0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9052": {
-      "type": "Const",
-      "name": "CutBase1",
-      "x": 2580,
-      "y": 150,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.12
-      }
-    },
-    "9053": {
-      "type": "Add",
-      "name": "CutAdd1",
-      "x": 2760,
-      "y": 120,
-      "ins": [
-        [
-          "9051",
-          0
-        ],
-        [
-          "9052",
-            0
-          ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9054": {
-      "type": "Const",
-      "name": "CutScale2",
-      "x": 2580,
-      "y": 500,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.0012
-      }
-    },
-    "9055": {
-      "type": "Mul",
-      "name": "CutMul2",
-      "x": 2670,
-      "y": 500,
-      "ins": [
-        [
-          "213",
-          0
-        ],
-        [
-          "9054",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9056": {
-      "type": "Const",
-      "name": "CutBase2",
-      "x": 2580,
-      "y": 530,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.12
-      }
-    },
-    "9057": {
-      "type": "Add",
-      "name": "CutAdd2",
-      "x": 2760,
-      "y": 500,
-      "ins": [
-        [
-          "9055",
-          0
-        ],
-        [
-          "9056",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9001": {
-      "type": "Filter",
-      "name": "N1ToneFilt",
-      "x": 2760,
-      "y": 200,
-      "ins": [
-        [
-          "9000",
-          0
-        ],
-        [
-          "9053",
-          0
-        ],
-        [
-          "9009",
-          0
-        ]
-      ],
-      "inNames": [
-        "in",
-        "cutoff",
-        "reso"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9002": {
-      "type": "Mul",
-      "name": "N1_GainMul",
-      "x": 2920,
-      "y": 200,
-      "ins": [
-        [
-          "9001",
-          0
-        ],
-        [
-          "9003",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9003": {
+    "214": {
       "type": "Knob",
-      "name": "N1_ToneGain",
-      "x": 2920,
-      "y": 270,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "minVal": 0,
-        "maxVal": 0.06,
-        "value": 0,
-        "deviceId": null,
-        "controlId": null
-      }
-    },
-    "9004": {
-      "type": "Filter",
-      "name": "N2ToneFilt",
-      "x": 2760,
-      "y": 360,
-      "ins": [
-        [
-          "9000",
-          0
-        ],
-        [
-          "9057",
-          0
-        ],
-        [
-          "9014",
-          0
-        ]
-      ],
-      "inNames": [
-        "in",
-        "cutoff",
-        "reso"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9005": {
-      "type": "Mul",
-      "name": "N2_GainMul",
-      "x": 2920,
-      "y": 360,
-      "ins": [
-        [
-          "9004",
-          0
-        ],
-        [
-          "9006",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9006": {
-      "type": "Knob",
-      "name": "N2_ToneGain",
-      "x": 2920,
-      "y": 430,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "minVal": 0,
-        "maxVal": 0.06,
-        "value": 0,
-        "deviceId": null,
-        "controlId": null
-      }
-    },
-    "9007": {
-      "type": "Knob",
-      "name": "meetGate",
-      "x": 760,
-      "y": 900,
+      "name": "Knob",
+      "x": 3577,
+      "y": 300,
       "ins": [],
       "inNames": [],
       "outNames": [
@@ -4153,18 +4024,18 @@
         "controlId": null
       }
     },
-    "9008": {
+    "215": {
       "type": "Add",
-      "name": "Gate+Meet",
-      "x": 560,
-      "y": 980,
+      "name": "Add",
+      "x": 3671,
+      "y": 429,
       "ins": [
         [
-          "193",
+          "217",
           0
         ],
         [
-          "9007",
+          "218",
           0
         ]
       ],
@@ -4177,221 +4048,32 @@
       ],
       "params": {}
     },
-    "9009": {
-      "type": "Knob",
-      "name": "N1_ToneReso",
-      "x": 2760,
-      "y": 130,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "minVal": 0,
-        "maxVal": 1.2,
-        "value": 0,
-        "deviceId": null,
-        "controlId": null
-      }
-    },
-    "9014": {
-      "type": "Knob",
-      "name": "N2_ToneReso",
-      "x": 2760,
-      "y": 470,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "minVal": 0,
-        "maxVal": 1.2,
-        "value": 0,
-        "deviceId": null,
-        "controlId": null
-      }
-    },
-    "9015": {
-      "type": "Add",
-      "name": "ToneSum",
-      "x": 3080,
-      "y": 280,
-      "ins": [
-        [
-          "9002",
-          0
-        ],
-        [
-          "9005",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9010": {
-      "type": "Add",
-      "name": "L+TonalNoise",
-      "x": 3370,
-      "y": 560,
-      "ins": [
-        [
-          "144",
-          0
-        ],
-        [
-          "9078",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9011": {
-      "type": "Add",
-      "name": "R+TonalNoise",
-      "x": 3370,
-      "y": 650,
-      "ins": [
-        [
-          "158",
-          0
-        ],
-        [
-          "9078",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9020": {
-      "type": "ADSR",
-      "name": "MeetADSR",
-      "x": 3160,
-      "y": 430,
-      "ins": [
-        [
-          "9007",
-          0
-        ],
-        [
-          "9021",
-          0
-        ],
-        [
-          "9022",
-          0
-        ],
-        [
-          "9023",
-          0
-        ],
-        [
-          "9024",
-          0
-        ]
-      ],
-      "inNames": [
-        "gate",
-        "att",
-        "dec",
-        "sus",
-        "rel"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9021": {
+    "216": {
       "type": "Const",
       "name": "Const",
-      "x": 3030,
-      "y": 410,
+      "x": 3671,
+      "y": 219,
       "ins": [],
       "inNames": [],
       "outNames": [
         ""
       ],
       "params": {
-        "value": 0.005
+        "value": -1
       }
     },
-    "9022": {
-      "type": "Const",
-      "name": "Const",
-      "x": 3030,
-      "y": 440,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.35
-      }
-    },
-    "9023": {
-      "type": "Const",
-      "name": "Const",
-      "x": 3030,
-      "y": 470,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0
-      }
-    },
-    "9024": {
-      "type": "Const",
-      "name": "Const",
-      "x": 3030,
-      "y": 500,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.25
-      }
-    },
-    "9025": {
+    "217": {
       "type": "Mul",
-      "name": "MeetFreq*2",
-      "x": 3160,
-      "y": 520,
+      "name": "Mul",
+      "x": 3782,
+      "y": 224,
       "ins": [
         [
-          "200",
+          "214",
           0
         ],
         [
-          "9026",
+          "216",
           0
         ]
       ],
@@ -4404,56 +4086,32 @@
       ],
       "params": {}
     },
-    "9026": {
+    "218": {
       "type": "Const",
       "name": "Const",
-      "x": 3030,
-      "y": 540,
+      "x": 3604,
+      "y": 471,
       "ins": [],
       "inNames": [],
       "outNames": [
         ""
       ],
       "params": {
-        "value": 2
+        "value": 1
       }
     },
-    "9027": {
-      "type": "Sine",
-      "name": "MeetSine",
-      "x": 3300,
-      "y": 520,
-      "ins": [
-        [
-          "9025",
-          0
-        ],
-        null
-      ],
-      "inNames": [
-        "freq",
-        "sync"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {
-        "minVal": -1,
-        "maxVal": 1
-      }
-    },
-    "9028": {
+    "219": {
       "type": "Mul",
-      "name": "MeetTone*Env",
-      "x": 3450,
-      "y": 520,
+      "name": "Mul",
+      "x": 3842,
+      "y": 319,
       "ins": [
         [
-          "9027",
+          "68",
           0
         ],
         [
-          "9020",
+          "214",
           0
         ]
       ],
@@ -4466,469 +4124,18 @@
       ],
       "params": {}
     },
-    "9031": {
-      "type": "Knob",
-      "name": "MeetVol",
-      "x": 3450,
-      "y": 590,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "minVal": 0,
-        "maxVal": 0.12,
-        "value": 0.05,
-        "deviceId": null,
-        "controlId": null
-      }
-    },
-    "9032": {
+    "220": {
       "type": "Mul",
-      "name": "MeetTone*Vol",
-      "x": 3590,
-      "y": 520,
+      "name": "Mul",
+      "x": 3842,
+      "y": 432,
       "ins": [
         [
-          "9028",
+          "69",
           0
         ],
         [
-          "9031",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9030": {
-      "type": "Add",
-      "name": "Tonal+Meet",
-      "x": 3230,
-      "y": 360,
-      "ins": [
-        [
-          "9015",
-          0
-        ],
-        [
-          "9032",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9060": {
-      "type": "Knob",
-      "name": "CloseGate",
-      "x": 3120,
-      "y": 660,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "minVal": 0,
-        "maxVal": 1,
-        "value": 0,
-        "deviceId": null,
-        "controlId": null
-      }
-    },
-    "9061": {
-      "type": "ADSR",
-      "name": "CloseADSR",
-      "x": 3280,
-      "y": 660,
-      "ins": [
-        [
-          "9060",
-          0
-        ],
-        [
-          "9062",
-          0
-        ],
-        [
-          "9063",
-          0
-        ],
-        [
-          "9064",
-          0
-        ],
-        [
-          "9065",
-          0
-        ]
-      ],
-      "inNames": [
-        "gate",
-        "att",
-        "dec",
-        "sus",
-        "rel"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9062": {
-      "type": "Const",
-      "name": "Const",
-      "x": 3160,
-      "y": 640,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.003
-      }
-    },
-    "9063": {
-      "type": "Const",
-      "name": "Const",
-      "x": 3160,
-      "y": 670,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.22
-      }
-    },
-    "9064": {
-      "type": "Const",
-      "name": "Const",
-      "x": 3160,
-      "y": 700,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0
-      }
-    },
-    "9065": {
-      "type": "Const",
-      "name": "Const",
-      "x": 3160,
-      "y": 730,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 0.18
-      }
-    },
-    "9066": {
-      "type": "Const",
-      "name": "HiMul",
-      "x": 3160,
-      "y": 800,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "value": 4
-      }
-    },
-    "9067": {
-      "type": "Mul",
-      "name": "HiB",
-      "x": 3300,
-      "y": 780,
-      "ins": [
-        [
-          "200",
-          0
-        ],
-        [
-          "9066",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9068": {
-      "type": "Mul",
-      "name": "HiBr",
-      "x": 3300,
-      "y": 820,
-      "ins": [
-        [
-          "201",
-          0
-        ],
-        [
-          "9066",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9069": {
-      "type": "Mul",
-      "name": "HiT",
-      "x": 3300,
-      "y": 860,
-      "ins": [
-        [
-          "202",
-          0
-        ],
-        [
-          "9066",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9070": {
-      "type": "Sine",
-      "name": "CloseS1",
-      "x": 3450,
-      "y": 780,
-      "ins": [
-        [
-          "9067",
-          0
-        ],
-        null
-      ],
-      "inNames": [
-        "freq",
-        "sync"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {
-        "minVal": -1,
-        "maxVal": 1
-      }
-    },
-    "9071": {
-      "type": "Sine",
-      "name": "CloseS2",
-      "x": 3450,
-      "y": 820,
-      "ins": [
-        [
-          "9068",
-          0
-        ],
-        null
-      ],
-      "inNames": [
-        "freq",
-        "sync"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {
-        "minVal": -1,
-        "maxVal": 1
-      }
-    },
-    "9072": {
-      "type": "Sine",
-      "name": "CloseS3",
-      "x": 3450,
-      "y": 860,
-      "ins": [
-        [
-          "9069",
-          0
-        ],
-        null
-      ],
-      "inNames": [
-        "freq",
-        "sync"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {
-        "minVal": -1,
-        "maxVal": 1
-      }
-    },
-    "9073": {
-      "type": "Add",
-      "name": "HiAdd1",
-      "x": 3600,
-      "y": 820,
-      "ins": [
-        [
-          "9070",
-          0
-        ],
-        [
-          "9071",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9074": {
-      "type": "Add",
-      "name": "HiAdd2",
-      "x": 3740,
-      "y": 840,
-      "ins": [
-        [
-          "9073",
-          0
-        ],
-        [
-          "9072",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9075": {
-      "type": "Mul",
-      "name": "HiEnv",
-      "x": 3880,
-      "y": 840,
-      "ins": [
-        [
-          "9074",
-          0
-        ],
-        [
-          "9061",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9076": {
-      "type": "Knob",
-      "name": "CloseVol",
-      "x": 3880,
-      "y": 900,
-      "ins": [],
-      "inNames": [],
-      "outNames": [
-        ""
-      ],
-      "params": {
-        "minVal": 0,
-        "maxVal": 0.15,
-        "value": 0.08,
-        "deviceId": null,
-        "controlId": null
-      }
-    },
-    "9077": {
-      "type": "Mul",
-      "name": "HiVol",
-      "x": 4020,
-      "y": 860,
-      "ins": [
-        [
-          "9075",
-          0
-        ],
-        [
-          "9076",
-          0
-        ]
-      ],
-      "inNames": [
-        "in0",
-        "in1"
-      ],
-      "outNames": [
-        "out"
-      ],
-      "params": {}
-    },
-    "9078": {
-      "type": "Add",
-      "name": "ToneAll",
-      "x": 3380,
-      "y": 420,
-      "ins": [
-        [
-          "9030",
-          0
-        ],
-        [
-          "9077",
+          "215",
           0
         ]
       ],

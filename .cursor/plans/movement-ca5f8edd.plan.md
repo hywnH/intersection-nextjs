@@ -1,9 +1,4 @@
----
-name: Audio Cluster Prototype Plan
-overview: ""
-todos: []
----
-
+<!-- ca5f8edd-0020-4b87-b1df-186b6e8fb8f7 d7eb693c-2581-41a6-8ffe-1f9a97cc4289 -->
 # Audio Cluster Prototype Plan
 
 ## Overview

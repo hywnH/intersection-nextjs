@@ -2,34 +2,6 @@ import type { PlayerSnapshot, Vec2 } from "@/types/game";
 
 const DEFAULT_CLUSTER_RADIUS = 420;
 
-type WorldSize = { width: number; height: number };
-
-const wrapCoord = (value: number, size: number) => {
-  if (!Number.isFinite(value) || !Number.isFinite(size) || size <= 0)
-    return value;
-  return ((value % size) + size) % size;
-};
-
-const wrapDelta = (delta: number, size: number) => {
-  if (!Number.isFinite(delta) || !Number.isFinite(size) || size <= 0)
-    return delta;
-  return ((((delta + size / 2) % size) + size) % size) - size / 2;
-};
-
-const circularMean = (values: number[], period: number) => {
-  if (!values.length || !Number.isFinite(period) || period <= 0) return 0;
-  let sinSum = 0;
-  let cosSum = 0;
-  for (const v of values) {
-    const angle = (2 * Math.PI * wrapCoord(v, period)) / period;
-    sinSum += Math.sin(angle);
-    cosSum += Math.cos(angle);
-  }
-  const meanAngle = Math.atan2(sinSum / values.length, cosSum / values.length);
-  const normalized = meanAngle < 0 ? meanAngle + 2 * Math.PI : meanAngle;
-  return (normalized / (2 * Math.PI)) * period;
-};
-
 export interface PlayerClusterSummary {
   id: string;
   memberIds: string[];
@@ -44,25 +16,9 @@ export interface AnnotatedCluster extends PlayerClusterSummary {
   isMulti: boolean;
 }
 
-const averagePosition = (
-  members: PlayerSnapshot[],
-  worldSize?: WorldSize
-): Vec2 => {
+const averagePosition = (members: PlayerSnapshot[]): Vec2 => {
   if (members.length === 0) {
     return { x: 0, y: 0 };
-  }
-  // 토러스 월드에서는 경계(0/width)를 넘는 클러스터가 생길 수 있으므로 원형 평균을 사용
-  if (worldSize && worldSize.width > 0 && worldSize.height > 0) {
-    return {
-      x: circularMean(
-        members.map((m) => m.cell.position.x),
-        worldSize.width
-      ),
-      y: circularMean(
-        members.map((m) => m.cell.position.y),
-        worldSize.height
-      ),
-    };
   }
   const total = members.reduce(
     (acc, member) => {
@@ -80,8 +36,7 @@ const averagePosition = (
 
 export const computePlayerClusters = (
   players: PlayerSnapshot[],
-  radius = DEFAULT_CLUSTER_RADIUS,
-  worldSize?: WorldSize
+  radius = DEFAULT_CLUSTER_RADIUS
 ): PlayerClusterSummary[] => {
   if (!players.length) {
     return [];
@@ -101,16 +56,8 @@ export const computePlayerClusters = (
       members.push(current);
       for (const candidate of players) {
         if (visited.has(candidate.id)) continue;
-        const rawDx = current.cell.position.x - candidate.cell.position.x;
-        const rawDy = current.cell.position.y - candidate.cell.position.y;
-        const dx =
-          worldSize && worldSize.width > 0
-            ? wrapDelta(rawDx, worldSize.width)
-            : rawDx;
-        const dy =
-          worldSize && worldSize.height > 0
-            ? wrapDelta(rawDy, worldSize.height)
-            : rawDy;
+        const dx = current.cell.position.x - candidate.cell.position.x;
+        const dy = current.cell.position.y - candidate.cell.position.y;
         if (dx * dx + dy * dy <= radiusSq) {
           visited.add(candidate.id);
           queue.push(candidate);
@@ -123,7 +70,7 @@ export const computePlayerClusters = (
       id,
       memberIds: members.map((member) => member.id),
       memberCount: members.length,
-      centroid: averagePosition(members, worldSize),
+      centroid: averagePosition(members),
       members,
     });
   }
@@ -133,13 +80,12 @@ export const computePlayerClusters = (
 
 export const analyzeClusters = (
   players: PlayerSnapshot[],
-  radius = DEFAULT_CLUSTER_RADIUS,
-  worldSize?: WorldSize
+  radius = DEFAULT_CLUSTER_RADIUS
 ): {
   clusters: AnnotatedCluster[];
   assignments: Map<string, AnnotatedCluster>;
 } => {
-  const baseClusters = computePlayerClusters(players, radius, worldSize);
+  const baseClusters = computePlayerClusters(players, radius);
   const sorted = [...baseClusters].sort(
     (a, b) => b.memberCount - a.memberCount
   );

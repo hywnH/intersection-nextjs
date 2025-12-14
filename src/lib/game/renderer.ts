@@ -50,20 +50,9 @@ const project = (
 ) => {
   const cameraPos = overrides?.cameraPosition ?? state.camera.position;
   const zoom = overrides?.zoom ?? state.camera.zoom;
-  // 토러스(무한 래핑) 월드: 카메라 기준으로 가장 가까운 dx/dy를 선택
-  // - 예) x=10과 x=4990(월드폭=5000)은 서로 20만큼 떨어진 것으로 처리
-  const wrapDelta = (delta: number, size: number) => {
-    if (!Number.isFinite(delta) || !Number.isFinite(size) || size <= 0) {
-      return delta;
-    }
-    // [-size/2, size/2) 범위로 접어 가장 가까운 거리 선택
-    return ((((delta + size / 2) % size) + size) % size) - size / 2;
-  };
-  const dx = wrapDelta(position.x - cameraPos.x, state.gameSize.width);
-  const dy = wrapDelta(position.y - cameraPos.y, state.gameSize.height);
   return {
-    x: dx * zoom + width / 2,
-    y: dy * zoom + height / 2,
+    x: (position.x - cameraPos.x) * zoom + width / 2,
+    y: (position.y - cameraPos.y) * zoom + height / 2,
   };
 };
 
@@ -77,19 +66,6 @@ export const clearScene = (
 };
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
-
-const smoothstep = (edge0: number, edge1: number, x: number) => {
-  const t = clamp01((x - edge0) / Math.max(1e-6, edge1 - edge0));
-  return t * t * (3 - 2 * t);
-};
-
-// 화면 가장자리(뷰포트)로 갈수록 0으로 페이드, 안쪽으로 갈수록 1로 복귀
-const computeEdgeFade = (pos: Vec2, width: number, height: number) => {
-  const FADE_PX = 300;
-  const d = Math.min(pos.x, width - pos.x, pos.y, height - pos.y);
-  if (!Number.isFinite(d)) return 1;
-  return smoothstep(0, FADE_PX, d);
-};
 
 const computeBlend = (
   projection: ProjectionMode,
@@ -117,10 +93,63 @@ const simpleNoise = (x: number, y: number, t: number): number => {
   );
 };
 
+// 3D 위치를 위한 노이즈 (Z-depth 시뮬레이션)
+const noise3D = (x: number, y: number, z: number, t: number): number => {
+  return (
+    Math.sin(x * 0.4 + t * 0.8) * 0.4 +
+    Math.cos(y * 0.4 + t * 0.6) * 0.3 +
+    Math.sin(z * 0.3 + t * 1.0) * 0.2 +
+    Math.sin((x + y + z) * 0.2 + t * 1.5) * 0.1
+  );
+};
+
 // 시드 기반 랜덤 함수 (일관된 값 생성)
 const seededRandom = (seed: number) => {
   const x = Math.sin(seed) * 10000;
   return x - Math.floor(x);
+};
+
+// 파도처럼 출렁이는 파티클 클러스터 렌더링 (유기적으로 연결된 느낌)
+const renderParticleCluster = (
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  baseSize: number,
+  alpha: number,
+  time: number,
+  seed: number
+) => {
+  // 파도처럼 보이도록 더 많은 서브 파티클과 더 큰 클러스터 (유기적 연결)
+  const subParticleCount = 12 + Math.floor(seededRandom(seed * 3.7) * 16); // 12-28개 (더 많게)
+  const clusterRadius = baseSize * (0.6 + seededRandom(seed * 2.1) * 0.8); // 더 큰 클러스터 (겹치게)
+  
+  for (let j = 0; j < subParticleCount; j++) {
+    const subAngle = (j / subParticleCount) * Math.PI * 2;
+    const subRadius = clusterRadius * (0.15 + seededRandom(seed * 5.1 + j) * 0.85);
+    
+    // 파도처럼 출렁이는 움직임 (유기적으로 연결된 느낌)
+    const waveX = simpleNoise(centerX * 0.012 + time * 0.9, seed + j, time * 0.7);
+    const waveY = simpleNoise(centerY * 0.012 + time * 0.9, seed + j + 100, time * 0.7);
+    const moveAmount = baseSize * 0.3; // 더 큰 움직임 (파도처럼)
+    
+    const subX = centerX + Math.cos(subAngle) * subRadius + waveX * moveAmount;
+    const subY = centerY + Math.sin(subAngle) * subRadius + waveY * moveAmount;
+    
+    // Z-depth 시뮬레이션 (앞뒤에 따라 크기와 밝기 변화)
+    const zDepth = noise3D(centerX * 0.02, centerY * 0.02, seed + j, time * 0.3);
+    const zFactor = (zDepth + 1) * 0.5; // 0~1로 정규화
+    
+    // 파도처럼 보이도록 더 큰 크기 (유기적으로 연결)
+    const subSize = baseSize * 0.5 * (0.75 + zFactor * 0.25); // 크기 증가 (더 겹치게)
+    const subAlpha = alpha * (0.85 + zFactor * 0.15); // 알파 증가
+    
+    // 서브 파티클 그리기
+    ctx.beginPath();
+    ctx.arc(subX, subY, subSize, 0, Math.PI * 2);
+    // 단색 채우기 (그라데이션 제거)
+    ctx.fillStyle = `rgba(255,255,255,${subAlpha})`;
+    ctx.fill();
+  }
 };
 
 // 파티클 기반 공 렌더링 (중력 반영 버전: 비주얼 변화 강조)
@@ -133,8 +162,7 @@ const renderParticleBall = (
   _velocity?: Vec2, // 속도 정보 (현재는 사용하지 않지만 시그니처 유지)
   gravityDir?: Vec2, // 서버에서 계산된 중력 방향 벡터
   gravityDist?: number, // 서버에서 계산된 가장 가까운 플레이어와의 거리
-  particleScale = 1, // 파티클 크기 스케일 (글로벌 뷰용)
-  alphaScale = 1 // 가장자리 페이드 등 알파 스케일
+  particleScale = 1 // 파티클 크기 스케일 (글로벌 뷰용)
 ) => {
   // 중력 영향력 계산 (거리 기반만 사용 - 다른 플레이어가 있을 때만)
   // 거리 기반 중력 강도 (가까울수록 강함, 최대 거리 900 기준까지 서서히 반영)
@@ -158,10 +186,9 @@ const renderParticleBall = (
     }
   }
   // 단일 레이어, 고정된 작은 점들로만 구 형태를 표현
-  const adjustedRadius = baseRadius * 2.8;
+  const adjustedRadius = baseRadius * 1.55;
   const particleCount = 260;
-  const hasGravDir =
-    gravityInfluence > 0 && (gravityDirX !== 0 || gravityDirY !== 0);
+  const hasGravDir = gravityInfluence > 0 && (gravityDirX !== 0 || gravityDirY !== 0);
   const gravAngle = hasGravDir ? Math.atan2(gravityDirY, gravityDirX) : 0;
 
   for (let i = 0; i < particleCount; i += 1) {
@@ -201,7 +228,8 @@ const renderParticleBall = (
       adjustedRadius *
       simpleNoise(wobbleSeedX * 0.3, wobbleSeedY * 0.3, time * 0.15);
     const wobbleAngle =
-      2 * simpleNoise(wobbleSeedX * 0.5, wobbleSeedY * 0.5, time * 0.18);
+      2 *
+      simpleNoise(wobbleSeedX * 0.5, wobbleSeedY * 0.5, time * 0.18);
 
     const finalRadius = Math.min(radius + wobbleR, radius);
     const finalAngle = angle + wobbleAngle;
@@ -210,17 +238,19 @@ const renderParticleBall = (
     const y = centerY + Math.sin(finalAngle) * finalRadius + driftY;
 
     // 기본 밝기에 시간에 따른 잔잔한 반짝임 + 중력 방향 강조
-    const baseAlpha = 1.0;
-    const flicker = 0.6 * simpleNoise(i * 0.7, 0.0, time * 0.1 * i); // -0.18 ~ 0.18
+    const baseAlpha = 0.55;
+    const flicker =
+      0.6 *
+      simpleNoise(i * 0.7, 0.0, time * 0.1 * i); // -0.18 ~ 0.18
     const alphaBoost = 0.7 * gravityInfluence * alignment;
     const alpha = Math.max(
       0.2,
-      Math.min(1, (baseAlpha + flicker + alphaBoost) * alphaScale)
+      Math.min(1, baseAlpha + flicker + alphaBoost)
     );
 
     // 더 작고 선명한 점 (최소 크기와 스케일을 낮춰서 모바일에서도 작게 보이도록)
     const size =
-      Math.max(0.5, Math.min(1.2, baseRadius * 0.035)) * particleScale;
+      Math.max(0.2, Math.min(0.5, baseRadius * 0.014)) * particleScale;
 
     ctx.beginPath();
     ctx.arc(x, y, size, 0, Math.PI * 2);
@@ -280,13 +310,7 @@ const renderPlayers = ({
     // dead-reckoning(속도 기반 추가 예측) 없이,
     // 현재 스냅샷(또는 보정된 서버 위치)만 기준으로 화면 좌표 계산
     const renderBasePosition = cell.position;
-    const planePos = project(
-      state,
-      width,
-      height,
-      renderBasePosition,
-      overrides
-    );
+    const planePos = project(state, width, height, renderBasePosition, overrides);
     const idx = orderIndex.get(playerId) ?? index;
     const laneY = laneGap * (idx + 1);
     const lineX = (renderBasePosition.x / state.gameSize.width) * width;
@@ -295,7 +319,6 @@ const renderPlayers = ({
       x: planePos.x * (1 - blend) + lineX * blend,
       y: planePos.y * (1 - blend) + laneY * blend,
     };
-    const edgeFade = isGlobal ? computeEdgeFade(screenPos, width, height) : 1;
     let radius = cell.radius * state.camera.zoom * (1 - blend) + 8 * blend;
 
     const isSelf = player.isSelf;
@@ -334,10 +357,10 @@ const renderPlayers = ({
       ctx.fill();
 
       renderParticleBall(
-        ctx,
-        screenPos.x,
-        screenPos.y,
-        radius,
+        ctx, 
+        screenPos.x, 
+        screenPos.y, 
+        radius, 
         time,
         cell.velocity, // velocity 정보 전달
         player.gravityDir, // 서버에서 계산된 중력 방향
@@ -356,8 +379,7 @@ const renderPlayers = ({
         cell.velocity,
         player.gravityDir,
         player.gravityDist,
-        1.5,
-        edgeFade
+        1.5
       );
     } else {
       // 기타 모드에서는 간단한 원으로 유지
@@ -507,13 +529,6 @@ const renderCollisionConnections = ({
       x: planeB.x * (1 - blend) + lineBx * blend,
       y: planeB.y * (1 - blend) + laneBy * blend,
     };
-    const edgeFade =
-      state.mode === "global"
-        ? Math.min(
-            computeEdgeFade(posA, width, height),
-            computeEdgeFade(posB, width, height)
-          )
-        : 1;
     if (state.mode === "personal") {
       // 개인 뷰: 스프링 대신 일직선 빛 기둥 느낌으로
       const dx = posB.x - posA.x;
@@ -565,7 +580,7 @@ const renderCollisionConnections = ({
       const steps = 5;
       for (let i = 0; i < steps; i += 1) {
         const t = i / (steps - 1);
-        const alpha = 0.16 * (1 - t) * edgeFade;
+        const alpha = 0.16 * (1 - t);
         const width = 6 + 14 * t;
         ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
         ctx.lineWidth = width;
@@ -729,9 +744,7 @@ const renderSelfTrail = ({
     // 각 가닥마다 유효한 길이(최근 위치에서 얼마나 멀리까지 이어질지)를 다르게 설정
     const strandCutoffs = strandOffsets.map((offset, idx) => {
       // 중앙선은 가장 길게, 양 옆은 조금 더 짧게
-      const t =
-        Math.abs(offset) /
-        Math.max(0.0001, Math.max(...strandOffsets.map(Math.abs)));
+      const t = Math.abs(offset) / Math.max(0.0001, Math.max(...strandOffsets.map(Math.abs)));
       return 0.02 + 0.18 * t; // 0.02 ~ 0.2
     });
 
@@ -748,8 +761,13 @@ const renderSelfTrail = ({
         // 꼬리 쪽(오래된 포인트)은 더 많이 벌어지고, 현재 위치 쪽은 모이게
         const diverge = (1 - p.life) * baseSpread * offsetScale;
         // 약간의 울렁거리는 느낌을 위해, 시간/라인/인덱스 기반 노이즈로 진동량을 섞어준다
-        const noise = simpleNoise(i * 0.35 + idx * 1.1, idx * 0.6, now * 0.001);
-        const wobble = (4 + 10 * noise) * (1 - t) * speedFactor; // 라인마다/구간마다 다른 크기의 흔들림
+        const noise = simpleNoise(
+          i * 0.35 + idx * 1.1,
+          idx * 0.6,
+          now * 0.001
+        );
+        const wobble =
+          (4 + 10 * noise) * (1 - t) * speedFactor; // 라인마다/구간마다 다른 크기의 흔들림
         const x = p.x + n.x * (diverge + wobble);
         const y = p.y + n.y * (diverge + wobble);
         // 이 가닥의 "보이는 구간" 내에서 0~1로 다시 정규화된 life
@@ -759,8 +777,7 @@ const renderSelfTrail = ({
         // 꼬리로 갈수록 normLife가 점점 0에 수렴하면서 알파도 자연스럽게 0까지 페이드아웃
         const alpha = 0.1 * t * normLife * speedFactor;
         const widthScale = 0.7 * normLife;
-        ctx.lineWidth =
-          (0.4 + 1.0 * t) * (0.4 + 0.6 * speedFactor) * widthScale;
+        ctx.lineWidth = (0.4 + 1.0 * t) * (0.4 + 0.6 * speedFactor) * widthScale;
         ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
         if (i === 0) {
           ctx.moveTo(x, y);
