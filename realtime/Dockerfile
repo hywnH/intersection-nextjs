@@ -12,6 +12,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY --from=deps /app/dist ./dist
+COPY --from=deps /app/assets ./assets
 COPY --from=deps /app/node_modules ./node_modules
 
 # Render/일반 PaaS에서 PORT/HOST 사용

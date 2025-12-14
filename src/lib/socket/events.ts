@@ -45,6 +45,16 @@ export const registerSocketEvents = ({
   displayName,
   getState,
 }: RegisterSocketOptions) => {
+  const perf = (() => {
+    const g = globalThis as unknown as {
+      __intersectionPerf?: Record<string, unknown>;
+    };
+    if (!g.__intersectionPerf) g.__intersectionPerf = {};
+    return g.__intersectionPerf;
+  })();
+  const nowMs = () =>
+    typeof performance !== "undefined" ? performance.now() : Date.now();
+
   const handlers: Array<[string, (...args: unknown[]) => void]> = [];
   const normalizeNoiseSlots = (payload: unknown): NoiseSlot[] => {
     const base = Array.from({ length: 4 }, (_, slot) => ({
@@ -134,6 +144,80 @@ export const registerSocketEvents = ({
     }
   };
 
+  // global(spectator) 모드에서 과도한 dispatch/리렌더로 프리즈가 나지 않도록
+  // serverTellPlayerMove 처리를 저주파(≈15Hz)로 배치한다.
+  let pendingGlobalMove: {
+    playerData: ServerPlayer;
+    userData: ServerPlayer[];
+    meta?: {
+      collisions?: ServerCollisionLine[];
+      collisionEvents?: ServerCollisionEvent[];
+      fast?: boolean;
+      gravity?: { x: number; y: number; dist: number } | null;
+      isCollidingSelf?: boolean;
+    };
+  } | null = null;
+  let globalMoveTimer: number | null = null;
+  const GLOBAL_MOVE_THROTTLE_MS = 66; // ~15Hz
+
+  const flushGlobalMove = () => {
+    globalMoveTimer = null;
+    const pending = pendingGlobalMove;
+    pendingGlobalMove = null;
+    if (!pending) return;
+
+    const t0 = nowMs();
+    const effectivePlayerData = undefined;
+    const currentSelfId = getState().selfId ?? undefined;
+    const { players, order } = mapServerPayloadToSnapshots({
+      playerData: effectivePlayerData,
+      userData: pending.userData,
+      mode,
+      selfId: currentSelfId,
+      displayName,
+    });
+
+    // spectator는 fast 업데이트를 쓰지 않으므로 그대로 반영
+    dispatch({ type: "SET_PLAYERS", players, order, selfId: currentSelfId });
+
+    // global 모드에서는 state.camera를 렌더에 거의 사용하지 않으므로
+    // 매 틱마다 SET_CAMERA를 쏘지 않는다(불필요한 리렌더 유발).
+
+    if (pending.meta?.collisions) {
+      dispatch({ type: "SET_COLLISION_LINES", lines: pending.meta.collisions });
+    }
+
+    if (pending.meta?.collisionEvents?.length) {
+      const marks = pending.meta.collisionEvents.map((event) => ({
+        id: event.id,
+        position: event.position,
+        radius: event.radius ?? 80,
+        timestamp: event.timestamp,
+        players: event.players,
+      }));
+      dispatch({
+        type: "PUSH_COLLISION_EVENTS",
+        marks,
+        highlight: false,
+      });
+    }
+
+    const dt = nowMs() - t0;
+    perf.globalMoveLastMs = dt;
+    perf.globalMoveLastAt = Date.now();
+    perf.globalMoveCount = Number(perf.globalMoveCount || 0) + 1;
+    perf.globalMoveMaxMs = Math.max(Number(perf.globalMoveMaxMs || 0), dt);
+  };
+
+  const scheduleGlobalMove = () => {
+    if (typeof window === "undefined") return;
+    if (globalMoveTimer !== null) return;
+    globalMoveTimer = window.setTimeout(
+      flushGlobalMove,
+      GLOBAL_MOVE_THROTTLE_MS
+    );
+  };
+
   const onPlayerMove = (
     playerData: ServerPlayer = {},
     userData: ServerPlayer[] = [],
@@ -145,6 +229,12 @@ export const registerSocketEvents = ({
       isCollidingSelf?: boolean;
     }
   ) => {
+    if (mode === "global") {
+      pendingGlobalMove = { playerData, userData, meta };
+      scheduleGlobalMove();
+      return;
+    }
+
     const effectivePlayerData = mode === "personal" ? playerData : undefined;
     const currentSelfId =
       getState().selfId ?? playerData.id ?? socket.id ?? undefined;
@@ -208,14 +298,7 @@ export const registerSocketEvents = ({
         });
       }
     } else {
-      const focus = {
-        x: getState().gameSize.width / 2,
-        y: getState().gameSize.height / 2,
-      };
-      dispatch({
-        type: "SET_CAMERA",
-        camera: { position: focus },
-      });
+      // non-personal 모드에서는 카메라를 별도로 강제 갱신하지 않는다.
     }
 
     if (meta?.collisions) {
@@ -284,7 +367,39 @@ export const registerSocketEvents = ({
     });
   };
 
+  // global 모드에서 audioGlobal이 30Hz로 들어오면 React 리렌더가 과도해질 수 있으므로
+  // 오디오는 저주파(≈5Hz)로만 state에 반영한다. (NoiseCraft 전송은 별도로 500ms 스로틀됨)
+  let pendingAudioGlobal: ServerAudioGlobal | null = null;
+  let audioGlobalTimer: number | null = null;
+  const AUDIO_GLOBAL_THROTTLE_MS = 200;
+  const flushAudioGlobal = () => {
+    audioGlobalTimer = null;
+    const payload = pendingAudioGlobal;
+    pendingAudioGlobal = null;
+    if (!payload) return;
+    dispatch({
+      type: "SET_AUDIO",
+      audio: {
+        global: toClusterState(payload?.cluster, "global"),
+      },
+    });
+    perf.audioGlobalLastAt = Date.now();
+    perf.audioGlobalCount = Number(perf.audioGlobalCount || 0) + 1;
+  };
+  const scheduleAudioGlobal = () => {
+    if (typeof window === "undefined") return;
+    if (audioGlobalTimer !== null) return;
+    audioGlobalTimer = window.setTimeout(
+      flushAudioGlobal,
+      AUDIO_GLOBAL_THROTTLE_MS
+    );
+  };
   const onAudioGlobal = (payload?: ServerAudioGlobal) => {
+    if (mode === "global") {
+      pendingAudioGlobal = payload ?? null;
+      scheduleAudioGlobal();
+      return;
+    }
     dispatch({
       type: "SET_AUDIO",
       audio: {
@@ -402,6 +517,14 @@ export const registerSocketEvents = ({
   });
 
   return () => {
+    if (typeof window !== "undefined") {
+      if (globalMoveTimer !== null) window.clearTimeout(globalMoveTimer);
+      if (audioGlobalTimer !== null) window.clearTimeout(audioGlobalTimer);
+    }
+    globalMoveTimer = null;
+    pendingGlobalMove = null;
+    audioGlobalTimer = null;
+    pendingAudioGlobal = null;
     handlers.forEach(([event, handler]) => {
       socket.off(event, handler);
     });

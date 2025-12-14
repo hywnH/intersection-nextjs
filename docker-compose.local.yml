@@ -17,16 +17,17 @@ services:
              yarn dev -p 3000 -H 0.0.0.0"
     environment:
       - NODE_ENV=development
-      # 로컬 개발용: 브라우저에서 접속하는 공개 WS/HTTP 주소
-      - NEXT_PUBLIC_WS_URL=http://localhost:3001/socket
-      - NEXT_PUBLIC_NOISECRAFT_WS_URL=http://localhost:4000
-      # 호스트 URL (브라우저 기준 origin)
-      - NEXT_PUBLIC_HOST_URL=http://localhost:3000
-      # 내부 통신용 주소 (컨테이너 간)
+      # 로컬 HTTPS 개발용: Caddy를 통해 한 호스트(https://localhost)로 접근
+      # - 웹: https://localhost (Caddy -> web:3000)
+      # - 실시간 WS: https://localhost/socket (Caddy -> game:3001)
+      # - NoiseCraft: https://localhost/audiocraft (Caddy -> noisecraft:4000)
+      - NEXT_PUBLIC_WS_URL=/socket
+      - NEXT_PUBLIC_NOISECRAFT_WS_URL=/audiocraft
+      - NEXT_PUBLIC_HOST_URL=https://localhost
       - REALTIME_INTERNAL_URL=http://game:3001
       - NEXT_PUBLIC_PERSONAL_AUDIO_MODE=both
-      - NEXT_PUBLIC_NOISECRAFT_PERSONAL_PATCH_SRC=/examples/indiv_audio_map.ncft
-      - NEXT_PUBLIC_NOISECRAFT_GLOBAL_PATCH_SRC=/examples/indiv_audio_map.ncft
+      - NEXT_PUBLIC_NOISECRAFT_PERSONAL_PATCH_SRC=/examples/indiv_audio_map_v2.ncft
+      - NEXT_PUBLIC_NOISECRAFT_GLOBAL_PATCH_SRC=/examples/glb_audio_map.ncft
     depends_on:
       - game
       - noisecraft
@@ -73,6 +74,19 @@ services:
       - HTTP_PORT_NO=4000
     restart: unless-stopped
 
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - web
+      - game
+      - noisecraft
+
 volumes:
   node_modules:
   game_node_modules:
@@ -81,4 +95,3 @@ volumes:
 networks:
   default:
     name: intersection-dev-local
-

@@ -1,0 +1,50 @@
+{
+  # 로컬 개발용 자체 CA(내부 인증서) 사용
+  # 문제 발생 시 원인 파악을 위해 로그를 상세하게
+  # 기본은 INFO로 조용하게, 필요하면 env로 조절:
+  #   CADDY_LOG_LEVEL=DEBUG docker compose up
+  log {
+    level {$CADDY_LOG_LEVEL:INFO}
+  }
+}
+
+:80 {
+  redir https://{host}{uri}
+}
+
+:443 {
+  # :443 처럼 호스트를 지정하지 않고 받는 경우,
+  # 요청된 Host(SNI)에 대해 내부 인증서를 on-demand로 발급해야 한다.
+  tls internal {
+    on_demand
+  }
+
+  # 네트워크 로드 분석용: 접근 로그 + 응답 압축
+  log {
+    output stdout
+    format json
+  }
+  encode gzip zstd
+
+  @socket path /socket*
+  reverse_proxy @socket game:3001
+
+  # /audiocraft 프리픽스를 제거한 뒤 NoiseCraft로 전달
+  handle_path /audiocraft* {
+    reverse_proxy noisecraft:4000
+  }
+
+  # NoiseCraft 정적 리소스(/public/*)도 NoiseCraft로 프록시
+  handle /public* {
+    reverse_proxy noisecraft:4000
+  }
+
+  # 나머지 모든 트래픽은 Next.js dev 서버로 전달
+  # prod 모드에서는 next build 중 잠시 3000이 열리지 않아
+  # 초기 요청이 502로 떨어질 수 있으니, 잠깐 재시도한다.
+  reverse_proxy web:3000 {
+    # 로컬 개발에선 30s는 체감이 너무 느려서 짧게
+    lb_try_duration 5s
+    lb_try_interval 500ms
+  }
+}

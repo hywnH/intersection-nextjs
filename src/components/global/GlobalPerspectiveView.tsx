@@ -21,7 +21,12 @@ import {
   postNoiseCraftParams,
   resolveNoiseCraftEmbed,
 } from "@/lib/audio/noiseCraft";
-import type { NoiseCraftParam } from "@/lib/audio/noiseCraftCore";
+import type { ServerAudioGlobalV2 } from "@/types/server";
+import {
+  postMonoSeqGridDiff,
+  resetNoiseCraftSequencerCache,
+} from "@/lib/audio/noiseCraftSequencer";
+import PerfOverlay from "@/components/shared/PerfOverlay";
 
 const PLANE_SCALE = 0.03;
 const FRONT_DEPTH_SCALE = 0.03;
@@ -45,6 +50,35 @@ const SPRING_GLOW_RADIUS = 0.8;
 const SPRING_LINE_OPACITY = 0.6;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+const smoothstep = (edge0: number, edge1: number, x: number) => {
+  const t = clamp01((x - edge0) / Math.max(1e-6, edge1 - edge0));
+  return t * t * (3 - 2 * t);
+};
+
+// NDC 기준 화면 가장자리 페이드 (0: 가장자리, 1: 충분히 안쪽)
+const computeEdgeFadeNdc = (ndcX: number, ndcY: number) => {
+  const margin = 0.18; // 화면 가장자리에서 약 18% 구간을 페이드
+  const d = 1 - Math.max(Math.abs(ndcX), Math.abs(ndcY)); // 0(가장자리)~1(중앙)
+  return smoothstep(0, margin, d);
+};
+
+// eslint(react-hooks/purity) 대응:
+// - render/useMemo 중 Math.random/performance.now 같은 impure 호출을 피하고
+// - id 기반의 결정적(재현 가능한) pseudo-random을 사용한다.
+const hashStringToSeed = (input: string) => {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+};
+
+const seededRandom = (seed: number) => {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+};
 
 type ViewMode = "front" | "perspective";
 type PlayerEntry = GameState["players"][string];
@@ -133,6 +167,7 @@ interface PlayerPlaneProps {
   isFocused: boolean;
   worldX: number;
   worldY: number;
+  opacityScale?: number;
 }
 
 const PlayerParticleSphere = ({
@@ -140,6 +175,7 @@ const PlayerParticleSphere = ({
   color,
   isSelf,
   position,
+  opacityScale = 1,
   gravityDir,
   gravityDist,
 }: {
@@ -147,10 +183,21 @@ const PlayerParticleSphere = ({
   color: string;
   isSelf: boolean;
   position: [number, number, number];
+  opacityScale?: number;
   gravityDir?: { x: number; y: number };
   gravityDist?: number;
 }) => {
+  const groupRef = useRef<THREE.Group>(null);
   const pointsRef = useRef<THREE.Points>(null);
+  const pointsMatRef = useRef<THREE.PointsMaterial>(null);
+  const coreMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const { camera } = useThree();
+  const tmpWorld = useMemo(() => new THREE.Vector3(), []);
+  const tmpNdc = useMemo(() => new THREE.Vector3(), []);
+
+  const baseCoreOpacity = 1;
+  const basePointsOpacity = isSelf ? 0.9 : 0.6;
+
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
     // 반지름 주변 껍질에만 배치될 파티클 수
@@ -158,6 +205,7 @@ const PlayerParticleSphere = ({
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const baseColor = new THREE.Color(color);
+    const seedBase = hashStringToSeed(`${color}:${radius}:${isSelf ? 1 : 0}`);
 
     // 중력 영향력 계산 (거리 기반)
     const hasGravityDist =
@@ -171,7 +219,7 @@ const PlayerParticleSphere = ({
     // 중력 방향 정규화 (XY 평면 기준)
     let gx = 0;
     let gy = 0;
-    let gz = 0;
+    const gz = 0;
     if (gravityDir) {
       const mag = Math.hypot(gravityDir.x, gravityDir.y);
       if (mag > 0.0001) {
@@ -182,9 +230,9 @@ const PlayerParticleSphere = ({
     const hasGravity = distFactor > 0 && (gx !== 0 || gy !== 0);
 
     for (let i = 0; i < count; i += 1) {
-      // 균일한 구 표면 분포 (반지름 주변의 얇은 껍질에만 분포)
-      const u = Math.random();
-      const v = Math.random();
+      // 균일한 구 표면 분포 (결정적 pseudo-random)
+      const u = seededRandom(seedBase + i * 11.17);
+      const v = seededRandom(seedBase + i * 29.31 + 13.7);
       const theta = 2 * Math.PI * u;
       const phi = Math.acos(2 * v - 1);
       const dirX = Math.sin(phi) * Math.cos(theta);
@@ -200,7 +248,8 @@ const PlayerParticleSphere = ({
       const alignBoost = Math.pow(align, 1.6);
       // 반지름 주변의 얇은 띠에만 위치시키되, 중력 방향 쪽에서만 살짝 더 부풀리기
       const shellThickness = radius * 0.08;
-      const radialOffset = (Math.random() - 0.5) * shellThickness;
+      const radialOffset =
+        (seededRandom(seedBase + i * 3.77 + 101.3) - 0.5) * shellThickness;
       const radialBoost = 0.14 * distFactor * alignBoost;
       const r = radius + radialOffset + radialBoost * radius;
 
@@ -212,7 +261,8 @@ const PlayerParticleSphere = ({
       positions[i * 3 + 2] = z;
 
       // 기본 밝기: 어두운(희미한) 점을 더 많이
-      const baseBrightness = 0.25 + 0.75 * Math.pow(Math.random(), 2.0);
+      const baseBrightness =
+        0.25 + 0.75 * Math.pow(seededRandom(seedBase + i * 7.13 + 303.9), 2.0);
       const gravityHighlight =
         hasGravity && align > 0 ? 0.9 * distFactor * Math.pow(align, 1.4) : 0;
       const brightness = Math.min(1, baseBrightness + gravityHighlight);
@@ -224,35 +274,48 @@ const PlayerParticleSphere = ({
     g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     return g;
-  }, [radius, color, gravityDir, gravityDist]);
+  }, [radius, color, isSelf, gravityDir, gravityDist]);
 
   useFrame((_, delta) => {
     if (!pointsRef.current) return;
+    // 화면 가장자리 페이드: 현재 월드 위치를 NDC로 투영해 opacity에 반영
+    if (groupRef.current) {
+      groupRef.current.getWorldPosition(tmpWorld);
+      tmpNdc.copy(tmpWorld).project(camera);
+      const fade = computeEdgeFadeNdc(tmpNdc.x, tmpNdc.y);
+      const combined = fade * opacityScale;
+      if (pointsMatRef.current) {
+        pointsMatRef.current.opacity = basePointsOpacity * combined;
+      }
+      if (coreMatRef.current) {
+        coreMatRef.current.opacity = baseCoreOpacity * combined;
+      }
+    }
     pointsRef.current.rotation.y += 0.18 * delta;
     pointsRef.current.rotation.x += 0.07 * delta;
   });
 
   return (
-    <group position={position}>
-      {/* 중앙 solid 구 (항상 하얗고 살짝 빛나게) */}
+    <group ref={groupRef} position={position}>
+      {/* 중앙 solid 구 */}
       <mesh>
         <sphereGeometry args={[radius * 0.55, 28, 28]} />
-        <meshStandardMaterial
+        <meshBasicMaterial
+          ref={coreMatRef}
           color="#ffffff"
-          emissive="#ffffff"
-          emissiveIntensity={isSelf ? 2.0 : 1.2}
-          metalness={0.15}
-          roughness={0.25}
+          transparent
+          opacity={baseCoreOpacity}
         />
       </mesh>
       {/* 반지름 주변의 파티클 껍질 */}
       <points ref={pointsRef} geometry={geometry}>
         <pointsMaterial
+          ref={pointsMatRef}
           vertexColors
           size={radius * 0.013}
           sizeAttenuation
           transparent
-          opacity={isSelf ? 0.9 : 0.6}
+          opacity={basePointsOpacity}
           depthWrite={false}
         />
       </points>
@@ -268,6 +331,7 @@ const PlayerPlane = ({
   isFocused,
   worldX,
   worldY,
+  opacityScale = 1,
 }: PlayerPlaneProps) => {
   // 글로벌 3D 뷰에서는 공을 조금 더 크게 표시
   const radius = 100 * PLANE_SCALE;
@@ -278,6 +342,7 @@ const PlayerPlane = ({
         color={player.cell.color || "#ffffff"}
         isSelf={Boolean(player.isSelf)}
         position={[worldX, worldY, 0.05]}
+        opacityScale={opacityScale}
         gravityDir={player.gravityDir}
         gravityDist={player.gravityDist}
       />
@@ -334,180 +399,117 @@ const GlobalPerspectiveView = ({
   showHud = true,
   showModeToggle = true,
 }: GlobalPerspectiveViewProps) => {
-  const { state, players } = useGameClient("global");
+  const { state, players, socket } = useGameClient("global");
   const audioIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [noiseCraftOrigin, setNoiseCraftOrigin] = useState<string | null>(null);
-  const [noiseCraftSrc, setNoiseCraftSrc] = useState("about:blank");
-  const lastParamUpdateRef = useRef(0);
-  const clusterPresenceRef = useRef<
-    Map<string, { value: number; lastSeen: number }>
-  >(new Map());
-  const paramSmoothingRef = useRef<
-    Map<string, { current: number; target: number }>
-  >(new Map());
+  // Hydration-safe: 서버/클라 첫 렌더는 about:blank로 맞추고,
+  // 마운트 이후에만 실제 src/origin을 계산해 주입한다.
+  const [noiseCraftConfig, setNoiseCraftConfig] = useState<{
+    src: string;
+    origin: string | null;
+  }>({ src: "about:blank", origin: null });
+  const noiseCraftOrigin = noiseCraftConfig.origin ?? null;
+  const noiseCraftSrc = noiseCraftConfig.src ?? "about:blank";
   const [viewMode, setViewMode] = useState<ViewMode>("front");
   const { clusters, assignments } = useMemo(
-    () => analyzeClusters(players),
-    [players]
+    () => analyzeClusters(players, undefined, state.gameSize),
+    [players, state.gameSize]
   );
   const significantClusters = useMemo(
     () => clusters.filter((cluster) => cluster.isMulti),
     [clusters]
   );
 
+  const showPerf = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("perf") === "1";
+  }, []);
+  const [isGlobalDebugView, setIsGlobalDebugView] = useState(false);
+
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const { src, origin } = resolveNoiseCraftEmbed();
-    setNoiseCraftSrc(src);
-    setNoiseCraftOrigin(origin);
-    if (audioIframeRef.current) {
-      audioIframeRef.current.src = src;
-    }
+    // eslint(react-hooks/set-state-in-effect): defer state update to avoid sync cascades
+    const id = window.setTimeout(() => {
+      setNoiseCraftConfig(resolveNoiseCraftEmbed());
+    }, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
-  // 글로벌 퍼스펙티브 뷰용 오디오 파라미터:
-  // - node 220: 가장 큰 클러스터의 "지속 강도" (0~1)
-  // - node 221: 두 번째 클러스터의 "지속 강도"
-  // - node 233: 가장 큰 클러스터의 위치 기반 패닝 (0~1)
-  // - node 240: 두 번째 클러스터의 위치 기반 패닝
   useEffect(() => {
-    if (!noiseCraftOrigin) return;
+    if (typeof window === "undefined") return;
+    const path = window.location.pathname || "";
+    // eslint(react-hooks/set-state-in-effect): defer state update to avoid sync cascades
+    const id = window.setTimeout(() => {
+      setIsGlobalDebugView(path.startsWith("/global/debug"));
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
     if (!audioIframeRef.current) return;
+    // When swapping/reloading the NoiseCraft iframe, drop any cached MonoSeq grids
+    // so the next update can do a clean sync.
+    resetNoiseCraftSequencerCache();
+    audioIframeRef.current.src = noiseCraftSrc;
+  }, [noiseCraftSrc]);
 
-    const now = Date.now();
-    const INTERVAL_MS = 500;
-    const last = lastParamUpdateRef.current;
-    if (last && now - last < INTERVAL_MS) {
-      return;
-    }
-    const dtSeconds = last ? (now - last) / 1000 : INTERVAL_MS / 1000;
-    lastParamUpdateRef.current = now;
+  useEffect(() => {
+    if (!socket) return;
+    const iframe = audioIframeRef.current;
+    if (!iframe) return;
 
-    if (!clusters.length) {
-      return;
-    }
+    const handleAudioGlobalV2 = (...args: unknown[]) => {
+      const payload = args[0] as ServerAudioGlobalV2 | undefined;
+      if (!payload || payload.version !== 1) return;
 
-    // 사람 수가 많은 순으로 상위 2개 클러스터만 사용
-    const sorted = [...clusters].sort((a, b) => a.rank - b.rank);
-    const top = sorted.filter((c) => c.isMulti).slice(0, 2);
-    if (!top.length) {
-      return;
-    }
+      const params = Array.isArray(payload.params)
+        ? payload.params.map((p) => ({
+            nodeId: String(p.nodeId),
+            paramName: p.paramName || "value",
+            value: Number(p.value),
+          }))
+        : [];
 
-    const presenceMap = clusterPresenceRef.current;
-    const activeIds = new Set(top.map((c) => c.id));
-
-    // 존재하는 클러스터는 서서히 1로, 사라진 클러스터는 서서히 0으로
-    const GROW_SECONDS = 8;
-    const DECAY_SECONDS = 16;
-    presenceMap.forEach((entry, id) => {
-      const isActive = activeIds.has(id);
-      const rate = isActive ? 1 / GROW_SECONDS : -1 / DECAY_SECONDS;
-      entry.value = clamp01(entry.value + rate * dtSeconds);
-      entry.lastSeen = now;
-      if (!isActive && entry.value <= 0.0001) {
-        presenceMap.delete(id);
+      if (params.length) {
+        postNoiseCraftParams(iframe, noiseCraftOrigin, params);
       }
-    });
 
-    top.forEach((cluster) => {
-      if (!presenceMap.has(cluster.id)) {
-        presenceMap.set(cluster.id, { value: 0, lastSeen: now });
-      }
-    });
-
-    const first = top[0];
-    const second = top[1];
-
-    const firstPresence = first ? presenceMap.get(first.id)?.value ?? 0 : 0;
-    const secondPresence = second ? presenceMap.get(second.id)?.value ?? 0 : 0;
-
-    const toPan = (x: number | undefined | null, width: number) => {
-      if (!Number.isFinite(x) || width <= 0) return 0.5;
-      const n = clamp01((x as number) / width);
-      // 양 끝을 살짝 줄여 0.1~0.9 안에서만 움직이게
-      return 0.1 + n * 0.8;
-    };
-
-    const firstPan = first
-      ? toPan(first.centroid.x, state.gameSize.width)
-      : 0.5;
-    const secondPan = second
-      ? toPan(second.centroid.x, state.gameSize.width)
-      : 0.5;
-
-    const rawParams: NoiseCraftParam[] = [];
-    if (first) {
-      rawParams.push(
-        {
-          nodeId: "220",
-          paramName: "value",
-          value: firstPresence,
-        },
-        {
-          nodeId: "233",
-          paramName: "value",
-          value: firstPan,
-        }
-      );
-    }
-    if (second) {
-      rawParams.push(
-        {
-          nodeId: "221",
-          paramName: "value",
-          value: secondPresence,
-        },
-        {
-          nodeId: "240",
-          paramName: "value",
-          value: secondPan,
-        }
-      );
-    }
-
-    if (!rawParams.length) {
-      return;
-    }
-
-    // 파라미터 스무딩으로 팝/틱 노이즈 방지
-    const SMOOTHING = 0.04;
-    const smoothingMap = paramSmoothingRef.current;
-    const smooth = (nodeId: string, paramName: string, value: number) => {
-      const key = `${nodeId}:${paramName}`;
-      const existing = smoothingMap.get(key) || {
-        current: value,
-        target: value,
+      const sequencer = payload.sequencer;
+      const grids = sequencer?.grids;
+      const nodeIds = sequencer?.nodeIds || {
+        bass: "211",
+        baritone: "212",
+        tenor: "213",
       };
-      existing.target = value;
-      const prev = existing.current;
-      const diff = existing.target - prev;
-      const next = prev + diff * SMOOTHING;
-      existing.current = next;
-      smoothingMap.set(key, existing);
-      const changed = Math.abs(next - prev) > 1e-4;
-      return { value: next, changed };
+      if (grids) {
+        postMonoSeqGridDiff(
+          iframe,
+          noiseCraftOrigin,
+          nodeIds.bass,
+          0,
+          grids.bass
+        );
+        postMonoSeqGridDiff(
+          iframe,
+          noiseCraftOrigin,
+          nodeIds.baritone,
+          0,
+          grids.baritone
+        );
+        postMonoSeqGridDiff(
+          iframe,
+          noiseCraftOrigin,
+          nodeIds.tenor,
+          0,
+          grids.tenor
+        );
+      }
     };
 
-    const params: NoiseCraftParam[] = rawParams
-      .map((p): NoiseCraftParam | null => {
-        const nodeId = String(p.nodeId);
-        const paramName = p.paramName || "value";
-        const { value, changed } = smooth(nodeId, paramName, p.value);
-        if (!changed) return null;
-        return {
-          ...p,
-          nodeId,
-          paramName,
-          value,
-        };
-      })
-      .filter((p): p is NoiseCraftParam => p !== null);
-
-    if (!params.length) return;
-
-    postNoiseCraftParams(audioIframeRef.current, noiseCraftOrigin, params);
-  }, [clusters, state.gameSize.width, noiseCraftOrigin]);
+    socket.on("audioGlobalV2", handleAudioGlobalV2);
+    return () => {
+      socket.off("audioGlobalV2", handleAudioGlobalV2);
+    };
+  }, [socket, noiseCraftOrigin]);
 
   return (
     <div
@@ -520,21 +522,44 @@ const GlobalPerspectiveView = ({
         backgroundRepeat: "no-repeat",
       }}
     >
+      {showPerf && (
+        <PerfOverlay mode="global" population={state.ui.population} />
+      )}
       <GlobalSpace state={state} players={players} viewMode={viewMode} />
       {/* NoiseCraft Embedded (글로벌 퍼스펙티브용 오디오) */}
-      <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white">
-        <div className="mb-1 text-white/70">NoiseCraft · Global</div>
-        <iframe
-          ref={audioIframeRef}
-          src={noiseCraftSrc}
-          width={260}
-          height={64}
-          allow="autoplay"
-          title="NoiseCraft Global Perspective"
-          className="h-[64px] w-[260px]"
-          style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8 }}
-        />
-      </div>
+      {isGlobalDebugView ? (
+        <div className="pointer-events-auto absolute inset-4 rounded-xl bg-black/70 p-2 text-xs text-white">
+          <div className="mb-1 text-white/70">NoiseCraft · Global Debug</div>
+          <iframe
+            ref={audioIframeRef}
+            src={noiseCraftSrc}
+            allow="autoplay"
+            title="NoiseCraft Global Debug"
+            className="h-[calc(100%-20px)] w-full"
+            style={{
+              border: "1px solid rgba(255,255,255,0.2)",
+              borderRadius: 8,
+            }}
+          />
+        </div>
+      ) : (
+        <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl bg-black/70 p-2 text-xs text-white">
+          <div className="mb-1 text-white/70">NoiseCraft · Global</div>
+          <iframe
+            ref={audioIframeRef}
+            src={noiseCraftSrc}
+            width={260}
+            height={64}
+            allow="autoplay"
+            title="NoiseCraft Global Perspective"
+            className="h-[64px] w-[260px]"
+            style={{
+              border: "1px solid rgba(255,255,255,0.2)",
+              borderRadius: 8,
+            }}
+          />
+        </div>
+      )}
       {showModeToggle && (
         <ModeToggle viewMode={viewMode} onChange={setViewMode} />
       )}
@@ -755,7 +780,12 @@ const GlobalSpace = ({
               fadeDistance={80}
               fadeStrength={1.2}
             />
-            <CollisionSprings3D state={state} lookup={playerWorldLookup} />
+            <CollisionSprings3D
+              state={state}
+              lookup={playerWorldLookup}
+              planeWidth={planeWidth}
+              planeHeight={planeHeight}
+            />
             <CollisionMarks3D
               state={state}
               planeWidth={planeWidth}
@@ -763,18 +793,42 @@ const GlobalSpace = ({
               lookup={playerWorldLookup}
             />
             <PostProcessing />
-            {planeData.map(({ player, depth, worldX, worldY }) => (
-              <PlayerPlane
-                key={player.id}
-                player={player}
-                depth={depth}
-                planeWidth={planeWidth}
-                planeHeight={planeHeight}
-                isFocused={player.isSelf ?? false}
-                worldX={worldX}
-                worldY={worldY}
-              />
-            ))}
+            {planeData.map(({ player, depth, worldX, worldY }) => {
+              // 월드 경계(위/아래/좌/우)로 갈수록 공이 페이드아웃 (복제 렌더링 없음)
+              const wrapFadeW = planeWidth * 0.12;
+              const wrapFadeH = planeHeight * 0.06;
+              const halfW = planeWidth / 2;
+              const halfH = planeHeight / 2;
+
+              const distLeft = worldX + halfW;
+              const distRight = halfW - worldX;
+              const distBottom = worldY + halfH;
+              const distTop = halfH - worldY;
+
+              const fx =
+                wrapFadeW > 0
+                  ? clamp01(Math.min(distLeft, distRight) / wrapFadeW)
+                  : 1;
+              const fy =
+                wrapFadeH > 0
+                  ? clamp01(Math.min(distBottom, distTop) / wrapFadeH)
+                  : 1;
+              const opacityScale = Math.min(fx, fy);
+
+              return (
+                <PlayerPlane
+                  key={player.id}
+                  player={player}
+                  depth={depth}
+                  planeWidth={planeWidth}
+                  planeHeight={planeHeight}
+                  isFocused={player.isSelf ?? false}
+                  worldX={worldX}
+                  worldY={worldY}
+                  opacityScale={opacityScale}
+                />
+              );
+            })}
           </Canvas>
         </Suspense>
       )}
@@ -800,14 +854,19 @@ interface SpringSegment {
   to: THREE.Vector3;
   startedAt: number;
   lastEvent?: number;
+  opacityScale?: number;
 }
 
 const CollisionSprings3D = ({
   state,
   lookup,
+  planeWidth,
+  planeHeight,
 }: {
   state: GameState;
   lookup: Map<string, { worldX: number; worldY: number; depth: number }>;
+  planeWidth: number;
+  planeHeight: number;
 }) => {
   const springs = useMemo(() => {
     return state.collisionLines
@@ -815,16 +874,45 @@ const CollisionSprings3D = ({
         const a = lookup.get(line.players[0]);
         const b = lookup.get(line.players[1]);
         if (!a || !b) return null;
+        // 연결선은 항상 "월드 박스 내부" 표현으로만 그린다.
+        // (토러스의 가장 가까운 경로로 선을 이동/보정하지 않음)
+
+        // 월드 경계 근처에서는 연결선도 같이 페이드아웃 (래핑 점프를 덜 거슬리게)
+        const wrapFadeW = planeWidth * 0.12;
+        const wrapFadeH = planeHeight * 0.12;
+        const halfW = planeWidth / 2;
+        const halfH = planeHeight / 2;
+        const edgeFadeAt = (x: number, y: number) => {
+          if (planeWidth <= 0 || planeHeight <= 0) return 1;
+          const distLeft = x + halfW;
+          const distRight = halfW - x;
+          const distBottom = y + halfH;
+          const distTop = halfH - y;
+          const fx =
+            wrapFadeW > 0
+              ? clamp01(Math.min(distLeft, distRight) / wrapFadeW)
+              : 1;
+          const fy =
+            wrapFadeH > 0
+              ? clamp01(Math.min(distBottom, distTop) / wrapFadeH)
+              : 1;
+          return Math.min(fx, fy);
+        };
+        const opacityScale = Math.min(
+          edgeFadeAt(a.worldX, a.worldY),
+          edgeFadeAt(b.worldX, b.worldY)
+        );
         return {
           id: line.id,
           startedAt: line.startedAt,
           lastEvent: line.lastEvent,
           from: new THREE.Vector3(a.worldX, a.worldY, a.depth + 0.05),
           to: new THREE.Vector3(b.worldX, b.worldY, b.depth + 0.05),
+          opacityScale,
         };
       })
       .filter((segment): segment is SpringSegment => Boolean(segment));
-  }, [lookup, state.collisionLines]);
+  }, [lookup, state.collisionLines, planeHeight, planeWidth]);
 
   if (!springs.length) return null;
 
@@ -850,6 +938,8 @@ const CollisionMarks3D = ({
   lookup: Map<string, { worldX: number; worldY: number; depth: number }>;
 }) => {
   const marks = useMemo(() => {
+    // 시간 기반 페이드는 "렌더 시점"에 계산할 수밖에 없어서 예외 처리
+    // eslint-disable-next-line react-hooks/purity
     const now = Date.now();
     const CORE_DURATION = 300000; // 5분 (코어 점)
     const PARTICLE_DURATION = 50000; // 50초 (파티클/스파클)
@@ -987,18 +1077,22 @@ const CollisionGlowEffect = ({
     const count = 40;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
+    const seedBase = hashStringToSeed(`sparkle:${mark.id}:${mark.radius}`);
 
     for (let i = 0; i < count; i += 1) {
-      const radius = mark.radius * PLANE_SCALE * (1.8 + Math.random() * 1.2);
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.random() * Math.PI;
+      const radius =
+        mark.radius *
+        PLANE_SCALE *
+        (1.8 + seededRandom(seedBase + i * 5.11) * 1.2);
+      const theta = seededRandom(seedBase + i * 9.23 + 17.2) * Math.PI * 2;
+      const phi = seededRandom(seedBase + i * 13.37 + 91.1) * Math.PI;
 
       positions[i * 3] = Math.sin(phi) * Math.cos(theta) * radius;
       positions[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * radius;
       positions[i * 3 + 2] = Math.cos(phi) * radius;
 
       // 흰색 계열 (약간의 밝기 변화)
-      const brightness = 0.9 + Math.random() * 0.1;
+      const brightness = 0.9 + seededRandom(seedBase + i * 2.07 + 777.7) * 0.1;
       colors[i * 3] = brightness;
       colors[i * 3 + 1] = brightness * 0.98;
       colors[i * 3 + 2] = brightness * 0.95;
@@ -1076,13 +1170,14 @@ const CollisionParticleBurst = ({
 }) => {
   const pointsRef = useRef<THREE.Points>(null);
   const velocitiesRef = useRef<Array<{ x: number; y: number; z: number }>>([]);
-  const startTimeRef = useRef<number>(performance.now());
+  const startTimeRef = useRef<number>(0);
 
   const { geometry, velocities } = useMemo(() => {
     const particleCount = 40; // 더 많은 파티클
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
     const velocities: Array<{ x: number; y: number; z: number }> = [];
+    const seedBase = hashStringToSeed(`burst:${mark.id}:${mark.radius}`);
 
     // 플레이어 색상 가져오기
     const playerColors =
@@ -1092,10 +1187,10 @@ const CollisionParticleBurst = ({
 
     for (let i = 0; i < particleCount; i += 1) {
       // 구면에서 랜덤하게 방출 (운석 파편처럼)
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
+      const theta = seededRandom(seedBase + i * 3.11) * Math.PI * 2;
+      const phi = Math.acos(2 * seededRandom(seedBase + i * 7.19 + 19.9) - 1);
       // 초기 속도가 더 빠르게 (운석 충돌 느낌)
-      const speed = 1.2 + Math.random() * 1.5;
+      const speed = 1.2 + seededRandom(seedBase + i * 11.7 + 71.3) * 1.5;
 
       const dirX = Math.sin(phi) * Math.cos(theta);
       const dirY = Math.sin(phi) * Math.sin(theta);
@@ -1113,8 +1208,11 @@ const CollisionParticleBurst = ({
       });
 
       // 플레이어 색상 중 랜덤 선택
-      const color =
-        playerColors[Math.floor(Math.random() * playerColors.length)];
+      const pick =
+        Math.floor(
+          seededRandom(seedBase + i * 17.3 + 313.3) * playerColors.length
+        ) || 0;
+      const color = playerColors[pick] ?? playerColors[0];
       colors[i * 3] = color.r;
       colors[i * 3 + 1] = color.g;
       colors[i * 3 + 2] = color.b;
@@ -1125,7 +1223,7 @@ const CollisionParticleBurst = ({
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     return { geometry, velocities };
-  }, [mark.id, mark.players]);
+  }, [mark.id, mark.players, mark.radius]);
 
   useEffect(() => {
     velocitiesRef.current = velocities;
@@ -1218,7 +1316,7 @@ const CollisionObjectParticles = ({
 }) => {
   const pointsRef = useRef<THREE.Points>(null);
   const velocitiesRef = useRef<Array<{ x: number; y: number; z: number }>>([]);
-  const startTimeRef = useRef<number>(performance.now());
+  const startTimeRef = useRef<number>(0);
 
   const { geometry, velocities } = useMemo(() => {
     if (!mark.players || mark.players.length === 0) {
@@ -1242,11 +1340,14 @@ const CollisionObjectParticles = ({
       const playerColor = new THREE.Color("#ffffff");
 
       for (let i = 0; i < particleCount; i += 1) {
+        const seedBase = hashStringToSeed(`obj:${mark.id}:${player.id}:${i}`);
         // object 중심에서 약간 떨어진 위치
         const offsetRadius =
-          player.cell.radius * PLANE_SCALE * (0.3 + Math.random() * 0.4);
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.random() * Math.PI;
+          player.cell.radius *
+          PLANE_SCALE *
+          (0.3 + seededRandom(seedBase + 1.1) * 0.4);
+        const theta = seededRandom(seedBase + 2.2) * Math.PI * 2;
+        const phi = seededRandom(seedBase + 3.3) * Math.PI;
 
         const offsetX = Math.sin(phi) * Math.cos(theta) * offsetRadius;
         const offsetY = Math.sin(phi) * Math.sin(theta) * offsetRadius;
@@ -1283,7 +1384,8 @@ const CollisionObjectParticles = ({
       // 충돌 지점에서 멀어지는 방향으로 초기 속도
       const dist = Math.hypot(particle.x, particle.y, particle.z);
       if (dist > 0.001) {
-        const speed = 0.3 + Math.random() * 0.4; // 천천히 퍼짐
+        const speed =
+          0.3 + seededRandom(hashStringToSeed(`spd:${mark.id}:${i}`)) * 0.4; // 천천히 퍼짐
         velocities.push({
           x: (particle.x / dist) * speed,
           y: (particle.y / dist) * speed,
@@ -1299,7 +1401,16 @@ const CollisionObjectParticles = ({
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     return { geometry, velocities };
-  }, [mark.id, mark.players, lookup, state.players]);
+  }, [
+    mark.id,
+    mark.players,
+    mark.radius,
+    mark.worldX,
+    mark.worldY,
+    mark.depth,
+    lookup,
+    state.players,
+  ]);
 
   useEffect(() => {
     velocitiesRef.current = velocities;
@@ -1376,8 +1487,16 @@ const CollisionSpring3D = ({
   to,
   startedAt,
   lastEvent,
+  opacityScale = 1,
 }: SpringSegment) => {
   const geometryRef = useRef<THREE.BufferGeometry>(null);
+  const lineMatRef = useRef<THREE.LineBasicMaterial>(null);
+  const fromMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const toMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const { camera } = useThree();
+  const tmpA = useMemo(() => new THREE.Vector3(), []);
+  const tmpB = useMemo(() => new THREE.Vector3(), []);
+  const tmpNdc = useMemo(() => new THREE.Vector3(), []);
   const positions = useMemo(
     () => new Float32Array((SPRING_SEGMENTS + 1) * 3),
     []
@@ -1392,15 +1511,44 @@ const CollisionSpring3D = ({
     toRef.current = to;
   }, [to]);
 
+  /* eslint-disable react-hooks/immutability */
   useFrame(() => {
     const geometry = geometryRef.current;
     if (!geometry) return;
     const a = fromRef.current;
     const b = toRef.current;
+
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const dz = b.z - a.z;
     const planarDist = Math.hypot(dx, dy);
+
+    // 화면 가장자리 페이드 (두 끝 중 더 약한 값 사용)
+    tmpA.set(a.x, a.y, a.z);
+    tmpB.set(b.x, b.y, b.z);
+    tmpNdc.copy(tmpA).project(camera);
+    const fadeA = computeEdgeFadeNdc(tmpNdc.x, tmpNdc.y);
+    tmpNdc.copy(tmpB).project(camera);
+    const fadeB = computeEdgeFadeNdc(tmpNdc.x, tmpNdc.y);
+    const edgeFade = Math.min(fadeA, fadeB) * opacityScale;
+
+    // 거리 기반 페이드: 멀수록 더 연하게
+    // (월드 좌표 단위 기준; 필요하면 튜닝)
+    const DIST_FADE_START = 18;
+    const DIST_FADE_END = 120;
+    const distT = smoothstep(DIST_FADE_START, DIST_FADE_END, planarDist);
+    const distFade = 1 - 0.75 * distT; // 가까우면 1, 멀면 0.25
+
+    const fade = edgeFade * distFade;
+    if (lineMatRef.current) {
+      lineMatRef.current.opacity = SPRING_LINE_OPACITY * fade;
+    }
+    if (fromMatRef.current) {
+      fromMatRef.current.opacity = 0.6 * fade;
+    }
+    if (toMatRef.current) {
+      toMatRef.current.opacity = 0.6 * fade;
+    }
     const nx = planarDist > 0 ? -dy / planarDist : 0;
     const ny = planarDist > 0 ? dx / planarDist : 0;
     const wallNow =
@@ -1424,6 +1572,7 @@ const CollisionSpring3D = ({
       geometry.computeBoundingSphere();
     }
   });
+  /* eslint-enable react-hooks/immutability */
 
   return (
     <>
@@ -1432,6 +1581,7 @@ const CollisionSpring3D = ({
           <bufferAttribute attach="attributes-position" args={[positions, 3]} />
         </bufferGeometry>
         <lineBasicMaterial
+          ref={lineMatRef}
           color="#d2d8e0"
           transparent
           opacity={SPRING_LINE_OPACITY}
@@ -1441,6 +1591,7 @@ const CollisionSpring3D = ({
       <mesh position={[from.x, from.y, from.z]}>
         <sphereGeometry args={[SPRING_GLOW_RADIUS, 12, 12]} />
         <meshBasicMaterial
+          ref={fromMatRef}
           color="#e2e8e0"
           toneMapped={false}
           transparent
@@ -1450,6 +1601,7 @@ const CollisionSpring3D = ({
       <mesh position={[to.x, to.y, to.z]}>
         <sphereGeometry args={[SPRING_GLOW_RADIUS, 12, 12]} />
         <meshBasicMaterial
+          ref={toMatRef}
           color="#f8fafc"
           toneMapped={false}
           transparent
